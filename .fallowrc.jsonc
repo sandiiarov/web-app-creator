@@ -1,0 +1,12 @@
+{
+  "$schema": "https://raw.githubusercontent.com/fallow-rs/fallow/main/schema.json",
+  "entry": ["**/oxfmt.config.ts"],
+  "ignoreDependencies": [
+    "@workspace/typescript-config",
+    "eslint-plugin-perfectionist",
+    "eslint-plugin-react-refresh",
+    "lucide-react",
+    "oxlint-tailwindcss"
+  ],
+  "ignorePatterns": ["apps/client/public/__sw__.js"]
+}

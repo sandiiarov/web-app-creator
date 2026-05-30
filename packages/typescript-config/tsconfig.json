@@ -1,0 +1,5 @@
+{
+  "extends": "./node.json",
+  "include": ["oxlint.config.ts", "oxfmt.config.ts"],
+  "exclude": ["dist", "node_modules"]
+}

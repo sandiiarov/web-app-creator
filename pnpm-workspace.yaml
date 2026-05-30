@@ -1,0 +1,36 @@
+packages:
+  - "apps/*"
+  - "packages/*"
+
+catalog:
+  '@fontsource-variable/noto-sans': ^5.2.10
+  "@types/node": "^24.10.1"
+  "@types/react": "^19.2.7"
+  "@types/react-dom": "^19.2.3"
+  "@typescript/native-preview": "7.0.0-dev.20260527.2"
+  almostnode: ^0.2.14
+  class-variance-authority: ^0.7.1
+  clsx: ^2.1.1
+  lucide-react: ^1.17.0
+  oxfmt: "^0.52.0"
+  oxlint: "^1.67.0"
+  radix-ui: ^1.4.3
+  react: "^19.2.6"
+  react-dom: "^19.2.6"
+  shadcn: ^4.8.3
+  tailwind-merge: ^3.6.0
+  tw-animate-css: ^1.4.0
+  vite: "^8.0.14"
+
+catalogMode: strict
+cleanupUnusedCatalogs: true
+
+allowBuilds:
+  '@mongodb-js/zstd': false
+  '@swc/core': false
+  esbuild: true
+  msw: false
+  node-liblzma: false
+
+minimumReleaseAgeExclude:
+  - oxlint-tailwindcss@1.1.0

@@ -1,0 +1,29 @@
+{
+  "name": "@workspace/server",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsgo -p tsconfig.build.json",
+    "dev": "node --watch src/index.ts",
+    "format": "oxfmt -c oxfmt.config.ts .",
+    "format:check": "oxfmt -c oxfmt.config.ts --check .",
+    "lint": "oxlint .",
+    "lint:fix": "oxlint --fix .",
+    "start": "node dist/index.js",
+    "typecheck": "tsgo --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@ai-sdk/gateway": "^3.0.121",
+    "ai": "^6.0.193"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "@typescript/native-preview": "catalog:",
+    "@workspace/oxfmt-config": "workspace:*",
+    "@workspace/oxlint-config": "workspace:*",
+    "@workspace/typescript-config": "workspace:*",
+    "oxfmt": "catalog:",
+    "oxlint": "catalog:"
+  }
+}
