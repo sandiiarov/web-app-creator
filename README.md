@@ -50,7 +50,7 @@ The server exposes:
 - `POST /api/generate` with `{ "prompt": "...", "model": "optional-model-id" }`
 - `POST /api/edit` with an edit prompt, selected element context, and editable virtual files
 
-Set `AI_GATEWAY_API_KEY` and optionally `AI_MODEL`, `HOST`, `PORT`, and `CLIENT_ORIGIN` in the server environment. The default model is `deepseek/deepseek-v4-pro`. Set `VITE_SERVER_URL` for the client if the server is not running on `http://localhost:3001`.
+Set `OPENROUTER_API_KEY` to use OpenRouter, or `AI_GATEWAY_API_KEY` to use Vercel AI Gateway. If both are present, the server prefers OpenRouter unless `AI_PROVIDER=gateway` is set. You can also set `AI_PROVIDER=openrouter`, `AI_MODEL`, `HOST`, `PORT`, and `CLIENT_ORIGIN`. The default model is `deepseek/deepseek-v4-pro`. Set `VITE_SERVER_URL` for the client if the server is not running on `http://localhost:3001`.
 
 ## shadcn/ui
 

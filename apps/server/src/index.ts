@@ -24,7 +24,18 @@ Return only changed files. You may edit only /src/App.tsx and /src/style.css.
 Preserve valid React/TypeScript and CSS. Use the selected element context when present.`
 const EDITABLE_FILE_PATHS = new Set(['/src/App.tsx', '/src/style.css'])
 const HOST = env.HOST ?? '0.0.0.0'
+const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions'
+const OPENROUTER_REFERER =
+  env.OPENROUTER_REFERER ?? 'https://github.com/sandiiarov/web-app-creator'
+const OPENROUTER_TITLE = env.OPENROUTER_TITLE ?? 'web-app-creator'
 const PORT = parsePort(env.PORT ?? '3001')
+
+type AiProvider = 'gateway' | 'openrouter'
+
+type ChatMessage = {
+  content: string
+  role: 'system' | 'user'
+}
 
 type CompletionRequest = {
   model?: string
@@ -98,6 +109,14 @@ server.listen(PORT, HOST, () => {
   console.log(`Server listening at http://${HOST}:${PORT}`)
 })
 
+function activeAiProvider(): AiProvider {
+  if (env.AI_PROVIDER === 'openrouter' || env.AI_PROVIDER === 'gateway') {
+    return env.AI_PROVIDER
+  }
+
+  return env.OPENROUTER_API_KEY ? 'openrouter' : 'gateway'
+}
+
 function createEditPrompt(request: EditRequest) {
   return [
     'User request:',
@@ -137,7 +156,13 @@ function formatFileForPrompt(file: EditFile) {
   return [`File: ${file.path}`, '```', file.content, '```'].join('\n')
 }
 
-async function generateCompletion({
+async function generateCompletion(request: CompletionRequest) {
+  return activeAiProvider() === 'openrouter'
+    ? generateOpenRouterCompletion(request)
+    : generateGatewayCompletion(request)
+}
+
+async function generateGatewayCompletion({
   model,
   prompt,
   system,
@@ -149,6 +174,12 @@ async function generateCompletion({
   })
 
   return result.text
+}
+
+async function generateOpenRouterCompletion(request: CompletionRequest) {
+  const payload = await openRouterRequest(request)
+
+  return openRouterTextOrThrow(payload)
 }
 
 async function handleEdit(request: IncomingMessage, response: ServerResponse) {
@@ -194,6 +225,8 @@ function handleHealth(response: ServerResponse) {
   sendJson(response, 200, {
     aiGatewayConfigured: Boolean(env.AI_GATEWAY_API_KEY),
     ok: true,
+    openRouterConfigured: Boolean(env.OPENROUTER_API_KEY),
+    provider: activeAiProvider(),
   })
 }
 
@@ -281,6 +314,136 @@ function jsonRange(text: string): JsonRange | null {
   const start = text.indexOf('{')
 
   return start === -1 || end < start ? null : { end, start }
+}
+
+function openRouterApiKey() {
+  const apiKey = env.OPENROUTER_API_KEY
+
+  if (!apiKey) {
+    throw new Error('OPENROUTER_API_KEY is required for OpenRouter.')
+  }
+
+  return apiKey
+}
+
+function openRouterCompletionText(payload: unknown) {
+  if (!isRecord(payload) || !Array.isArray(payload.choices)) {
+    return null
+  }
+
+  return openRouterMessageText(payload.choices[0])
+}
+
+function openRouterErrorMessage(payload: unknown) {
+  return isRecord(payload) ? openRouterErrorText(payload.error) : null
+}
+
+function openRouterErrorObjectMessage(error: unknown) {
+  return isRecord(error) && typeof error.message === 'string'
+    ? error.message
+    : null
+}
+
+function openRouterErrorText(error: unknown) {
+  return typeof error === 'string' ? error : openRouterErrorObjectMessage(error)
+}
+
+function openRouterFailureMessage(response: Response, payload: unknown) {
+  return response.ok
+    ? null
+    : (openRouterErrorMessage(payload) ??
+        `OpenRouter request failed with status ${response.status}.`)
+}
+
+function openRouterHeaders(apiKey: string) {
+  return {
+    authorization: `Bearer ${apiKey}`,
+    'content-type': 'application/json',
+    'http-referer': OPENROUTER_REFERER,
+    'x-title': OPENROUTER_TITLE,
+  }
+}
+
+function openRouterMessages(system: string | undefined, prompt: string) {
+  const messages: ChatMessage[] = []
+
+  if (system) {
+    messages.push({
+      content: system,
+      role: 'system',
+    })
+  }
+
+  messages.push({
+    content: prompt,
+    role: 'user',
+  })
+
+  return messages
+}
+
+function openRouterMessageText(choice: unknown) {
+  if (!isRecord(choice) || !isRecord(choice.message)) {
+    return null
+  }
+
+  return openRouterTextContent(choice.message.content)
+}
+
+async function openRouterRequest(request: CompletionRequest) {
+  const response = await fetch(OPENROUTER_API_URL, {
+    body: openRouterRequestBody(request),
+    headers: openRouterHeaders(openRouterApiKey()),
+    method: 'POST',
+  })
+  const payload: unknown = await response.json().catch(() => null)
+
+  openRouterThrowIfFailed(response, payload)
+
+  return payload
+}
+
+function openRouterRequestBody({ model, prompt, system }: CompletionRequest) {
+  return JSON.stringify({
+    messages: openRouterMessages(system, prompt),
+    model: model ?? DEFAULT_MODEL,
+  })
+}
+
+function openRouterTextContent(content: unknown) {
+  if (typeof content === 'string') {
+    return content
+  }
+
+  if (!Array.isArray(content)) {
+    return null
+  }
+
+  const text = content.map(openRouterTextPart).join('')
+
+  return text.length > 0 ? text : null
+}
+
+function openRouterTextOrThrow(payload: unknown) {
+  const text = openRouterCompletionText(payload)
+
+  if (!text) {
+    throw new Error('OpenRouter response did not include text content.')
+  }
+
+  return text
+}
+
+function openRouterTextPart(part: unknown) {
+  return isRecord(part) && typeof part.text === 'string' ? part.text : ''
+}
+
+function openRouterThrowIfFailed(response: Response, payload: unknown) {
+  const message = openRouterFailureMessage(response, payload)
+
+  if (message) {
+    throw new Error(message)
+  }
 }
 
 function parseEditResponse(text: string): EditResponse {
