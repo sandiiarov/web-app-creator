@@ -24,6 +24,9 @@ catalogs:
     almostnode:
       specifier: ^0.2.14
       version: 0.2.14
+    bippy:
+      specifier: ^0.5.41
+      version: 0.5.41
     class-variance-authority:
       specifier: ^0.7.1
       version: 0.7.1
@@ -89,6 +92,9 @@ importers:
       almostnode:
         specifier: 'catalog:'
         version: 0.2.14(react@19.2.6)(vite@8.0.14(@types/node@24.12.4)(jiti@2.7.0)(yaml@2.9.0))
+      bippy:
+        specifier: 'catalog:'
+        version: 0.5.41(react@19.2.6)
       react:
         specifier: 'catalog:'
         version: 19.2.6
@@ -2262,6 +2268,11 @@ packages:
     resolution: {integrity: sha512-wbPvpyjJPC0zdfdKXxqEL3Ea+bOMD/87X4lftiJkkaBiuG6ALQy1SLmEd7BSmVCuwCQsBrCamgBoLyfFDD1EPg==}
     engines: {node: '>=6.0.0'}
     hasBin: true
+
+  bippy@0.5.41:
+    resolution: {integrity: sha512-jCP2pXXLhXqPrAN+iSEFZmLI4uUM4fjSqajh0K+TmM062VehfDT3ZJNkrTGyN701Z5XMejs9qAudSqkMGhSMKg==}
+    peerDependencies:
+      react: '>=17.0.1'
 
   bl@4.1.0:
     resolution: {integrity: sha512-1W07cM9gS6DcLperZfFSj+bWLtaPGSOHWhPiGzXmvVJbRLdG82sH/Kn8EtW1VqWVA54AKf2h5k5BbnIbwF3h6w==}
@@ -5855,6 +5866,10 @@ snapshots:
   base64-js@1.5.1: {}
 
   baseline-browser-mapping@2.10.32: {}
+
+  bippy@0.5.41(react@19.2.6):
+    dependencies:
+      react: 19.2.6
 
   bl@4.1.0:
     dependencies:

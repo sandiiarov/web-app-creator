@@ -9,14 +9,78 @@ import { gateway } from '@ai-sdk/gateway'
 import { generateText } from 'ai'
 
 const CLIENT_ORIGIN = env.CLIENT_ORIGIN ?? '*'
-const DEFAULT_MODEL = env.AI_MODEL ?? 'openai/gpt-4o-mini'
+const DEFAULT_MODEL = env.AI_MODEL ?? 'deepseek/deepseek-v4-pro'
+const EDIT_SYSTEM_PROMPT = `You edit a small Vite React preview app.
+Return only JSON. Do not wrap it in markdown.
+The JSON shape must be:
+{
+  "summary": "short human-readable summary",
+  "files": [
+    { "path": "/src/App.tsx", "content": "full file contents" },
+    { "path": "/src/style.css", "content": "full file contents" }
+  ]
+}
+Return only changed files. You may edit only /src/App.tsx and /src/style.css.
+Preserve valid React/TypeScript and CSS. Use the selected element context when present.`
+const EDITABLE_FILE_PATHS = new Set(['/src/App.tsx', '/src/style.css'])
 const HOST = env.HOST ?? '0.0.0.0'
 const PORT = parsePort(env.PORT ?? '3001')
+
+type CompletionRequest = {
+  model?: string
+  prompt: string
+  system?: string
+}
+
+type EditFile = {
+  content: string
+  path: string
+}
+
+type EditRequest = {
+  files: EditFile[]
+  model?: string
+  prompt: string
+  selection?: unknown
+}
+
+type EditResponse = {
+  files: EditFile[]
+  summary?: string
+}
 
 type GenerateRequest = {
   model?: string
   prompt: string
 }
+
+type JsonRange = {
+  end: number
+  start: number
+}
+
+type Route = {
+  handle: (
+    request: IncomingMessage,
+    response: ServerResponse,
+  ) => Promise<void> | void
+  matches: (request: IncomingMessage, pathname: string) => boolean
+}
+
+const ROUTES: Route[] = [
+  {
+    handle: handleHealthRoute,
+    matches: isHealthRoute,
+  },
+  {
+    handle: handleGenerate,
+    matches: isGenerateRoute,
+  },
+  {
+    handle: handleEdit,
+    matches: isEditRoute,
+  },
+]
 
 const server = createServer(async (request, response) => {
   setCorsHeaders(response)
@@ -34,17 +98,76 @@ server.listen(PORT, HOST, () => {
   console.log(`Server listening at http://${HOST}:${PORT}`)
 })
 
+function createEditPrompt(request: EditRequest) {
+  return [
+    'User request:',
+    request.prompt,
+    '',
+    'Selected element context:',
+    JSON.stringify(request.selection ?? null, null, 2),
+    '',
+    'Editable files:',
+    request.files.map(formatFileForPrompt).join('\n\n'),
+  ].join('\n')
+}
+
 function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : 'Unknown error'
 }
 
-async function generateCompletion({ model, prompt }: GenerateRequest) {
+function extractBracedJson(text: string) {
+  const range = jsonRange(text)
+
+  if (!range) {
+    throw new Error('AI response did not include a JSON object.')
+  }
+
+  return text.slice(range.start, range.end + 1)
+}
+
+function extractFencedJson(text: string) {
+  return text.match(/```(?:json)?\s*([\s\S]*?)\s*```/i)?.[1]?.trim() ?? null
+}
+
+function extractJsonObject(text: string) {
+  return extractFencedJson(text) ?? extractBracedJson(text)
+}
+
+function formatFileForPrompt(file: EditFile) {
+  return [`File: ${file.path}`, '```', file.content, '```'].join('\n')
+}
+
+async function generateCompletion({
+  model,
+  prompt,
+  system,
+}: CompletionRequest) {
   const result = await generateText({
     model: gateway(model ?? DEFAULT_MODEL),
     prompt,
+    system,
   })
 
   return result.text
+}
+
+async function handleEdit(request: IncomingMessage, response: ServerResponse) {
+  const body = await readJson(request)
+
+  if (!isEditRequest(body)) {
+    sendJson(response, 400, {
+      error: 'Expected JSON body with prompt and editable files.',
+    })
+    return
+  }
+
+  const text = await generateCompletion({
+    model: body.model,
+    prompt: createEditPrompt(body),
+    system: EDIT_SYSTEM_PROMPT,
+  })
+
+  sendJson(response, 200, parseEditResponse(text))
 }
 
 async function handleGenerate(
@@ -74,12 +197,59 @@ function handleHealth(response: ServerResponse) {
   })
 }
 
+function handleHealthRoute(
+  _request: IncomingMessage,
+  response: ServerResponse,
+) {
+  handleHealth(response)
+}
+
+function hasEditableFiles(value: unknown) {
+  return Array.isArray(value) && value.every(isEditableFile)
+}
+
 function hasOptionalModel(value: unknown) {
   return value === undefined || typeof value === 'string'
 }
 
 function hasPrompt(value: unknown) {
   return typeof value === 'string' && value.trim().length > 0
+}
+
+function isEditableFile(value: unknown): value is EditFile {
+  return (
+    isRecord(value) &&
+    typeof value.content === 'string' &&
+    typeof value.path === 'string' &&
+    EDITABLE_FILE_PATHS.has(value.path)
+  )
+}
+
+function isEditRequest(value: unknown): value is EditRequest {
+  return isRecord(value) && isEditRequestRecord(value)
+}
+
+function isEditRequestRecord(value: Record<string, unknown>) {
+  return (
+    hasPrompt(value.prompt) &&
+    hasOptionalModel(value.model) &&
+    hasEditableFiles(value.files)
+  )
+}
+
+function isEditResponse(value: unknown): value is EditResponse {
+  return isRecord(value) && isEditResponseRecord(value)
+}
+
+function isEditResponseRecord(value: Record<string, unknown>) {
+  return (
+    (value.summary === undefined || typeof value.summary === 'string') &&
+    hasEditableFiles(value.files)
+  )
+}
+
+function isEditRoute(request: IncomingMessage, pathname: string) {
+  return request.method === 'POST' && pathname === '/api/edit'
 }
 
 function isGenerateRequest(value: unknown): value is GenerateRequest {
@@ -104,6 +274,23 @@ function isOptionsRequest(request: IncomingMessage) {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
+}
+
+function jsonRange(text: string): JsonRange | null {
+  const end = text.lastIndexOf('}')
+  const start = text.indexOf('{')
+
+  return start === -1 || end < start ? null : { end, start }
+}
+
+function parseEditResponse(text: string): EditResponse {
+  const parsed = JSON.parse(extractJsonObject(text)) as unknown
+
+  if (!isEditResponse(parsed)) {
+    throw new Error('AI response did not match the edit response schema.')
+  }
+
+  return parsed
 }
 
 function parsePort(value: string) {
@@ -146,18 +333,14 @@ async function routeRequest(
   }
 
   const pathname = requestPathname(request)
+  const route = ROUTES.find((candidate) => candidate.matches(request, pathname))
 
-  if (isHealthRoute(request, pathname)) {
-    handleHealth(response)
+  if (!route) {
+    sendNotFound(response)
     return
   }
 
-  if (isGenerateRoute(request, pathname)) {
-    await handleGenerate(request, response)
-    return
-  }
-
-  sendNotFound(response)
+  await route.handle(request, response)
 }
 
 function sendJson(

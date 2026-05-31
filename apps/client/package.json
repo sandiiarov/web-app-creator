@@ -21,6 +21,7 @@
   "dependencies": {
     "@workspace/ui": "workspace:*",
     "almostnode": "catalog:",
+    "bippy": "catalog:",
     "react": "catalog:",
     "react-dom": "catalog:"
   },

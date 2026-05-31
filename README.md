@@ -25,6 +25,8 @@ Root files are only workspace/orchestration files. TS, Vite, Oxlint, and Oxfmt c
 
 `apps/client` renders a full-screen iframe. The iframe points to an in-browser Vite dev server created with almostnode `VirtualFS`, `ViteDevServer`, and `ServerBridge`.
 
+The preview app includes a bippy-powered inspector. Press `Command+G` or click **Select element**, choose an element in the iframe, then describe a change in the prompt box. The client sends the selected fiber/source context plus editable virtual files to the server, writes returned file updates back into `VirtualFS`, and the iframe updates through HMR. You can also submit a prompt without selecting an element.
+
 The almostnode service worker is served from `apps/client/public/__sw__.js`, so the shared/client Vite plugin configuration stays unchanged.
 
 ## Commands
@@ -46,8 +48,9 @@ The server exposes:
 
 - `GET /health`
 - `POST /api/generate` with `{ "prompt": "...", "model": "optional-model-id" }`
+- `POST /api/edit` with an edit prompt, selected element context, and editable virtual files
 
-Set `AI_GATEWAY_API_KEY` and optionally `AI_MODEL`, `HOST`, `PORT`, and `CLIENT_ORIGIN` in the server environment.
+Set `AI_GATEWAY_API_KEY` and optionally `AI_MODEL`, `HOST`, `PORT`, and `CLIENT_ORIGIN` in the server environment. The default model is `deepseek/deepseek-v4-pro`. Set `VITE_SERVER_URL` for the client if the server is not running on `http://localhost:3001`.
 
 ## shadcn/ui
 

@@ -3,6 +3,7 @@
   "entry": ["**/oxfmt.config.ts"],
   "ignoreDependencies": [
     "@workspace/typescript-config",
+    "bippy",
     "eslint-plugin-perfectionist",
     "eslint-plugin-react-refresh",
     "lucide-react",
