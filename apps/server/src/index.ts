@@ -3,72 +3,17 @@ import {
   type IncomingMessage,
   type ServerResponse,
 } from 'node:http'
-import { env } from 'node:process'
 
-import { gateway } from '@ai-sdk/gateway'
-import { generateText } from 'ai'
+import { runAgentRequest } from './agent-controller.ts'
+import { parseAgentRequest, type AgentRequest } from './agent-request.ts'
+import { config } from './config.ts'
+import { readRequestBody } from './http-body.ts'
+import { handleModelGateway } from './model-gateway.ts'
+import { createChatSandboxRegistry } from './sandbox-chat-registry.ts'
+import { createSbxOrchestrator } from './sbx-orchestrator.ts'
 
-const CLIENT_ORIGIN = env.CLIENT_ORIGIN ?? '*'
-const DEFAULT_MODEL = env.AI_MODEL ?? 'deepseek/deepseek-v4-pro'
-const EDIT_SYSTEM_PROMPT = `You edit a small Vite React preview app.
-Return only JSON. Do not wrap it in markdown.
-The JSON shape must be:
-{
-  "summary": "short human-readable summary",
-  "files": [
-    { "path": "/src/App.tsx", "content": "full file contents" },
-    { "path": "/src/style.css", "content": "full file contents" }
-  ]
-}
-Return only changed files. You may edit only /src/App.tsx and /src/style.css.
-Preserve valid React/TypeScript and CSS. Use the selected element context when present.`
-const EDITABLE_FILE_PATHS = new Set(['/src/App.tsx', '/src/style.css'])
-const HOST = env.HOST ?? '0.0.0.0'
-const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions'
-const OPENROUTER_REFERER =
-  env.OPENROUTER_REFERER ?? 'https://github.com/sandiiarov/web-app-creator'
-const OPENROUTER_TITLE = env.OPENROUTER_TITLE ?? 'web-app-creator'
-const PORT = parsePort(env.PORT ?? '3001')
-
-type AiProvider = 'gateway' | 'openrouter'
-
-type ChatMessage = {
-  content: string
-  role: 'system' | 'user'
-}
-
-type CompletionRequest = {
-  model?: string
-  prompt: string
-  system?: string
-}
-
-type EditFile = {
-  content: string
-  path: string
-}
-
-type EditRequest = {
-  files: EditFile[]
-  model?: string
-  prompt: string
-  selection?: unknown
-}
-
-type EditResponse = {
-  files: EditFile[]
-  summary?: string
-}
-
-type GenerateRequest = {
-  model?: string
-  prompt: string
-}
-
-type JsonRange = {
-  end: number
-  start: number
-}
+const sandboxRegistry = createChatSandboxRegistry()
+const sbxOrchestrator = createSbxOrchestrator(config)
 
 type Route = {
   handle: (
@@ -84,12 +29,12 @@ const ROUTES: Route[] = [
     matches: isHealthRoute,
   },
   {
-    handle: handleGenerate,
-    matches: isGenerateRoute,
+    handle: handleAgent,
+    matches: isAgentRoute,
   },
   {
-    handle: handleEdit,
-    matches: isEditRoute,
+    handle: handleModelGatewayRoute,
+    matches: isModelGatewayRoute,
   },
 ]
 
@@ -99,134 +44,54 @@ const server = createServer(async (request, response) => {
   try {
     await routeRequest(request, response)
   } catch (error) {
-    sendJson(response, 500, {
-      error: errorMessage(error),
-    })
+    if (!response.headersSent) {
+      sendJson(response, 500, {
+        error: errorMessage(error),
+        ok: false,
+      })
+    } else {
+      response.end()
+    }
   }
 })
 
-server.listen(PORT, HOST, () => {
-  console.log(`Server listening at http://${HOST}:${PORT}`)
+server.listen(config.port, config.host, () => {
+  console.log(`Server listening at http://${config.host}:${config.port}`)
 })
-
-function activeAiProvider(): AiProvider {
-  if (env.AI_PROVIDER === 'openrouter' || env.AI_PROVIDER === 'gateway') {
-    return env.AI_PROVIDER
-  }
-
-  return env.OPENROUTER_API_KEY ? 'openrouter' : 'gateway'
-}
-
-function createEditPrompt(request: EditRequest) {
-  return [
-    'User request:',
-    request.prompt,
-    '',
-    'Selected element context:',
-    JSON.stringify(request.selection ?? null, null, 2),
-    '',
-    'Editable files:',
-    request.files.map(formatFileForPrompt).join('\n\n'),
-  ].join('\n')
-}
 
 function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : 'Unknown error'
 }
 
-function extractBracedJson(text: string) {
-  const range = jsonRange(text)
+async function handleAgent(request: IncomingMessage, response: ServerResponse) {
+  let agentRequest: AgentRequest
 
-  if (!range) {
-    throw new Error('AI response did not include a JSON object.')
-  }
-
-  return text.slice(range.start, range.end + 1)
-}
-
-function extractFencedJson(text: string) {
-  return text.match(/```(?:json)?\s*([\s\S]*?)\s*```/i)?.[1]?.trim() ?? null
-}
-
-function extractJsonObject(text: string) {
-  return extractFencedJson(text) ?? extractBracedJson(text)
-}
-
-function formatFileForPrompt(file: EditFile) {
-  return [`File: ${file.path}`, '```', file.content, '```'].join('\n')
-}
-
-async function generateCompletion(request: CompletionRequest) {
-  return activeAiProvider() === 'openrouter'
-    ? generateOpenRouterCompletion(request)
-    : generateGatewayCompletion(request)
-}
-
-async function generateGatewayCompletion({
-  model,
-  prompt,
-  system,
-}: CompletionRequest) {
-  const result = await generateText({
-    model: gateway(model ?? DEFAULT_MODEL),
-    prompt,
-    system,
-  })
-
-  return result.text
-}
-
-async function generateOpenRouterCompletion(request: CompletionRequest) {
-  const payload = await openRouterRequest(request)
-
-  return openRouterTextOrThrow(payload)
-}
-
-async function handleEdit(request: IncomingMessage, response: ServerResponse) {
-  const body = await readJson(request)
-
-  if (!isEditRequest(body)) {
+  try {
+    agentRequest = parseAgentRequest(await readJson(request))
+  } catch (error) {
     sendJson(response, 400, {
-      error: 'Expected JSON body with prompt and editable files.',
+      error: errorMessage(error),
+      ok: false,
     })
     return
   }
 
-  const text = await generateCompletion({
-    model: body.model,
-    prompt: createEditPrompt(body),
-    system: EDIT_SYSTEM_PROMPT,
+  const result = await runAgentRequest({
+    config,
+    orchestrator: sbxOrchestrator,
+    registry: sandboxRegistry,
+    request: agentRequest,
   })
 
-  sendJson(response, 200, parseEditResponse(text))
-}
-
-async function handleGenerate(
-  request: IncomingMessage,
-  response: ServerResponse,
-) {
-  const body = await readJson(request)
-
-  if (!isGenerateRequest(body)) {
-    sendJson(response, 400, {
-      error: 'Expected JSON body with a string prompt.',
-    })
-    return
-  }
-
-  const text = await generateCompletion(body)
-
-  sendJson(response, 200, {
-    text,
-  })
+  sendJson(response, 200, result)
 }
 
 function handleHealth(response: ServerResponse) {
   sendJson(response, 200, {
-    aiGatewayConfigured: Boolean(env.AI_GATEWAY_API_KEY),
     ok: true,
-    openRouterConfigured: Boolean(env.OPENROUTER_API_KEY),
-    provider: activeAiProvider(),
+    openRouterConfigured: true,
+    provider: 'openrouter',
+    runtime: 'pi-sdk',
   })
 }
 
@@ -237,249 +102,41 @@ function handleHealthRoute(
   handleHealth(response)
 }
 
-function hasEditableFiles(value: unknown) {
-  return Array.isArray(value) && value.every(isEditableFile)
+async function handleModelGatewayRoute(
+  request: IncomingMessage,
+  response: ServerResponse,
+) {
+  await handleModelGateway({
+    config,
+    registry: sandboxRegistry,
+    request,
+    response,
+  })
 }
 
-function hasOptionalModel(value: unknown) {
-  return value === undefined || typeof value === 'string'
-}
-
-function hasPrompt(value: unknown) {
-  return typeof value === 'string' && value.trim().length > 0
-}
-
-function isEditableFile(value: unknown): value is EditFile {
-  return (
-    isRecord(value) &&
-    typeof value.content === 'string' &&
-    typeof value.path === 'string' &&
-    EDITABLE_FILE_PATHS.has(value.path)
-  )
-}
-
-function isEditRequest(value: unknown): value is EditRequest {
-  return isRecord(value) && isEditRequestRecord(value)
-}
-
-function isEditRequestRecord(value: Record<string, unknown>) {
-  return (
-    hasPrompt(value.prompt) &&
-    hasOptionalModel(value.model) &&
-    hasEditableFiles(value.files)
-  )
-}
-
-function isEditResponse(value: unknown): value is EditResponse {
-  return isRecord(value) && isEditResponseRecord(value)
-}
-
-function isEditResponseRecord(value: Record<string, unknown>) {
-  return (
-    (value.summary === undefined || typeof value.summary === 'string') &&
-    hasEditableFiles(value.files)
-  )
-}
-
-function isEditRoute(request: IncomingMessage, pathname: string) {
-  return request.method === 'POST' && pathname === '/api/edit'
-}
-
-function isGenerateRequest(value: unknown): value is GenerateRequest {
-  if (!isRecord(value)) {
-    return false
-  }
-
-  return hasPrompt(value.prompt) && hasOptionalModel(value.model)
-}
-
-function isGenerateRoute(request: IncomingMessage, pathname: string) {
-  return request.method === 'POST' && pathname === '/api/generate'
+function isAgentRoute(request: IncomingMessage, pathname: string) {
+  return request.method === 'POST' && pathname === '/agent'
 }
 
 function isHealthRoute(request: IncomingMessage, pathname: string) {
   return request.method === 'GET' && pathname === '/health'
 }
 
+function isModelGatewayRoute(request: IncomingMessage, pathname: string) {
+  return (
+    request.method === 'POST' &&
+    pathname === '/internal/model-gateway/v1/chat/completions'
+  )
+}
+
 function isOptionsRequest(request: IncomingMessage) {
   return request.method === 'OPTIONS'
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null
-}
-
-function jsonRange(text: string): JsonRange | null {
-  const end = text.lastIndexOf('}')
-  const start = text.indexOf('{')
-
-  return start === -1 || end < start ? null : { end, start }
-}
-
-function openRouterApiKey() {
-  const apiKey = env.OPENROUTER_API_KEY
-
-  if (!apiKey) {
-    throw new Error('OPENROUTER_API_KEY is required for OpenRouter.')
-  }
-
-  return apiKey
-}
-
-function openRouterCompletionText(payload: unknown) {
-  if (!isRecord(payload) || !Array.isArray(payload.choices)) {
-    return null
-  }
-
-  return openRouterMessageText(payload.choices[0])
-}
-
-function openRouterErrorMessage(payload: unknown) {
-  return isRecord(payload) ? openRouterErrorText(payload.error) : null
-}
-
-function openRouterErrorObjectMessage(error: unknown) {
-  return isRecord(error) && typeof error.message === 'string'
-    ? error.message
-    : null
-}
-
-function openRouterErrorText(error: unknown) {
-  return typeof error === 'string' ? error : openRouterErrorObjectMessage(error)
-}
-
-function openRouterFailureMessage(response: Response, payload: unknown) {
-  return response.ok
-    ? null
-    : (openRouterErrorMessage(payload) ??
-        `OpenRouter request failed with status ${response.status}.`)
-}
-
-function openRouterHeaders(apiKey: string) {
-  return {
-    authorization: `Bearer ${apiKey}`,
-    'content-type': 'application/json',
-    'http-referer': OPENROUTER_REFERER,
-    'x-title': OPENROUTER_TITLE,
-  }
-}
-
-function openRouterMessages(system: string | undefined, prompt: string) {
-  const messages: ChatMessage[] = []
-
-  if (system) {
-    messages.push({
-      content: system,
-      role: 'system',
-    })
-  }
-
-  messages.push({
-    content: prompt,
-    role: 'user',
-  })
-
-  return messages
-}
-
-function openRouterMessageText(choice: unknown) {
-  if (!isRecord(choice) || !isRecord(choice.message)) {
-    return null
-  }
-
-  return openRouterTextContent(choice.message.content)
-}
-
-async function openRouterRequest(request: CompletionRequest) {
-  const response = await fetch(OPENROUTER_API_URL, {
-    body: openRouterRequestBody(request),
-    headers: openRouterHeaders(openRouterApiKey()),
-    method: 'POST',
-  })
-  const payload: unknown = await response.json().catch(() => null)
-
-  openRouterThrowIfFailed(response, payload)
-
-  return payload
-}
-
-function openRouterRequestBody({ model, prompt, system }: CompletionRequest) {
-  return JSON.stringify({
-    messages: openRouterMessages(system, prompt),
-    model: model ?? DEFAULT_MODEL,
-  })
-}
-
-function openRouterTextContent(content: unknown) {
-  if (typeof content === 'string') {
-    return content
-  }
-
-  if (!Array.isArray(content)) {
-    return null
-  }
-
-  const text = content.map(openRouterTextPart).join('')
-
-  return text.length > 0 ? text : null
-}
-
-function openRouterTextOrThrow(payload: unknown) {
-  const text = openRouterCompletionText(payload)
-
-  if (!text) {
-    throw new Error('OpenRouter response did not include text content.')
-  }
-
-  return text
-}
-
-function openRouterTextPart(part: unknown) {
-  return isRecord(part) && typeof part.text === 'string' ? part.text : ''
-}
-
-function openRouterThrowIfFailed(response: Response, payload: unknown) {
-  const message = openRouterFailureMessage(response, payload)
-
-  if (message) {
-    throw new Error(message)
-  }
-}
-
-function parseEditResponse(text: string): EditResponse {
-  const parsed = JSON.parse(extractJsonObject(text)) as unknown
-
-  if (!isEditResponse(parsed)) {
-    throw new Error('AI response did not match the edit response schema.')
-  }
-
-  return parsed
-}
-
-function parsePort(value: string) {
-  const port = Number(value)
-
-  if (!Number.isInteger(port) || port <= 0 || port > 65_535) {
-    throw new Error(`Invalid PORT value: ${value}`)
-  }
-
-  return port
 }
 
 async function readJson(request: IncomingMessage) {
   const body = await readRequestBody(request)
 
   return body.trim().length > 0 ? (JSON.parse(body) as unknown) : {}
-}
-
-async function readRequestBody(request: IncomingMessage) {
-  const chunks: Buffer[] = []
-
-  for await (const chunk of request) {
-    chunks.push(typeof chunk === 'string' ? Buffer.from(chunk) : chunk)
-  }
-
-  return Buffer.concat(chunks).toString('utf8')
 }
 
 function requestPathname(request: IncomingMessage) {
@@ -525,11 +182,12 @@ function sendNoContent(response: ServerResponse) {
 function sendNotFound(response: ServerResponse) {
   sendJson(response, 404, {
     error: 'Not found',
+    ok: false,
   })
 }
 
 function setCorsHeaders(response: ServerResponse) {
   response.setHeader('access-control-allow-headers', 'content-type')
   response.setHeader('access-control-allow-methods', 'GET,POST,OPTIONS')
-  response.setHeader('access-control-allow-origin', CLIENT_ORIGIN)
+  response.setHeader('access-control-allow-origin', config.clientOrigin)
 }

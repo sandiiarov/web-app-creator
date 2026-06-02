@@ -16,6 +16,8 @@
     "lint": "oxlint .",
     "lint:fix": "oxlint --fix .",
     "preview": "vite preview",
+    "test": "vitest run --config vitest.config.ts",
+    "test:watch": "vitest --config vitest.config.ts",
     "typecheck": "tsgo --noEmit -p tsconfig.json"
   },
   "dependencies": {
@@ -34,8 +36,10 @@
     "@workspace/oxlint-config": "workspace:*",
     "@workspace/typescript-config": "workspace:*",
     "@workspace/vite-config": "workspace:*",
+    "@workspace/vitest-preset": "workspace:*",
     "oxfmt": "catalog:",
     "oxlint": "catalog:",
-    "vite": "catalog:"
+    "vite": "catalog:",
+    "vitest": "catalog:"
   }
 }

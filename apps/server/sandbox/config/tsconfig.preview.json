@@ -1,0 +1,28 @@
+{
+  "compilerOptions": {
+    "allowImportingTsExtensions": true,
+    "allowJs": true,
+    "checkJs": false,
+    "jsx": "react-jsx",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "noEmit": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "target": "ES2022",
+    "typeRoots": [
+      "/workspace/node_modules/@types",
+      "/usr/local/lib/node_modules/@types",
+      "/usr/local/share/npm-global/lib/node_modules/@types"
+    ],
+    "types": ["react", "react-dom"]
+  },
+  "exclude": ["node_modules", "dist", ".web-app-creator"],
+  "include": [
+    "/opt/web-app-creator/config/preview-env.d.ts",
+    "/workspace/src",
+    "/workspace/*.ts",
+    "/workspace/*.tsx"
+  ]
+}

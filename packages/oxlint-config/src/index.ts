@@ -17,25 +17,28 @@ const baseIgnorePatterns = [
   '.turbo/**',
   'coverage/**',
 ]
-const jsPlugins = [
-  {
-    name: 'react-refresh',
-    specifier: require.resolve('eslint-plugin-react-refresh'),
-  },
-  {
-    name: 'perfectionist',
-    specifier: require.resolve('eslint-plugin-perfectionist'),
-  },
-  {
-    name: 'tailwindcss',
-    specifier: require.resolve('oxlint-tailwindcss'),
-  },
-]
+
 const naturalAscendingOrder = {
   order: 'asc',
   type: 'natural',
 } as const
-const sharedRules = {
+
+const perfectionistPlugin = {
+  name: 'perfectionist',
+  specifier: require.resolve('eslint-plugin-perfectionist'),
+}
+
+const reactRefreshPlugin = {
+  name: 'react-refresh',
+  specifier: require.resolve('eslint-plugin-react-refresh'),
+}
+
+const tailwindPlugin = {
+  name: 'tailwindcss',
+  specifier: require.resolve('oxlint-tailwindcss'),
+}
+
+const baseRules = {
   'no-unused-vars': [
     'error',
     {
@@ -53,7 +56,6 @@ const sharedRules = {
   'perfectionist/sort-heritage-clauses': ['error', naturalAscendingOrder],
   'perfectionist/sort-interfaces': ['error', naturalAscendingOrder],
   'perfectionist/sort-intersection-types': ['error', naturalAscendingOrder],
-  'perfectionist/sort-jsx-props': ['error', naturalAscendingOrder],
   'perfectionist/sort-maps': ['error', naturalAscendingOrder],
   'perfectionist/sort-modules': ['error', naturalAscendingOrder],
   'perfectionist/sort-named-exports': ['error', naturalAscendingOrder],
@@ -63,6 +65,11 @@ const sharedRules = {
   'perfectionist/sort-switch-case': ['error', naturalAscendingOrder],
   'perfectionist/sort-union-types': ['error', naturalAscendingOrder],
   'perfectionist/sort-variable-declarations': ['error', naturalAscendingOrder],
+  'typescript/no-explicit-any': 'warn',
+} as const
+
+const reactRules = {
+  'perfectionist/sort-jsx-props': ['error', naturalAscendingOrder],
   'react-refresh/only-export-components': [
     'warn',
     {
@@ -71,6 +78,9 @@ const sharedRules = {
   ],
   'react/exhaustive-deps': 'warn',
   'react/rules-of-hooks': 'error',
+} as const
+
+const tailwindRules = {
   'tailwindcss/consistent-variant-order': 'off',
   'tailwindcss/enforce-canonical': 'warn',
   'tailwindcss/enforce-consistent-important-position': 'warn',
@@ -87,7 +97,6 @@ const sharedRules = {
   'tailwindcss/no-unknown-classes': 'error',
   'tailwindcss/no-unnecessary-arbitrary-value': 'warn',
   'tailwindcss/no-unnecessary-whitespace': 'off',
-  'typescript/no-explicit-any': 'warn',
 } as const
 
 export function createNodeConfig(options: SharedOxlintOptions = {}) {
@@ -101,10 +110,19 @@ export function createNodeConfig(options: SharedOxlintOptions = {}) {
       node: true,
     },
     ignorePatterns: withSharedIgnores(options.ignorePatterns),
-    jsPlugins,
+    jsPlugins: [perfectionistPlugin],
     options: options.typeAware ? { typeAware: true } : {},
-    plugins: ['typescript', 'react', 'oxc'],
-    rules: sharedRules as unknown as DummyRuleMap,
+    plugins: [
+      'oxc',
+      'eslint',
+      'typescript',
+      'unicorn',
+      'import',
+      'node',
+      'promise',
+      'vitest',
+    ],
+    rules: baseRules as unknown as DummyRuleMap,
   })
 }
 
@@ -119,10 +137,25 @@ export function createReactConfig(options: SharedOxlintOptions = {}) {
       es2020: true,
     },
     ignorePatterns: withSharedIgnores(options.ignorePatterns),
-    jsPlugins,
+    jsPlugins: [perfectionistPlugin, reactRefreshPlugin, tailwindPlugin],
     options: options.typeAware ? { typeAware: true } : {},
-    plugins: ['typescript', 'react', 'oxc'],
-    rules: sharedRules as unknown as DummyRuleMap,
+
+    plugins: [
+      'oxc',
+      'eslint',
+      'typescript',
+      'unicorn',
+      'import',
+      'node',
+      'promise',
+      'vitest',
+      'react',
+    ],
+    rules: {
+      ...baseRules,
+      ...reactRules,
+      ...tailwindRules,
+    } as unknown as DummyRuleMap,
     settings: options.tailwindEntryPoint
       ? {
           tailwindcss: {

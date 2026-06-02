@@ -1,7 +1,13 @@
 {
   "$schema": "https://raw.githubusercontent.com/fallow-rs/fallow/main/schema.json",
-  "entry": ["**/oxfmt.config.ts"],
+  "entry": [
+    "**/oxfmt.config.ts",
+    "apps/server/sandbox/config/oxlint.config.ts",
+    "apps/server/sandbox/runner/run-agent.mjs"
+  ],
+  "ignoreUnresolvedImports": ["./src/main.tsx"],
   "ignoreDependencies": [
+    "@earendil-works/pi-coding-agent",
     "@workspace/typescript-config",
     "bippy",
     "eslint-plugin-perfectionist",

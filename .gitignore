@@ -18,6 +18,8 @@ dist-ssr
 # turbo
 .turbo
 
+# Docker Sandbox artifacts
+apps/server/sandbox/*.tar
 
 # fallow
 .fallow

@@ -1,0 +1,6 @@
+*.log
+*.tar
+.DS_Store
+node_modules
+npm-debug.log*
+pnpm-debug.log*

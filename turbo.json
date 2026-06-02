@@ -25,6 +25,10 @@
     "lint:fix": {
       "cache": false
     },
+    "test": {
+      "dependsOn": ["^test"],
+      "outputs": []
+    },
     "typecheck": {
       "dependsOn": ["^typecheck"],
       "outputs": []
