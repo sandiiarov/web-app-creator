@@ -60,7 +60,9 @@ export function EditorPage({ projectId }: EditorPageProps) {
         if (err instanceof ProjectNotFoundError) {
           setMissing(true)
         } else {
-          setErrorMessage(err instanceof Error ? err.message : 'Failed to load project')
+          setErrorMessage(
+            err instanceof Error ? err.message : 'Failed to load project',
+          )
         }
       })
 
@@ -85,7 +87,14 @@ export function EditorPage({ projectId }: EditorPageProps) {
 
     const timer = window.setTimeout(() => {
       loadedHtmlRef.current = html
-      void saveProject(projectId, html, landing.model, title, savingRef, setErrorMessage)
+      void saveProject(
+        projectId,
+        html,
+        landing.model,
+        title,
+        savingRef,
+        setErrorMessage,
+      )
     }, AUTOSAVE_DEBOUNCE_MS)
 
     return () => window.clearTimeout(timer)
@@ -96,15 +105,36 @@ export function EditorPage({ projectId }: EditorPageProps) {
     if (!landing.html.trim()) return
     if (landing.html === loadedHtmlRef.current) return
     loadedHtmlRef.current = landing.html
-    void saveProject(projectId, landing.html, landing.model, title, savingRef, setErrorMessage)
-  }, [landing.isStreaming, landing.html, landing.model, projectId, setErrorMessage, title])
+    void saveProject(
+      projectId,
+      landing.html,
+      landing.model,
+      title,
+      savingRef,
+      setErrorMessage,
+    )
+  }, [
+    landing.isStreaming,
+    landing.html,
+    landing.model,
+    projectId,
+    setErrorMessage,
+    title,
+  ])
 
   if (missing) {
     return (
       <main className="grid min-h-svh place-items-center bg-background p-6 text-center">
         <div>
-          <p className="text-sm text-muted-foreground">This project no longer exists.</p>
-          <Button className="mt-4" onClick={() => navigate('/')} type="button" variant="outline">
+          <p className="text-sm text-muted-foreground">
+            This project no longer exists.
+          </p>
+          <Button
+            className="mt-4"
+            onClick={() => navigate('/')}
+            type="button"
+            variant="outline"
+          >
             <ArrowLeft data-icon="inline-start" />
             Back to projects
           </Button>
@@ -116,7 +146,10 @@ export function EditorPage({ projectId }: EditorPageProps) {
   const hasLanding = landing.turns.length > 0
 
   return (
-    <main className="fixed inset-0 overflow-hidden bg-background" data-project-id={projectId}>
+    <main
+      className="fixed inset-0 overflow-hidden bg-background"
+      data-project-id={projectId}
+    >
       {error ? <ErrorBanner message={error} /> : null}
       <LandingPreview html={landing.html} onError={setErrorMessage} />
       <PromptPanel
@@ -161,5 +194,7 @@ async function saveProject(
 
 function truncateTitle(prompt: string): string {
   const trimmed = prompt.trim().replace(/\s+/g, ' ')
-  return trimmed.length > TITLE_MAX ? `${trimmed.slice(0, TITLE_MAX)}…` : trimmed
+  return trimmed.length > TITLE_MAX
+    ? `${trimmed.slice(0, TITLE_MAX)}…`
+    : trimmed
 }

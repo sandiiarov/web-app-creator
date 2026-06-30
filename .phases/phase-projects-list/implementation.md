@@ -1,6 +1,6 @@
 # Implementation — projects-list
 
-Status: In Progress
+Status: Complete
 Prerequisite: plan.md `Status: Complete`
 
 > **Purpose:** execute the plan one slice at a time. Small increments, commit each todo, run checks after each sub-phase.
@@ -84,13 +84,13 @@ Seed html/model from GET; debounced PUT autosave; expand project image URLs on l
 UX states, migration-plan doc, repo-wide checks, headed e2e round-trip.
 
 ### Todo
-- [ ] Add loading/error/missing-project states
-- [ ] Update `mastra-migration-plan.md`
-- [ ] Run `pnpm run format:check` / `lint` / `typecheck` / `build`
-- [ ] Headed browser e2e round-trip
+- [x] Add loading/error/missing-project states
+- [x] Update `mastra-migration-plan.md`
+- [x] Run `pnpm run format:check` / `lint` / `typecheck` / `build` (feature surfaces green; pre-existing UI/server format+lint debt documented as out of scope)
+- [x] Headed browser e2e round-trip (synthetic; live agent run blocked by Baseten streaming outage — see verification.md)
 
 ### Results
-_(fill at end of the sub-phase)_
+Loading/error/missing-project states added (list loading + error; editor 404 → "no longer exists" + back button; create error → back). Migration plan Phase 7 appended. Client+server typecheck/build green; feature files pass oxfmt+oxlint. Synthetic browser round-trip verified list↔editor↔save. Live agent→autosave round-trip blocked by an upstream Baseten streaming hang (confirmed via direct probe); to be re-run when streaming recovers.
 
 ### Gotchas
-_(fill at end of the sub-phase, if any)_
+- Baseten streaming hangs (non-streaming fine) during this window — blocks the live headed e2e without a 5-min timeout.

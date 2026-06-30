@@ -37,7 +37,8 @@ export function Composer({
     >
       <div className="flex h-full min-h-0 flex-col rounded-none border border-border bg-background shadow-sm focus-within:border-ring focus-within:ring-2 focus-within:ring-ring/30">
         <span className="sr-only" id="landing-prompt-hint">
-          Press Enter to send from the prompt. Press Shift and Enter for a new line. Press {KEYBOARD_SHORTCUTS.send.title} to send from anywhere.
+          Press Enter to send from the prompt. Press Shift and Enter for a new
+          line. Press {KEYBOARD_SHORTCUTS.send.title} to send from anywhere.
         </span>
         <Textarea
           aria-describedby="landing-prompt-hint"
@@ -83,7 +84,9 @@ export function Composer({
                     <span className="inline-flex">
                       <Button
                         aria-label="Send prompt"
-                        className={cn(disabled && 'cursor-not-allowed opacity-60')}
+                        className={cn(
+                          disabled && 'cursor-not-allowed opacity-60',
+                        )}
                         disabled={disabled}
                         size="icon-sm"
                         type="submit"

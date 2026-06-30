@@ -38,7 +38,9 @@ export function useLandingPage({
 }: UseLandingPageOptions): UseLandingPage {
   const [turns, setTurns] = useState<LandingTurn[]>([])
   const [html, setHtml] = useState(initialHtml)
-  const [model, setModel] = useState(initialModel ?? LANDING_MODEL_OPTIONS[0]!.id)
+  const [model, setModel] = useState(
+    initialModel ?? LANDING_MODEL_OPTIONS[0]!.id,
+  )
   const [isStreaming, setIsStreaming] = useState(false)
   const controllerRef = useRef<AbortController | null>(null)
 
@@ -211,17 +213,19 @@ export function useLandingPage({
           },
           signal: controller.signal,
         },
-      ).catch((error: unknown) => {
-        const message = error instanceof Error ? error.message : String(error)
-        if (message !== 'stopped' && !controller.signal.aborted) {
-          patchTurn(turnId, (turn) => ({ ...turn, error: message }))
-          onError(message)
-        }
-      }).finally(() => {
-        patchTurn(turnId, (turn) => ({ ...turn, isStreaming: false }))
-        setIsStreaming(false)
-        controllerRef.current = null
-      })
+      )
+        .catch((error: unknown) => {
+          const message = error instanceof Error ? error.message : String(error)
+          if (message !== 'stopped' && !controller.signal.aborted) {
+            patchTurn(turnId, (turn) => ({ ...turn, error: message }))
+            onError(message)
+          }
+        })
+        .finally(() => {
+          patchTurn(turnId, (turn) => ({ ...turn, isStreaming: false }))
+          setIsStreaming(false)
+          controllerRef.current = null
+        })
     },
     [appendPart, isStreaming, model, onError, onHtml, patchTurn],
   )
@@ -230,7 +234,9 @@ export function useLandingPage({
     controllerRef.current?.abort()
     setIsStreaming(false)
     setTurns((prev) =>
-      prev.map((turn) => (turn.isStreaming ? { ...turn, isStreaming: false } : turn)),
+      prev.map((turn) =>
+        turn.isStreaming ? { ...turn, isStreaming: false } : turn,
+      ),
     )
   }, [])
 

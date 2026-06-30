@@ -216,3 +216,25 @@ Migrate the landing-page agent from the Vercel AI SDK `ToolLoopAgent` to **Mastr
 - ⚠️ `--env-file-if-exists=.env` does **not** override shell-exported vars — keep real secrets out of the file. But `mastra dev -e .env` needs the real `BASETEN_API_KEY` *value* in `.env` (it doesn't inherit the shell).
 - ⚠️ Circular import hazard: `mastra/index.ts` ↔ `agents/landing-page-agent.ts`. Broke it by having the agent factory accept `mastra` as a param (route passes it), and exporting a plain config object for the singleton registration.
 - ⚠️ The agent must be **registered on the `Mastra` instance** (`agents: { landingPageAgent }`) for Studio to list it and attribute traces — a per-request agent isn't visible to Studio. Added a shared singleton agent + store alongside the per-request factory.
+
+---
+
+## Phase 7 — Projects + persistence
+
+**Task:** Multi-project support. The app becomes a project list; each project is a saved single-file HTML landing page with its generated images. File-backed storage.
+
+- [x] Server: file-backed `project-store.ts` under `apps/server/.data/projects/<id>/` (`project.json`, `index.html`, `images/`). REST: `GET/POST /api/projects`, `GET/PUT/DELETE /api/projects/:id`, `GET /api/projects/:id/images/:file`. `updateProject` normalizes locally-generated image refs (`*/images/img-N.ext`) to `/api/projects/:id/images/<file>` and copies bytes from the in-memory image store.
+- [x] Client: `react-router-dom` routes `/` (list), `/projects/new` (create draft → redirect), `/projects/:id` (editor). `projects-api.ts` client; `ProjectsPage` list + delete; `EditorPage` loads a project and autosaves (debounced PUT + final flush on stream end).
+- [x] Image URL contract: stored HTML is root-relative; `expandProjectImageUrls` makes it absolute when loading into the almostnode preview iframe (virtual origin).
+- [x] DOX updated (`apps/server/AGENTS.md`, `apps/server/src/mastra/AGENTS.md`, `apps/client/AGENTS.md`).
+
+**Results:**
+- ✅ Phase-1 curl round-trip verified CRUD + image-URL normalization + draft-hiding.
+- ✅ Browser: `/` list → New creates draft + redirects to editor; stored HTML loads into preview; list reflects `hasHtml`.
+- ✅ Per-phase Conventional-Commit tags: `[projects-list][phase-N]`.
+
+**Gotchas:**
+- ⚠️ The almostnode preview iframe runs on a virtual origin, so stored project image URLs must be expanded to absolute (`${SERVER_URL}/api/projects/...`) before writing into the preview VirtualFS.
+- ⚠️ Eager-create on `/projects/new` (not create-on-first-save) keeps the route id stable for the whole session, avoiding a mid-stream remount that would abort the agent stream. Drafts are hidden from the list until they have HTML.
+- ⚠️ `project-store.ts` `DATA_DIR` must resolve to `apps/server/.data` (3× `..` from `src/mastra/lib`), matching `.gitignore`.
+- ⚠️ Pre-existing repo debt (unrelated to this phase): `@workspace/ui#format:check`/`lint` fail on raw shadcn components installed earlier (`dialog.tsx`, `command.tsx`, `input-group.tsx`); not touched here per scope discipline.

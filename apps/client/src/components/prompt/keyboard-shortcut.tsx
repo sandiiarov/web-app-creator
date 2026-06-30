@@ -1,10 +1,6 @@
 import { CommandShortcut } from '@workspace/ui/components/command'
 import { cn } from '@workspace/ui/lib/utils'
-import {
-  ArrowBigUp,
-  Command as CommandIcon,
-  Option,
-} from 'lucide-react'
+import { ArrowBigUp, Command as CommandIcon, Option } from 'lucide-react'
 
 import type {
   KeyboardShortcut as KeyboardShortcutDefinition,

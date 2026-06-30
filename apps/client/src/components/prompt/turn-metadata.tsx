@@ -40,10 +40,16 @@ export function TurnMetadata({ stats }: { stats: StatsPart }) {
         )}
       >
         <span className="flex size-5 shrink-0 items-center justify-center border border-border/70 bg-muted/25 text-muted-foreground transition-colors group-hover:border-border group-hover:text-foreground">
-          {open ? <ChevronUp className="size-3.5" /> : <ChevronDown className="size-3.5" />}
+          {open ? (
+            <ChevronUp className="size-3.5" />
+          ) : (
+            <ChevronDown className="size-3.5" />
+          )}
         </span>
         <span className="min-w-0 flex-1">
-          <span className="block font-semibold text-foreground">Spend / tokens</span>
+          <span className="block font-semibold text-foreground">
+            Spend / tokens
+          </span>
           <span className="block truncate text-[10px] leading-4 text-muted-foreground">
             {model} · {formatDuration(stats.durationMs)} · {stats.finishReason}
           </span>
@@ -89,7 +95,11 @@ function CostBreakdownView({ breakdown }: { breakdown: CostBreakdown }) {
 function ImageCostRow({ image }: { image: ImageCost }) {
   return (
     <ReceiptRow
-      detail={image.count > 0 ? `${image.count} image${image.count === 1 ? '' : 's'}` : undefined}
+      detail={
+        image.count > 0
+          ? `${image.count} image${image.count === 1 ? '' : 's'}`
+          : undefined
+      }
       label="Image gen"
       value={formatCost(image.cost)}
     />
@@ -137,7 +147,7 @@ function ReceiptRow({
       </span>
       <span
         className={cn(
-          'font-mono tabular-nums text-foreground',
+          'font-mono text-foreground tabular-nums',
           emphasis && 'font-semibold',
         )}
       >
@@ -180,7 +190,9 @@ function ScrapeCostRow({ scrape }: { scrape: ScrapeCost }) {
     details.push(`${scrape.credits} credit${scrape.credits === 1 ? '' : 's'}`)
   }
   if (typeof scrape.ocrImages === 'number' && scrape.ocrImages > 0) {
-    details.push(`OCR ${scrape.ocrImages} image${scrape.ocrImages === 1 ? '' : 's'}`)
+    details.push(
+      `OCR ${scrape.ocrImages} image${scrape.ocrImages === 1 ? '' : 's'}`,
+    )
   }
   if (scrape.calls > 0) {
     details.push(`${scrape.calls} call${scrape.calls === 1 ? '' : 's'}`)
@@ -195,13 +207,7 @@ function ScrapeCostRow({ scrape }: { scrape: ScrapeCost }) {
   )
 }
 
-function Section({
-  children,
-  title,
-}: {
-  children: ReactNode
-  title: string
-}) {
+function Section({ children, title }: { children: ReactNode; title: string }) {
   return (
     <section className="border border-border/50 bg-muted/10 px-2 py-1.5">
       <h4 className="mb-1 border-b border-border/40 pb-1 text-[10px] font-semibold tracking-[0.08em] text-muted-foreground uppercase">
@@ -215,7 +221,7 @@ function Section({
 function SummaryCell({ label, value }: { label: string; value: string }) {
   return (
     <div className="min-w-0 border-b border-border/45 bg-background/80 px-2 py-1.5 odd:border-r">
-      <div className="truncate text-[10px] font-medium leading-4 text-muted-foreground">
+      <div className="truncate text-[10px] leading-4 font-medium text-muted-foreground">
         {label}
       </div>
       <div className="truncate font-mono text-[11px] leading-5 text-foreground tabular-nums">

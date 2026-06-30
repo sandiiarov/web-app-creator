@@ -4,7 +4,6 @@ import {
   ResizablePanelGroup,
 } from '@workspace/ui/components/resizable'
 import { cn } from '@workspace/ui/lib/utils'
-import { useHotkeys } from 'react-hotkeys-hook'
 import {
   type FormEvent,
   type KeyboardEvent,
@@ -14,6 +13,7 @@ import {
   useRef,
   useState,
 } from 'react'
+import { useHotkeys } from 'react-hotkeys-hook'
 
 import type { LandingTurn } from '../../lib/landing-agent'
 import { Composer } from './composer'
@@ -95,19 +95,22 @@ export function PromptPanel({
     dragStart.current = null
   }, [])
 
-  const handleLayoutChange = useCallback((nextLayout: PanelLayout) => {
-    if (nextLayout === 'left-sidebar') {
-      setPosition({ x: 0, y: 0 })
-      return
-    }
+  const handleLayoutChange = useCallback(
+    (nextLayout: PanelLayout) => {
+      if (nextLayout === 'left-sidebar') {
+        setPosition({ x: 0, y: 0 })
+        return
+      }
 
-    if (nextLayout === 'right-sidebar') {
-      setPosition({ x: rightDockX(), y: 0 })
-      return
-    }
+      if (nextLayout === 'right-sidebar') {
+        setPosition({ x: rightDockX(), y: 0 })
+        return
+      }
 
-    setPosition(floatingPositionFrom(position))
-  }, [position])
+      setPosition(floatingPositionFrom(position))
+    },
+    [position],
+  )
 
   const handleCommandMenuHotkey = useCallback(() => {
     setCommandMenuOpen(true)
@@ -223,7 +226,9 @@ export function PromptPanel({
       className={cn(
         'fixed z-30 flex flex-col overflow-hidden border bg-popover/95 text-popover-foreground backdrop-blur-xl',
         'border-border/80',
-        shouldRenderCollapsed ? 'rounded-none shadow-lg' : 'rounded-none shadow-2xl',
+        shouldRenderCollapsed
+          ? 'rounded-none shadow-lg'
+          : 'rounded-none shadow-2xl',
         dockedSide === 'left' && 'border-y-0 border-l-0',
         dockedSide === 'right' && 'border-y-0 border-r-0',
         dragging ? 'select-none' : '',
@@ -343,7 +348,10 @@ function initialPanelPosition(): PanelPosition {
 }
 
 function rightDockX() {
-  return Math.max(0, window.innerWidth - Math.min(PANEL_WIDTH, window.innerWidth))
+  return Math.max(
+    0,
+    window.innerWidth - Math.min(PANEL_WIDTH, window.innerWidth),
+  )
 }
 
 function useClampToViewport(

@@ -72,9 +72,7 @@ function StepRow({ step }: { step: ToolCallPart }) {
       </MarkerIcon>
       <MarkerContent className="flex flex-1 flex-col gap-0.5">
         <span className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-          <span className="font-medium text-foreground">
-            {label}
-          </span>
+          <span className="font-medium text-foreground">{label}</span>
         </span>
         {detail ? <ToolText>{detail}</ToolText> : null}
         {result ? (
@@ -97,7 +95,7 @@ function ToolText({
   return (
     <span
       className={cn(
-        'whitespace-pre-wrap wrap-break-word text-[11px] leading-relaxed text-muted-foreground',
+        'text-[11px] leading-relaxed wrap-break-word whitespace-pre-wrap text-muted-foreground',
         className,
       )}
     >

@@ -1,7 +1,11 @@
 import { Bubble, BubbleContent } from '@workspace/ui/components/bubble'
 import { Message, MessageContent } from '@workspace/ui/components/message'
 
-import type { LandingTurn, ToolCallPart, TurnPart } from '../../lib/landing-agent'
+import type {
+  LandingTurn,
+  ToolCallPart,
+  TurnPart,
+} from '../../lib/landing-agent'
 import { StreamdownContent } from './streamdown-content'
 import { TurnMetadata } from './turn-metadata'
 import { TurnSteps } from './turn-steps'

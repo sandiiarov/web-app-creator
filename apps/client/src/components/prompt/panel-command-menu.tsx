@@ -31,6 +31,7 @@ import {
 import { type ComponentType } from 'react'
 
 import { useTheme } from '#components/theme-provider'
+
 import { KEYBOARD_SHORTCUTS } from '../../lib/keyboard-shortcuts'
 import { LANDING_MODEL_OPTIONS } from '../../lib/landing-agent'
 import { GlmIcon } from './glm-icon'
@@ -115,7 +116,9 @@ export function PanelCommandMenu({
             <CommandGroup heading="Panel">
               <CommandItem
                 data-checked={layout === 'left-sidebar'}
-                onSelect={() => runCommand(() => onLayoutChange('left-sidebar'))}
+                onSelect={() =>
+                  runCommand(() => onLayoutChange('left-sidebar'))
+                }
                 value="left sidebar panel layout"
               >
                 <PanelLeft />
@@ -124,7 +127,9 @@ export function PanelCommandMenu({
               </CommandItem>
               <CommandItem
                 data-checked={layout === 'right-sidebar'}
-                onSelect={() => runCommand(() => onLayoutChange('right-sidebar'))}
+                onSelect={() =>
+                  runCommand(() => onLayoutChange('right-sidebar'))
+                }
                 value="right sidebar panel layout"
               >
                 <PanelRight />
@@ -138,7 +143,9 @@ export function PanelCommandMenu({
               >
                 <AppWindow />
                 Floating
-                <KeyboardShortcut shortcut={KEYBOARD_SHORTCUTS.layoutFloating} />
+                <KeyboardShortcut
+                  shortcut={KEYBOARD_SHORTCUTS.layoutFloating}
+                />
               </CommandItem>
             </CommandGroup>
             <CommandSeparator />
@@ -155,7 +162,13 @@ export function PanelCommandMenu({
                 }
                 value="toggle theme dark light"
               >
-                {theme === 'dark' ? <Sun /> : theme === 'light' ? <Moon /> : <Monitor />}
+                {theme === 'dark' ? (
+                  <Sun />
+                ) : theme === 'light' ? (
+                  <Moon />
+                ) : (
+                  <Monitor />
+                )}
                 Toggle theme
                 <KeyboardShortcut shortcut={KEYBOARD_SHORTCUTS.themeToggle} />
               </CommandItem>
