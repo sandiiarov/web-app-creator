@@ -7,16 +7,24 @@
 
 ## Ownership
 
-- `src/index.ts`: custom Node HTTP server, CORS, `/agent`, and `/images/:id` routing.
+- `src/index.ts`: custom Node HTTP server, CORS, `/agent`, `/api/projects*` REST, `/images/:id`, and `/api/projects/:id/images/:file` routing.
 - `src/config*.ts`: environment parsing and runtime config.
 - `src/http-body.ts`: request body reading helper.
-- `src/mastra/`: Mastra agent, tools, skills, model wiring, SSE mapping, cost accounting.
+- `src/mastra/`: Mastra agent, tools, skills, model wiring, SSE mapping, cost accounting, and file-backed project storage.
 - `mastra-smoke.ts`: local Mastra storage/observability boot smoke script.
+- `.data/`: local-only persisted projects (gitignored); one folder per project with `project.json`, `index.html`, and `images/`.
 - `.mastra/`: generated Mastra CLI build/studio output; do not hand-edit.
 
 ## Local Contracts
 
 - `POST /agent` accepts `{ prompt: string, model?: string }` and streams `thinking`, `text`, `tool_call`, `html`, `stats`, `error`, and `done` SSE events.
+- Project REST API (file-backed via `src/mastra/lib/project-store.ts` under `.data/projects/<id>/`):
+  - `GET /api/projects` → list metadata, drafts (no HTML) hidden.
+  - `POST /api/projects { title?, model? }` → create draft.
+  - `GET /api/projects/:id` → full project (metadata + `indexHtml`).
+  - `PUT /api/projects/:id { title?, model?, indexHtml? }` → update; on `indexHtml`, locally-generated image refs (`*/images/img-N.ext`) are rewritten to `/api/projects/:id/images/<file>` and their bytes copied out of the in-memory image store.
+  - `DELETE /api/projects/:id` → remove project + images.
+  - `GET /api/projects/:id/images/:file` → serve a persisted project image.
 - `GET /images/:id` serves process-memory images created by the image generation tool.
 - Required env: `BASETEN_API_KEY`.
 - Optional env: `BASETEN_MODEL`, `BASETEN_API_URL`, `CLIENT_ORIGIN`, `HOST`, `PORT`, `FIRECRAWL_API_KEY`, `OPENROUTER_API_KEY`, `MASTRA_PLATFORM_ACCESS_TOKEN`, `MASTRA_PROJECT_ID`.

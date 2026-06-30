@@ -27,6 +27,9 @@ mastra.db-*
 mastra.duckdb
 mastra.duckdb.wal
 
+# Server project storage (local-only generated projects)
+apps/server/.data
+
 # fallow
 .fallow
 

@@ -8,6 +8,14 @@ import { fileURLToPath } from 'node:url'
 import { config } from './config.ts'
 import { readRequestBody } from './http-body.ts'
 import { getImage } from './mastra/lib/image-store.ts'
+import {
+  createProject,
+  deleteProject,
+  getProject,
+  listProjects,
+  readProjectImage,
+  updateProject,
+} from './mastra/lib/project-store.ts'
 import { resolveModelId, streamLandingAgent } from './mastra/route.ts'
 
 type AgentRequestBody = { model?: string; prompt?: unknown }
@@ -103,6 +111,10 @@ async function routeRequest(
     return
   }
 
+  if (await routeProjects(request, response, pathname)) {
+    return
+  }
+
   if (request.method === 'GET') {
     const imageMatch = pathname.match(/^\/images\/(img-\d+)(?:\.[a-z0-9]+)?$/i)
     if (imageMatch) {
@@ -112,6 +124,116 @@ async function routeRequest(
   }
 
   sendNotFound(response)
+}
+
+const PROJECT_LIST_RE = /^\/api\/projects\/?$/i
+const PROJECT_ITEM_RE = /^\/api\/projects\/([a-f0-9-]+)$/i
+const PROJECT_IMAGE_RE = /^\/api\/projects\/([a-f0-9-]+)\/images\/([^/]+)$/i
+
+async function handleCreateProject(
+  request: IncomingMessage,
+  response: ServerResponse,
+) {
+  const body = await readJsonObject(request)
+  const project = await createProject({
+    model: typeof body.model === 'string' ? body.model : undefined,
+    title: typeof body.title === 'string' ? body.title : undefined,
+  })
+  sendJson(response, 201, { ok: true, project })
+}
+
+async function handleDeleteProject(id: string, response: ServerResponse) {
+  await deleteProject(id)
+  sendJson(response, 200, { ok: true })
+}
+
+async function handleGetProject(id: string, response: ServerResponse) {
+  const project = await getProject(id)
+  if (!project) {
+    sendJson(response, 404, { error: 'Project not found', ok: false })
+    return
+  }
+  sendJson(response, 200, { ok: true, project })
+}
+
+async function handleListProjects(response: ServerResponse) {
+  const all = await listProjects()
+  // Drafts (no generated HTML yet) are hidden from the list.
+  const projects = all.filter((project) => project.hasHtml)
+  sendJson(response, 200, { ok: true, projects })
+}
+
+async function handleUpdateProject(
+  id: string,
+  request: IncomingMessage,
+  response: ServerResponse,
+) {
+  const body = await readJsonObject(request)
+  const project = await updateProject(id, {
+    indexHtml: typeof body.indexHtml === 'string' ? body.indexHtml : undefined,
+    model: typeof body.model === 'string' ? body.model : undefined,
+    title: typeof body.title === 'string' ? body.title : undefined,
+  })
+  if (!project) {
+    sendJson(response, 404, { error: 'Project not found', ok: false })
+    return
+  }
+  sendJson(response, 200, { ok: true, project })
+}
+
+async function readJsonObject(
+  request: IncomingMessage,
+): Promise<Record<string, unknown>> {
+  const body = await readRequestBody(request)
+  if (body.trim().length === 0) return {}
+  const parsed = JSON.parse(body)
+  return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+    ? (parsed as Record<string, unknown>)
+    : {}
+}
+
+/** REST router for project CRUD + persisted project images. Returns true if handled. */
+async function routeProjects(
+  request: IncomingMessage,
+  response: ServerResponse,
+  pathname: string,
+): Promise<boolean> {
+  if (PROJECT_LIST_RE.test(pathname)) {
+    if (request.method === 'GET') {
+      await handleListProjects(response)
+      return true
+    }
+    if (request.method === 'POST') {
+      await handleCreateProject(request, response)
+      return true
+    }
+    return false
+  }
+
+  const imageMatch = pathname.match(PROJECT_IMAGE_RE)
+  if (imageMatch && request.method === 'GET') {
+    await serveProjectImage(imageMatch[1]!, imageMatch[2]!, response)
+    return true
+  }
+
+  const itemMatch = pathname.match(PROJECT_ITEM_RE)
+  if (itemMatch) {
+    const id = itemMatch[1]!
+    if (request.method === 'GET') {
+      await handleGetProject(id, response)
+      return true
+    }
+    if (request.method === 'PUT') {
+      await handleUpdateProject(id, request, response)
+      return true
+    }
+    if (request.method === 'DELETE') {
+      await handleDeleteProject(id, response)
+      return true
+    }
+  }
+
+  return false
 }
 
 function sendJson(
@@ -142,6 +264,24 @@ function serveImage(id: string, response: ServerResponse) {
     return
   }
 
+  response.writeHead(200, {
+    'cache-control': 'public, max-age=86400, immutable',
+    'content-length': image.buffer.length,
+    'content-type': image.mediaType,
+  })
+  response.end(image.buffer)
+}
+
+async function serveProjectImage(
+  projectId: string,
+  file: string,
+  response: ServerResponse,
+) {
+  const image = await readProjectImage(projectId, file)
+  if (!image) {
+    sendJson(response, 404, { error: 'Image not found', ok: false })
+    return
+  }
   response.writeHead(200, {
     'cache-control': 'public, max-age=86400, immutable',
     'content-length': image.buffer.length,

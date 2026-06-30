@@ -1,5 +1,11 @@
 import { Button } from '@workspace/ui/components/button'
 import { Textarea } from '@workspace/ui/components/textarea'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@workspace/ui/components/tooltip'
 import { cn } from '@workspace/ui/lib/utils'
 import { ArrowUp, Square } from 'lucide-react'
 import { type FormEvent, type KeyboardEvent } from 'react'
@@ -46,33 +52,55 @@ export function Composer({
         <div className="flex shrink-0 justify-end border-t border-border/60 p-2">
           <div>
             {isStreaming ? (
-              <Button
-                onClick={onStop}
-                title={`Stop generation (${KEYBOARD_SHORTCUTS.stop.title})`}
-                type="button"
-                variant="destructive"
-              >
-                <Square className="size-3" data-icon="inline-start" />
-                Stop
-                <KeyboardShortcut
-                  className="ml-1 text-current opacity-80"
-                  shortcut={KEYBOARD_SHORTCUTS.stop}
-                />
-              </Button>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="inline-flex">
+                      <Button
+                        aria-label="Stop generation"
+                        onClick={onStop}
+                        size="icon-sm"
+                        type="button"
+                        variant="destructive"
+                      >
+                        <Square />
+                      </Button>
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent side="top">
+                    Stop generation
+                    <KeyboardShortcut
+                      className="ml-0 text-background opacity-80"
+                      shortcut={KEYBOARD_SHORTCUTS.stop}
+                    />
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
             ) : (
-              <Button
-                className={cn(disabled && 'cursor-not-allowed opacity-60')}
-                disabled={disabled}
-                title={`Send prompt (${KEYBOARD_SHORTCUTS.send.title})`}
-                type="submit"
-              >
-                <ArrowUp data-icon="inline-start" />
-                Send
-                <KeyboardShortcut
-                  className="ml-1 text-current opacity-80"
-                  shortcut={KEYBOARD_SHORTCUTS.send}
-                />
-              </Button>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="inline-flex">
+                      <Button
+                        aria-label="Send prompt"
+                        className={cn(disabled && 'cursor-not-allowed opacity-60')}
+                        disabled={disabled}
+                        size="icon-sm"
+                        type="submit"
+                      >
+                        <ArrowUp />
+                      </Button>
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent side="top">
+                    Send prompt
+                    <KeyboardShortcut
+                      className="ml-0 text-background opacity-80"
+                      shortcut={KEYBOARD_SHORTCUTS.send}
+                    />
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
             )}
           </div>
         </div>

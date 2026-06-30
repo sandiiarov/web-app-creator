@@ -1,7 +1,16 @@
+import { Button } from '@workspace/ui/components/button'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@workspace/ui/components/tooltip'
 import { cn } from '@workspace/ui/lib/utils'
-import { GripVertical } from 'lucide-react'
+import { GripVertical, Maximize2, Minimize2 } from 'lucide-react'
 import { type PointerEvent as ReactPointerEvent } from 'react'
 
+import { KeyboardShortcut } from './keyboard-shortcut'
+import { KEYBOARD_SHORTCUTS } from './keyboard-shortcuts'
 import { PanelCommandMenu } from './panel-command-menu'
 import type { PanelLayout, PanelStatus } from './panel-constants'
 import { StatusPill } from './status-pill'
@@ -58,14 +67,31 @@ export function PanelHeader({
           onPointerMove={(event) => event.stopPropagation()}
           onPointerUp={(event) => event.stopPropagation()}
         >
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  aria-label={collapsed ? 'Maximize panel' : 'Minimize panel'}
+                  onClick={onToggleCollapsed}
+                  size="icon-sm"
+                  type="button"
+                  variant="ghost"
+                >
+                  {collapsed ? <Maximize2 /> : <Minimize2 />}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">
+                {collapsed ? 'Maximize panel' : 'Minimize panel'}
+                <KeyboardShortcut shortcut={KEYBOARD_SHORTCUTS.panelToggle} />
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
           <PanelCommandMenu
-            collapsed={collapsed}
             layout={layout}
             model={model}
             onLayoutChange={onLayoutChange}
             onModelChange={onModelChange}
             onOpenChange={onCommandMenuOpenChange}
-            onToggleCollapsed={onToggleCollapsed}
             open={commandMenuOpen}
           />
         </div>
