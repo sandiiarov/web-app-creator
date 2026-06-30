@@ -41,18 +41,22 @@ File-backed project store + `/api/projects*` REST routes + per-project image per
 react-router, `/` list page, `/projects/new` create+redirect, `/projects/:id` editor.
 
 ### Todo
-- [ ] Add `react-router-dom` to catalog + client deps; `pnpm install`
-- [ ] Create `projects-api.ts`
-- [ ] Create `ProjectsPage` (list + New + delete + empty/loading states)
-- [ ] Refactor `App.tsx` → `EditorPage`; wire `BrowserRouter`/`Routes` in `main.tsx`
-- [ ] Update `apps/client/AGENTS.md`
-- [ ] Client `typecheck` / `lint` / `build` pass
+- [x] Add `react-router-dom` to catalog + client deps; `pnpm install`
+- [x] Create `projects-api.ts`
+- [x] Create `ProjectsPage` (list + New + delete + empty/loading states)
+- [x] Refactor `App.tsx` → `EditorPage`; wire `BrowserRouter`/`Routes` in `main.tsx`
+- [x] Update `apps/client/AGENTS.md`
+- [x] Client `typecheck` / `lint` / `build` pass
 
 ### Results
-_(fill at end of the sub-phase)_
+`react-router-dom@7` added to catalog + client. `src/lib/projects-api.ts` (REST client + `expandProjectImageUrls` + `ProjectNotFoundError`). `src/components/projects-page.tsx` (`ProjectsPage` list with cards/delete/empty state + `NewProjectPage` create-on-mount→redirect). `App.tsx` is now `EditorPage` (param-driven, `projectId`). `main.tsx` wires `BrowserRouter` routes `/`, `/projects/new`, `/projects/:id` (EditorRoute keyed by id). Client typecheck/lint/build green (only a benign react-refresh warning on the `main.tsx` entry). Browser smoke: `/` shows empty state, New creates a draft and lands on `/projects/:id` editor.
+
+Fixed a Phase-1 path bug found during smoke: `project-store.ts` `DATA_DIR` resolved to `<repo>/apps/.data` (one `..` too many); corrected to `apps/server/.data` (matches `.gitignore`). Re-ran Phase-1 smoke + server checks after the fix — all green.
 
 ### Gotchas
-_(fill at end of the sub-phase, if any)_
+- `erasableSyntaxOnly` is on for the client — no TS parameter properties (`constructor(public x)`); declare the field and assign explicitly.
+- `SERVER_URL` had to be exported from `landing-agent.ts` for the projects API client.
+- Draft projects (no html) are hidden from `GET /api/projects` server-side, so a freshly-created project from `/projects/new` doesn't appear in the list until it has generated HTML (Phase 3 autosave flips `hasHtml`).
 
 ## Phase 3: Load existing project into editor + autosave
 

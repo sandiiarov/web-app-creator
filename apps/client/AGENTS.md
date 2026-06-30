@@ -2,21 +2,24 @@
 
 ## Purpose
 
-- Vite + React app that lets a user prompt a landing-page agent and previews the generated single-file HTML.
-- Hosts an almostnode `VirtualFS` + `ViteDevServer` iframe preview and a draggable prompt/conversation panel.
+- Vite + React app that lets a user manage landing-page projects, prompt a landing-page agent, and preview each generated single-file HTML.
+- `/` lists saved projects; `/projects/new` creates a draft and redirects to `/projects/:id`; `/projects/:id` is the editor: an almostnode `VirtualFS` + `ViteDevServer` iframe preview plus a draggable prompt/conversation panel.
 
 ## Ownership
 
-- `src/App.tsx`: top-level preview + prompt panel composition.
+- `src/main.tsx`: `BrowserRouter` + route table (`/`, `/projects/new`, `/projects/:id`) and `ThemeProvider` root.
+- `src/App.tsx`: `EditorPage` (preview + prompt panel composition), param-driven and keyed by project id.
+- `src/components/projects-page.tsx`: project list + new-project redirect.
 - `src/components/`: app-specific UI; `components/prompt/` owns conversation and composer components.
 - `src/hooks/`: streaming/preview hooks.
-- `src/lib/`: custom SSE client, landing-agent event types, and preview bridge helpers.
+- `src/lib/`: custom SSE client, landing-agent event types, preview bridge helpers, and the project REST API client.
 - `public/__sw__.js`: almostnode service worker asset.
 - `components.json`: shadcn project config that targets shared UI code in `packages/ui`.
 
 ## Local Contracts
 
 - The server API is custom SSE `POST /agent` at `VITE_SERVER_URL` or `http://localhost:3001`; keep `src/lib/landing-agent.ts` event types aligned with `apps/server/src/mastra/route.ts`.
+- Projects are read/written through `src/lib/projects-api.ts` against `/api/projects*` (see `apps/server/AGENTS.md`). Stored HTML uses root-relative project image URLs (`/api/projects/:id/images/<file>`); `expandProjectImageUrls` expands them to absolute before writing into the preview VirtualFS (the preview iframe runs on a virtual almostnode origin).
 - The preview writes only `/index.html` into the browser `VirtualFS`; do not reintroduce a full workspace snapshot or browser AI SDK tool loop without updating plans and DOX.
 - Use `@workspace/ui/...` for reusable UI package imports and `#components`, `#hooks`, `#lib` for app-local aliases.
 - Do not put secrets in client code; only `VITE_*` variables are client-readable.

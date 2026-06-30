@@ -19,7 +19,7 @@ import { fileURLToPath } from 'node:url'
 import { getImage } from './image-store.ts'
 
 const MODULE_DIR = dirname(fileURLToPath(import.meta.url))
-const DATA_DIR = join(MODULE_DIR, '..', '..', '..', '..', '.data')
+const DATA_DIR = join(MODULE_DIR, '..', '..', '..', '.data')
 const PROJECTS_DIR = join(DATA_DIR, 'projects')
 
 const INDEX_HTML = 'index.html'

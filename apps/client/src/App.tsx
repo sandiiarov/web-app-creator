@@ -5,7 +5,11 @@ import { LandingPreview } from './components/landing-preview'
 import { PromptPanel } from './components/prompt/prompt-panel'
 import { useLandingPage } from './hooks/use-landing-page'
 
-export function App() {
+export interface EditorPageProps {
+  projectId: string
+}
+
+export function EditorPage({ projectId }: EditorPageProps) {
   const [error, setError] = useState<null | string>(null)
 
   const setErrorMessage = useCallback((message: null | string) => {
@@ -19,7 +23,10 @@ export function App() {
   const hasLanding = landing.turns.length > 0
 
   return (
-    <main className="fixed inset-0 overflow-hidden bg-background">
+    <main
+      className="fixed inset-0 overflow-hidden bg-background"
+      data-project-id={projectId}
+    >
       {error ? <ErrorBanner message={error} /> : null}
       <LandingPreview html={landing.html} onError={setErrorMessage} />
       <PromptPanel
