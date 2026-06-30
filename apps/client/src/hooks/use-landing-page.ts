@@ -14,12 +14,15 @@ export interface UseLandingPage {
   isStreaming: boolean
   model: string
   send: (prompt: string) => void
+  setHtml: (html: string) => void
   setModel: (model: string) => void
   stop: () => void
   turns: LandingTurn[]
 }
 
 export interface UseLandingPageOptions {
+  initialHtml?: string
+  initialModel?: string
   onError: (message: string) => void
   onHtml?: (html: string) => void
 }
@@ -28,12 +31,14 @@ let turnSeq = 0
 const nextTurnId = () => `turn-${Date.now()}-${turnSeq++}`
 
 export function useLandingPage({
+  initialHtml = '',
+  initialModel,
   onError,
   onHtml,
 }: UseLandingPageOptions): UseLandingPage {
   const [turns, setTurns] = useState<LandingTurn[]>([])
-  const [html, setHtml] = useState('')
-  const [model, setModel] = useState(LANDING_MODEL_OPTIONS[0]!.id)
+  const [html, setHtml] = useState(initialHtml)
+  const [model, setModel] = useState(initialModel ?? LANDING_MODEL_OPTIONS[0]!.id)
   const [isStreaming, setIsStreaming] = useState(false)
   const controllerRef = useRef<AbortController | null>(null)
 
@@ -234,6 +239,7 @@ export function useLandingPage({
     isStreaming,
     model,
     send,
+    setHtml,
     setModel,
     stop,
     turns,

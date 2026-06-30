@@ -64,17 +64,19 @@ Fixed a Phase-1 path bug found during smoke: `project-store.ts` `DATA_DIR` resol
 Seed html/model from GET; debounced PUT autosave; expand project image URLs on load.
 
 ### Todo
-- [ ] Extend `useLandingPage` with `initialHtml` / `initialModel`
-- [ ] EditorPage: load project on mount + expand image URLs
-- [ ] EditorPage: debounced autosave on html change + on done
-- [ ] Derive/keep project title from first prompt
-- [ ] Client `typecheck` / `lint` / `build` pass; manual load/autosave verified
+- [x] Extend `useLandingPage` with `initialHtml` / `initialModel`
+- [x] EditorPage: load project on mount + expand image URLs
+- [x] EditorPage: debounced autosave on html change + on done
+- [x] Derive/keep project title from first prompt
+- [x] Client `typecheck` / `lint` / `build` pass; manual load/autosave verified
 
 ### Results
-_(fill at end of the sub-phase)_
+`useLandingPage` now accepts `initialHtml`/`initialModel` and exposes `setHtml`. `EditorPage` loads the project on mount (`getProject`), expands project image URLs, seeds html+model+title, and handles 404 → "no longer exists" with a back-to-projects button. Autosave: a 600ms debounced PUT on `landing.html` change plus a final flush when streaming ends; both guarded by `loadedHtmlRef` so the seeded html isn't saved straight back and debounce/final never double-save; saves are serialized via a ref. Title is derived from the first prompt (truncated 60) once turns exist. Client typecheck/lint/build green. Verified the load path: created a project with HTML via API → opened `/projects/:id` → the stored HTML rendered inside the preview iframe; the list endpoint reflects `hasHtml:true`. (Full generate→autosave round-trip is the Phase 4 headed e2e.)
 
 ### Gotchas
-_(fill at end of the sub-phase, if any)_
+- Exposed `setHtml` from the hook so EditorPage can push loaded HTML into the preview (the hook owns html state).
+- `RefObject<Promise<void> | null>` must be `null | Promise<void>` for sort-union-types.
+- Autosave skips while html equals the seeded/last-saved value to avoid resaving the loaded project and to avoid double-saves between the debounce and final flush.
 
 ## Phase 4: Polish, DOX, full verify
 
