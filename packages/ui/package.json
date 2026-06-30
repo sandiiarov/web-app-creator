@@ -23,10 +23,13 @@
   },
   "dependencies": {
     "@fontsource-variable/noto-sans": "catalog:",
+    "@shadcn/react": "catalog:",
     "class-variance-authority": "catalog:",
     "clsx": "catalog:",
+    "cmdk": "catalog:",
     "lucide-react": "catalog:",
     "radix-ui": "catalog:",
+    "react-resizable-panels": "catalog:",
     "shadcn": "catalog:",
     "tailwind-merge": "catalog:",
     "tw-animate-css": "catalog:"

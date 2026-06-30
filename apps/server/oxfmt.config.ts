@@ -1,3 +1,5 @@
 import { createOxfmtConfig } from '@workspace/oxfmt-config'
 
-export default createOxfmtConfig()
+export default createOxfmtConfig({
+  ignorePatterns: ['sandbox/skills/**'],
+})

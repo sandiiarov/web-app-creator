@@ -7,7 +7,6 @@
   ],
   "ignoreUnresolvedImports": ["./src/main.tsx"],
   "ignoreDependencies": [
-    "@earendil-works/pi-coding-agent",
     "@workspace/typescript-config",
     "bippy",
     "eslint-plugin-perfectionist",

@@ -1,5 +1,7 @@
 # Plan: run the full Pi agent inside Docker Sandboxes
 
+> Superseded: the in-sandbox Pi runner was replaced with a Vercel AI SDK `ToolLoopAgent` runner while preserving the Docker Sandbox orchestration and host-only OpenRouter gateway.
+
 ## Decision
 
 Run the whole Pi Agent SDK runtime inside a Docker Sandbox (`sbx`) instead of running Pi in the host Node server with guarded host-side filesystem operations.
@@ -464,7 +466,14 @@ Save results to this plan:
 - Result: host orchestration now launches the runner inside the sandbox and polls the fixed response file. This avoids treating an `sbx exec` stream hang as request failure after the runner has already written `/workspace/.web-app-creator/response.json`.
 - Result: real `/agent` API E2E passed with `ok: true`, `changedFiles: ["/src/App.tsx"]`, no diagnostics, no forbidden preview package additions, and updated content containing `E2E Sandbox OK`.
 - Result: browser UI E2E passed with `agent-browser`: opened the client, submitted an edit prompt, and verified the iframe preview heading updated to `Browser E2E OK`.
+- Result: `/agent` is now SSE-only. The server streams `status` events for host orchestration and sandbox runner phases, then emits a final `result` event and `done`. The browser parses the SSE stream through `fetch()` and displays the latest status phrase while applying the final file changes. Idle sandbox cleanup now expires Docker sandbox resources after the configured TTL without deleting the chat session/workspace record, so the same `chatId` can reopen a sandbox later.
+- Result: SSE API E2E passed with 14 status events, final `ok: true`, `changedFiles: ["/src/App.tsx"]`, no diagnostics, and updated content containing `SSE Sandbox OK`. Browser SSE E2E passed with `agent-browser` by submitting a prompt and verifying the iframe heading updated to `Browser SSE OK`.
+- Result: added host-side fixed preview tool endpoints for fast static checks without running arbitrary user config: `POST /preview/format`, `POST /preview/lint`, and `POST /preview/typecheck`. Typecheck uses `tsgo --noEmit -p tsconfig.preview.json` against a temp workspace with trusted generated configs and preview path allowlisting.
 - Result: final validation passed: `pnpm run format:check`, `pnpm run lint`, `pnpm run typecheck`, `pnpm run test`, `pnpm run build`, `node --check apps/server/sandbox/runner/run-agent.mjs`, `node --check apps/server/sandbox/extensions/web-app-creator-provider.mjs`, and `pnpm exec fallow --format json --quiet` with `total_issues 0`, duplicate groups `0`, health findings `0`, and stale suppressions `0`.
+
+## AI SDK replacement update
+
+- Result: replaced the in-sandbox Pi SDK runner with a Vercel AI SDK `ToolLoopAgent` runner. The host orchestration, SSE endpoint, Docker Sandbox lifecycle, and host-only OpenRouter model gateway stay in place. The sandbox runtime now installs `ai` and `@ai-sdk/openai-compatible`, exposes explicit file/search/check tools, persists lightweight chat turns under `/workspace/.web-app-creator/ai-agent-history.json`, runs the same fixed validation harness with up to three fix attempts, and no longer copies the Pi provider extension into the template. Validation passed with repo format/lint/typecheck/test/build, server checks, Fallow zero issues/dupes/health/stale suppressions, sandbox Docker build, and in-image AI SDK import/syntax checks.
 
 ## Open questions before implementation
 

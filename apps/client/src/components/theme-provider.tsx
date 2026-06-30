@@ -1,5 +1,7 @@
 import * as React from 'react'
 
+import { KEYBOARD_SHORTCUTS } from '#lib/keyboard-shortcuts'
+
 type ResolvedTheme = 'dark' | 'light'
 type Theme = 'dark' | 'light' | 'system'
 
@@ -136,13 +138,14 @@ function resolveTheme(theme: Theme): ResolvedTheme {
 }
 
 function shouldHandleThemeHotkey(event: KeyboardEvent) {
+  const hasCommandModifier = event.metaKey || event.ctrlKey
   const shouldIgnore = [
     event.repeat,
-    event.metaKey,
-    event.ctrlKey,
+    !hasCommandModifier,
     event.altKey,
+    event.shiftKey,
     isEditableTarget(event.target),
-    event.key.toLowerCase() !== 'd',
+    event.key.toLowerCase() !== KEYBOARD_SHORTCUTS.themeToggle.key,
   ]
 
   return !shouldIgnore.some(Boolean)
@@ -179,6 +182,7 @@ function useThemeHotkey(
         return
       }
 
+      event.preventDefault()
       setThemeState((currentTheme) => {
         const nextTheme = getToggledTheme(currentTheme)
         localStorage.setItem(storageKey, nextTheme)

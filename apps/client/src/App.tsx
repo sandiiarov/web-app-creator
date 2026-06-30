@@ -1,67 +1,40 @@
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useState } from 'react'
 
 import { ErrorBanner } from './components/error-banner'
-import { PreviewFrame } from './components/preview-frame'
-import { PromptBar } from './components/prompt-bar'
-import { useAgentChat } from './hooks/use-agent-chat'
-import { useInspectorSelection } from './hooks/use-inspector-selection'
-import { usePreviewServer } from './hooks/use-preview-server'
+import { LandingPreview } from './components/landing-preview'
+import { PromptPanel } from './components/prompt/prompt-panel'
+import { useLandingPage } from './hooks/use-landing-page'
 
 export function App() {
-  const inputRef = useRef<HTMLInputElement>(null)
   const [error, setError] = useState<null | string>(null)
 
   const setErrorMessage = useCallback((message: null | string) => {
     setError(message)
   }, [])
 
-  const {
-    handlePreviewLoad,
-    iframeRef,
-    postInspectorEnabled,
-    previewUrl,
-    vfsRef,
-  } = usePreviewServer({
+  const landing = useLandingPage({
     onError: setErrorMessage,
   })
-  const { isSelectionMode, selectedElement, setSelectionMode } =
-    useInspectorSelection({
-      iframeRef,
-      inputRef,
-      postInspectorEnabled,
-    })
-  const { editStatus, isEditing, sendPrompt } = useAgentChat({
-    onError: setErrorMessage,
-    vfsRef,
-  })
 
-  const handleFrameLoad = useCallback(() => {
-    handlePreviewLoad()
-    postInspectorEnabled(isSelectionMode)
-  }, [handlePreviewLoad, isSelectionMode, postInspectorEnabled])
-
-  const handleSubmitPrompt = useCallback(
-    (prompt: string) => sendPrompt(prompt, selectedElement),
-    [selectedElement, sendPrompt],
-  )
+  const hasLanding = landing.turns.length > 0
 
   return (
     <main className="fixed inset-0 overflow-hidden bg-background">
       {error ? <ErrorBanner message={error} /> : null}
-      <PreviewFrame
-        iframeRef={iframeRef}
-        onLoad={handleFrameLoad}
-        previewUrl={previewUrl}
+      <LandingPreview html={landing.html} onError={setErrorMessage} />
+      <PromptPanel
+        isStreaming={landing.isStreaming}
+        model={landing.model}
+        onModelChange={landing.setModel}
+        onSend={landing.send}
+        onStop={landing.stop}
+        turns={landing.turns}
       />
-      <PromptBar
-        editStatus={editStatus}
-        inputRef={inputRef}
-        isEditing={isEditing}
-        isSelectionMode={isSelectionMode}
-        onSelectionModeChange={setSelectionMode}
-        onSubmitPrompt={handleSubmitPrompt}
-        selectedElement={selectedElement}
-      />
+      {!hasLanding ? (
+        <p className="pointer-events-none fixed bottom-4 left-4 z-20 max-w-xs rounded-none border border-border bg-popover/90 px-2 py-1 text-[11px] text-muted-foreground backdrop-blur">
+          Drag the panel. Describe a landing page to begin.
+        </p>
+      ) : null}
     </main>
   )
 }

@@ -7,6 +7,7 @@
 @source '../../../apps/**/*.{ts,tsx}';
 @source '../../../components/**/*.{ts,tsx}';
 @source '../**/*.{ts,tsx}';
+@source '../../../../node_modules/streamdown/dist/*.js';
 
 @theme inline {
   --font-heading: var(--font-sans);
@@ -134,4 +135,17 @@
   [role='button']:not(:disabled) {
     cursor: pointer;
   }
+}
+
+/* ── Scroll utilities (shadcn message-scroller) ─────────────── */
+@utility scroll-fade-b {
+  mask-image: linear-gradient(to bottom, black calc(100% - 2rem), transparent);
+}
+
+@utility scrollbar-thin {
+  scrollbar-width: thin;
+}
+
+@utility scrollbar-gutter-stable {
+  scrollbar-gutter: stable;
 }

@@ -19,8 +19,5 @@
   },
   "rtl": false,
   "menuColor": "default-translucent",
-  "menuAccent": "subtle",
-  "registries": {
-    "@ai-elements": "https://elements.ai-sdk.dev/api/registry/{name}.json"
-  }
+  "menuAccent": "subtle"
 }

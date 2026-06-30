@@ -1,23 +1,29 @@
 {
   "version": 1,
   "skills": {
-    "ai-sdk": {
-      "source": "vercel/ai",
+    "fallow": {
+      "source": "fallow-rs/fallow-skills",
       "sourceType": "github",
-      "skillPath": "skills/use-ai-sdk/SKILL.md",
-      "computedHash": "2249889eb47ef0f61c4dba4cf2afe01c1c8dd793bb4c24230347c1ab909bb7dd"
+      "skillPath": "fallow/skills/fallow/SKILL.md",
+      "computedHash": "8d857d04d07fb78fc0e868c56d4335cc6e06e6ca0f4321a55875bed12666627a"
     },
-    "caveman-commit": {
-      "source": "juliusbrussee/caveman",
+    "mastra": {
+      "source": "mastra-ai/skills",
       "sourceType": "github",
-      "skillPath": "skills/caveman-commit/SKILL.md",
-      "computedHash": "f456ea0564875e46858890ac39ee701ecb9c601c72a2da1e6ce6bd5f9fc5d817"
+      "skillPath": "skills/mastra/SKILL.md",
+      "computedHash": "f0ca76d36d67a345064f471a9577e752beb2b20ab46acdf154ed223905e1d3a4"
     },
-    "caveman-review": {
-      "source": "juliusbrussee/caveman",
+    "shadcn": {
+      "source": "shadcn/ui",
       "sourceType": "github",
-      "skillPath": "skills/caveman-review/SKILL.md",
-      "computedHash": "fb7214a1c5793bae6ba8b1be4329e2e6f40dbec6dd911dfb335ad29f09c316a1"
+      "skillPath": "skills/shadcn/SKILL.md",
+      "computedHash": "ac9d0d69caac7de1d1e5647f3db3bcd2f13af355d6b3a78780fbf7fc80e8dca0"
+    },
+    "turborepo": {
+      "source": "vercel/turborepo",
+      "sourceType": "github",
+      "skillPath": "skills/turborepo/SKILL.md",
+      "computedHash": "63f883850e15d79653f3ee7de6030e7d965a35912b1c1dd44247eb38b90607c8"
     }
   }
 }

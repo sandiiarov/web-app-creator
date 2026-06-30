@@ -1,0 +1,1 @@
+<?xml version='1.0' encoding='UTF-8'?><Error><Code>MalformedSecurityHeader</Code><Message>Invalid argument.</Message><Details>Your request has a malformed header. Signature was not base64 encoded.</Details><ParameterName>signature</ParameterName></Error>

@@ -2,80 +2,71 @@ import { describe, expect, it } from 'vitest'
 
 import { createConfigFromEnv, type ConfigEnvironment } from './config-env.ts'
 
+function createEnv(overrides: ConfigEnvironment = {}): ConfigEnvironment {
+  return { BASETEN_API_KEY: 'test-baseten-key', ...overrides }
+}
+
 describe('createConfigFromEnv', () => {
-  it('parses required explicit server environment', () => {
-    expect(createConfigFromEnv(createEnv())).toEqual({
-      ai: {
-        key: 'test-openrouter-key',
-        model: 'openrouter/test-model',
-      },
-      app: {
-        name: 'Web App Creator Test',
-        url: 'http://localhost:5173',
-      },
-      clientOrigin: 'http://localhost:5173',
-      host: '127.0.0.1',
-      modelGateway: {
-        baseUrl: 'http://host.docker.internal:3001/internal/model-gateway/v1',
-      },
-      port: 3001,
-      sandbox: {
-        agent: 'shell',
-        commandTimeoutSeconds: 120,
-        cpus: '1',
-        createTimeoutSeconds: 180,
-        idleTtlSeconds: 900,
-        memory: '2g',
-        template: 'web-app-creator-sandbox:dev',
-        workspaceRoot: '/tmp/web-app-creator-sandboxes',
-      },
+  it('parses baseten config with defaults', () => {
+    const config = createConfigFromEnv(createEnv())
+
+    expect(config.baseten).toEqual({
+      apiKey: 'test-baseten-key',
+      defaultModel: 'zai-org/GLM-5.2',
+      url: 'https://inference.baseten.co/v1',
     })
   })
 
-  it('rejects invalid numeric values', () => {
-    expect(() =>
-      createConfigFromEnv({
-        ...createEnv(),
-        PORT: '70000',
-      }),
-    ).toThrow('Invalid PORT value: 70000')
+  it('applies server binding defaults', () => {
+    const config = createConfigFromEnv(createEnv())
 
-    expect(() =>
-      createConfigFromEnv({
-        ...createEnv(),
-        SANDBOX_COMMAND_TIMEOUT_SECONDS: '0',
-      }),
-    ).toThrow('Invalid SANDBOX_COMMAND_TIMEOUT_SECONDS value: 0')
+    expect(config.host).toBe('0.0.0.0')
+    expect(config.port).toBe(3001)
+    expect(config.clientOrigin).toBe('*')
   })
 
-  it('rejects missing required values', () => {
-    expect(() =>
-      createConfigFromEnv({
-        ...createEnv(),
-        MODEL_GATEWAY_BASE_URL: '',
+  it('leaves mastra observability unset when env is absent', () => {
+    const config = createConfigFromEnv(createEnv())
+
+    expect(config.mastra.platformAccessToken).toBeUndefined()
+    expect(config.mastra.projectId).toBeUndefined()
+  })
+
+  it('overrides baseten model + binding from env', () => {
+    const config = createConfigFromEnv(
+      createEnv({
+        BASETEN_MODEL: 'moonshotai/Kimi-K2.7-Code',
+        CLIENT_ORIGIN: 'http://localhost:5173',
+        HOST: '127.0.0.1',
+        PORT: '4000',
       }),
-    ).toThrow('Missing required environment variable: MODEL_GATEWAY_BASE_URL')
+    )
+
+    expect(config.baseten.defaultModel).toBe('moonshotai/Kimi-K2.7-Code')
+    expect(config.clientOrigin).toBe('http://localhost:5173')
+    expect(config.host).toBe('127.0.0.1')
+    expect(config.port).toBe(4000)
+  })
+
+  it('reads mastra observability credentials when present', () => {
+    const config = createConfigFromEnv(
+      createEnv({
+        MASTRA_PLATFORM_ACCESS_TOKEN: 'platform-token',
+        MASTRA_PROJECT_ID: 'project-id',
+      }),
+    )
+
+    expect(config.mastra.platformAccessToken).toBe('platform-token')
+    expect(config.mastra.projectId).toBe('project-id')
+  })
+
+  it('requires BASETEN_API_KEY', () => {
+    expect(() => createConfigFromEnv({})).toThrow('BASETEN_API_KEY')
+  })
+
+  it('rejects an invalid port', () => {
+    expect(() => createConfigFromEnv(createEnv({ PORT: 'nope' }))).toThrow(
+      'Invalid PORT',
+    )
   })
 })
-
-function createEnv(): ConfigEnvironment {
-  return {
-    AI_MODEL: 'openrouter/test-model',
-    APP_NAME: 'Web App Creator Test',
-    APP_URL: 'http://localhost:5173',
-    CLIENT_ORIGIN: 'http://localhost:5173',
-    HOST: '127.0.0.1',
-    MODEL_GATEWAY_BASE_URL:
-      'http://host.docker.internal:3001/internal/model-gateway/v1',
-    OPENROUTER_API_KEY: 'test-openrouter-key',
-    PORT: '3001',
-    SANDBOX_AGENT: 'shell',
-    SANDBOX_COMMAND_TIMEOUT_SECONDS: '120',
-    SANDBOX_CPUS: '1',
-    SANDBOX_CREATE_TIMEOUT_SECONDS: '180',
-    SANDBOX_IDLE_TTL_SECONDS: '900',
-    SANDBOX_MEMORY: '2g',
-    SANDBOX_TEMPLATE: 'web-app-creator-sandbox:dev',
-    SANDBOX_WORKSPACE_ROOT: '/tmp/web-app-creator-sandboxes',
-  }
-}

@@ -21,6 +21,12 @@ dist-ssr
 # Docker Sandbox artifacts
 apps/server/sandbox/*.tar
 
+# Mastra local stores (dev)
+mastra.db
+mastra.db-*
+mastra.duckdb
+mastra.duckdb.wal
+
 # fallow
 .fallow
 

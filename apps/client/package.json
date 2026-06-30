@@ -24,8 +24,11 @@
     "@workspace/ui": "workspace:*",
     "almostnode": "catalog:",
     "bippy": "catalog:",
+    "lucide-react": "catalog:",
     "react": "catalog:",
-    "react-dom": "catalog:"
+    "react-dom": "catalog:",
+    "react-hotkeys-hook": "catalog:",
+    "streamdown": "catalog:"
   },
   "devDependencies": {
     "@types/node": "catalog:",
