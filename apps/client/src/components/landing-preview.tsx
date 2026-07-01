@@ -1,16 +1,9 @@
-import { useLandingPreviewServer } from '../hooks/use-landing-preview-server'
-
 export type LandingPreviewProps = {
   html: string
   onError?: (message: string) => void
 }
 
-export function LandingPreview({ html, onError }: LandingPreviewProps) {
-  const { handlePreviewLoad, iframeRef, previewUrl } = useLandingPreviewServer({
-    html,
-    onError,
-  })
-
+export function LandingPreview({ html }: LandingPreviewProps) {
   if (!html.trim()) {
     return <LandingEmptyState />
   }
@@ -18,11 +11,9 @@ export function LandingPreview({ html, onError }: LandingPreviewProps) {
   return (
     <iframe
       className="h-svh w-screen border-0"
-      onLoad={handlePreviewLoad}
-      ref={iframeRef}
       referrerPolicy="no-referrer"
-      sandbox="allow-forms allow-modals allow-popups allow-same-origin allow-scripts"
-      src={previewUrl || 'about:blank'}
+      sandbox="allow-forms allow-modals allow-popups allow-scripts"
+      srcDoc={html}
       title="Landing page preview"
     />
   )
