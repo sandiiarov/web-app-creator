@@ -8,6 +8,7 @@ import type {
 } from '../../lib/keyboard-shortcuts'
 
 const KEY_LABELS: Record<KeyboardShortcutKey, string> = {
+  a: 'A',
   command: 'Command or Control',
   d: 'D',
   enter: 'Enter',

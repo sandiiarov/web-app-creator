@@ -15,6 +15,7 @@ import {
   createProjectHtmlStore,
   getProject,
   setTitleIfUntitled,
+  updateProjectModel,
   type ProjectMessageStatsPart,
   type ProjectMessageToolCallPart,
   type ProjectMessageTurn,
@@ -77,6 +78,7 @@ export async function streamLandingAgent({
     return
   }
 
+  await updateProjectModel(projectId, modelId)
   setTitleIfUntitled(projectId, prompt)
 
   const recordedTurn = createRecordedTurn(prompt, modelId)

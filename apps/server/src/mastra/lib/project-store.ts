@@ -120,7 +120,7 @@ export async function createProject(
     createdAt: now,
     hasHtml: false,
     id,
-    model: input.model ?? '',
+    model: input.model?.trim() ?? '',
     title: input.title?.trim() || 'Untitled',
     updatedAt: now,
   }
@@ -213,6 +213,26 @@ export function setTitleIfUntitled(id: string, title: string): void {
   meta.title = truncateTitle(title)
   meta.updatedAt = new Date().toISOString()
   writeMetaSync(id, meta)
+}
+
+/** Persist the current model selection for a project. */
+export async function updateProjectModel(
+  id: string,
+  model: string,
+): Promise<null | ProjectMeta> {
+  const meta = await readMeta(id)
+  if (!meta) return null
+
+  const normalized = model.trim()
+  if (meta.model === normalized) return meta
+
+  const next = {
+    ...meta,
+    model: normalized,
+    updatedAt: new Date().toISOString(),
+  }
+  await writeMeta(id, next)
+  return next
 }
 
 // ── image URL normalization (sync) ───────────────────────────────

@@ -7,6 +7,7 @@ export type KeyboardShortcut = {
 }
 
 export type KeyboardShortcutKey =
+  | 'a'
   | 'command'
   | 'd'
   | 'enter'
@@ -20,6 +21,12 @@ export type KeyboardShortcutKey =
   | 'shift'
 
 export const KEYBOARD_SHORTCUTS = {
+  allProjects: {
+    display: 'Command Option A',
+    hotkey: 'meta+alt+a,ctrl+alt+a',
+    keys: ['command', 'option', 'a'],
+    title: 'Command or Control Option A',
+  },
   layoutFloating: {
     display: 'Option Shift F',
     hotkey: 'alt+shift+f',

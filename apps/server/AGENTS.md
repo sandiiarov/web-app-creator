@@ -22,6 +22,7 @@
   - `GET /api/projects` → list metadata, drafts (no HTML) hidden.
   - `POST /api/projects { title?, model? }` → create draft (seeded with the placeholder page).
   - `GET /api/projects/:id` → full project (metadata + `indexHtml` + persisted `messages`).
+  - `PATCH /api/projects/:id { model }` → persist the current model selection in project metadata.
   - `DELETE /api/projects/:id` → remove project + images.
   - `GET /api/projects/:id/images/:file` → serve a persisted project image.
 - `GET /images/:id` serves process-memory images created by the image generation tool.

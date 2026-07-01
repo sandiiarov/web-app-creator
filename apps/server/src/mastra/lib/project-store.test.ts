@@ -9,6 +9,7 @@ import {
   createProject,
   deleteProject,
   getProject,
+  updateProjectModel,
   type ProjectMessageTurn,
 } from './project-store.ts'
 
@@ -54,6 +55,21 @@ describe('project message storage', () => {
     await expect(getProject(project.id)).resolves.toMatchObject({
       id: project.id,
       messages: [],
+    })
+  })
+
+  it('persists the latest project model without rewriting message turns', async () => {
+    const project = await createProject({ model: 'moonshotai/Kimi-K2.7-Code' })
+    createdProjectIds.push(project.id)
+    const turn = messageTurn(project.id)
+
+    await appendProjectMessageTurn(project.id, turn)
+    await updateProjectModel(project.id, 'zai-org/GLM-5.2')
+
+    await expect(getProject(project.id)).resolves.toMatchObject({
+      id: project.id,
+      messages: [turn],
+      model: 'zai-org/GLM-5.2',
     })
   })
 })

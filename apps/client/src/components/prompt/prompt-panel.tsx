@@ -14,6 +14,7 @@ import {
   useState,
 } from 'react'
 import { useHotkeys } from 'react-hotkeys-hook'
+import { useNavigate } from 'react-router-dom'
 
 import type { LandingTurn } from '../../lib/landing-agent'
 import { Composer } from './composer'
@@ -29,6 +30,8 @@ import {
 } from './panel-constants'
 import { PanelHeader } from './panel-header'
 import { panelStatus } from './panel-status'
+
+const PANEL_POSITION_STORAGE_KEY = 'landing.promptPanel.position.v1'
 
 export type PromptPanelProps = {
   isStreaming: boolean
@@ -47,6 +50,7 @@ export function PromptPanel({
   onStop,
   turns,
 }: PromptPanelProps) {
+  const navigate = useNavigate()
   const [collapsed, setCollapsed] = useState(false)
   const [commandMenuOpen, setCommandMenuOpen] = useState(false)
   const [position, setPosition] = useState<PanelPosition>(initialPanelPosition)
@@ -56,6 +60,10 @@ export function PromptPanel({
   const dragStart = useRef<null | { offsetX: number; offsetY: number }>(null)
 
   useClampToViewport(position, setPosition, collapsed)
+
+  useEffect(() => {
+    writeStoredPanelPosition(position)
+  }, [position])
 
   const handleDragStart = useCallback(
     (event: ReactPointerEvent<HTMLDivElement>) => {
@@ -155,6 +163,12 @@ export function PromptPanel({
     [isStreaming],
   )
 
+  useHotkeys(
+    KEYBOARD_SHORTCUTS.allProjects.hotkey,
+    () => navigate('/'),
+    { enableOnFormTags: true, preventDefault: true },
+    [navigate],
+  )
   useHotkeys(
     KEYBOARD_SHORTCUTS.layoutLeft.hotkey,
     () => handleLayoutChange('left-sidebar'),
@@ -304,6 +318,40 @@ export function PromptPanel({
   )
 }
 
+function clampPanelPosition(
+  position: PanelPosition,
+  collapsed: boolean,
+): PanelPosition {
+  const dockedSide = dockedPanelSide(position)
+  const height = collapsed
+    ? COLLAPSED_HEIGHT
+    : dockedSide
+      ? window.innerHeight
+      : PANEL_HEIGHT
+  const maxX = rightDockX()
+  const maxY = Math.max(0, window.innerHeight - height)
+  const x = dockedSide === 'right' ? maxX : Math.min(position.x, maxX)
+  const y = Math.min(position.y, maxY)
+
+  return {
+    x: Math.max(0, x),
+    y: Math.max(0, y),
+  }
+}
+
+function defaultPanelPosition(): PanelPosition {
+  return {
+    x: Math.max(
+      PANEL_MARGIN,
+      Math.min(32, window.innerWidth - PANEL_WIDTH - PANEL_MARGIN),
+    ),
+    y: Math.max(
+      PANEL_MARGIN,
+      Math.min(32, window.innerHeight - PANEL_HEIGHT - PANEL_MARGIN),
+    ),
+  }
+}
+
 function dockedPanelSide(position: PanelPosition) {
   if (position.y !== 0) {
     return null
@@ -331,19 +379,33 @@ function floatingPositionFrom(position: PanelPosition): PanelPosition {
     return { x: Math.max(0, rightDockX() - 16), y: 16 }
   }
 
-  return initialPanelPosition()
+  return defaultPanelPosition()
 }
 
 function initialPanelPosition(): PanelPosition {
-  return {
-    x: Math.max(
-      PANEL_MARGIN,
-      Math.min(32, window.innerWidth - PANEL_WIDTH - PANEL_MARGIN),
-    ),
-    y: Math.max(
-      PANEL_MARGIN,
-      Math.min(32, window.innerHeight - PANEL_HEIGHT - PANEL_MARGIN),
-    ),
+  return readStoredPanelPosition() ?? defaultPanelPosition()
+}
+
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value)
+}
+
+function readStoredPanelPosition(): null | PanelPosition {
+  try {
+    const raw = window.localStorage.getItem(PANEL_POSITION_STORAGE_KEY)
+    if (!raw) return null
+
+    const parsed = JSON.parse(raw) as Partial<PanelPosition> & {
+      layout?: PanelLayout
+    }
+    if (!isFiniteNumber(parsed.x) || !isFiniteNumber(parsed.y)) return null
+
+    if (parsed.layout === 'left-sidebar') return { x: 0, y: 0 }
+    if (parsed.layout === 'right-sidebar') return { x: rightDockX(), y: 0 }
+
+    return clampPanelPosition({ x: parsed.x, y: parsed.y }, false)
+  } catch {
+    return null
   }
 }
 
@@ -361,20 +423,7 @@ function useClampToViewport(
 ) {
   useEffect(() => {
     const onResize = () => {
-      const dockedSide = dockedPanelSide(position)
-      const height = collapsed
-        ? COLLAPSED_HEIGHT
-        : dockedSide
-          ? window.innerHeight
-          : PANEL_HEIGHT
-      const maxX = rightDockX()
-      const maxY = Math.max(0, window.innerHeight - height)
-      const x = dockedSide === 'right' ? maxX : Math.min(position.x, maxX)
-      const y = Math.min(position.y, maxY)
-      const nextPosition = {
-        x: Math.max(0, x),
-        y: Math.max(0, y),
-      }
+      const nextPosition = clampPanelPosition(position, collapsed)
 
       if (nextPosition.x !== position.x || nextPosition.y !== position.y) {
         setPosition(nextPosition)
@@ -386,4 +435,20 @@ function useClampToViewport(
 
     return () => window.removeEventListener('resize', onResize)
   }, [collapsed, position, setPosition])
+}
+
+function writeStoredPanelPosition(position: PanelPosition) {
+  try {
+    const dockedSide = dockedPanelSide(position)
+    const layout: PanelLayout = dockedSide
+      ? `${dockedSide}-sidebar`
+      : 'floating'
+
+    window.localStorage.setItem(
+      PANEL_POSITION_STORAGE_KEY,
+      JSON.stringify({ ...position, layout }),
+    )
+  } catch {
+    // Ignore storage errors from private mode or blocked localStorage.
+  }
 }

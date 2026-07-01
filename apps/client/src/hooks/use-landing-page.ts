@@ -11,6 +11,7 @@ import {
   ProjectNotFoundError,
   expandProjectImageUrls,
   getProject,
+  updateProjectModel,
 } from '../lib/projects-api'
 import { streamSSE } from '../lib/sse-client'
 
@@ -39,10 +40,11 @@ export function useLandingPage({
 }: UseLandingPageOptions): UseLandingPage {
   const [turns, setTurns] = useState<LandingTurn[]>([])
   const [html, setHtml] = useState('')
-  const [model, setModel] = useState(LANDING_MODEL_OPTIONS[0]!.id)
+  const [model, setSelectedModel] = useState(LANDING_MODEL_OPTIONS[0]!.id)
   const [isStreaming, setIsStreaming] = useState(false)
   const [missing, setMissing] = useState(false)
   const controllerRef = useRef<AbortController | null>(null)
+  const modelSaveSeq = useRef(0)
 
   // Load the project on mount (and when switching projects): the server owns
   // the HTML, so the UI pulls it rather than holding its own canonical copy.
@@ -57,7 +59,7 @@ export function useLandingPage({
         if (cancelled) return
         setHtml(expandProjectImageUrls(project.indexHtml))
         setTurns(restoreProjectTurns(project.messages))
-        if (project.model) setModel(project.model)
+        if (project.model) setSelectedModel(project.model)
       })
       .catch((err: unknown) => {
         if (cancelled) return
@@ -100,6 +102,33 @@ export function useLandingPage({
       // Swallow — the run's own error reporting handles hard failures.
     }
   }, [projectId])
+
+  const persistModel = useCallback(
+    (nextModel: string) => {
+      setSelectedModel(nextModel)
+      const saveSeq = ++modelSaveSeq.current
+
+      void updateProjectModel(projectId, nextModel)
+        .then((project) => {
+          if (saveSeq === modelSaveSeq.current) {
+            setSelectedModel(project.model || nextModel)
+          }
+        })
+        .catch((err: unknown) => {
+          if (saveSeq !== modelSaveSeq.current) return
+          if (err instanceof ProjectNotFoundError) {
+            setMissing(true)
+            return
+          }
+          onError(
+            err instanceof Error
+              ? err.message
+              : 'Failed to update project model',
+          )
+        })
+    },
+    [onError, projectId],
+  )
 
   const send = useCallback(
     (prompt: string) => {
@@ -294,7 +323,7 @@ export function useLandingPage({
     missing,
     model,
     send,
-    setModel,
+    setModel: persistModel,
     stop,
     turns,
   }

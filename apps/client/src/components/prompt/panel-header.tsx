@@ -6,8 +6,9 @@ import {
   TooltipTrigger,
 } from '@workspace/ui/components/tooltip'
 import { cn } from '@workspace/ui/lib/utils'
-import { GripVertical, Maximize2, Minimize2 } from 'lucide-react'
+import { FolderOpen, GripVertical, Maximize2, Minimize2 } from 'lucide-react'
 import { type PointerEvent as ReactPointerEvent } from 'react'
+import { Link } from 'react-router-dom'
 
 import { KeyboardShortcut } from './keyboard-shortcut'
 import { KEYBOARD_SHORTCUTS } from './keyboard-shortcuts'
@@ -67,6 +68,24 @@ export function PanelHeader({
           onPointerMove={(event) => event.stopPropagation()}
           onPointerUp={(event) => event.stopPropagation()}
         >
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button asChild size="icon-sm" variant="ghost">
+                  <Link
+                    aria-label={`Go to all projects. Shortcut ${KEYBOARD_SHORTCUTS.allProjects.title}`}
+                    to="/"
+                  >
+                    <FolderOpen />
+                  </Link>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">
+                All projects
+                <KeyboardShortcut shortcut={KEYBOARD_SHORTCUTS.allProjects} />
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>

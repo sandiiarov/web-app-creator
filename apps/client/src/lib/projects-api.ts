@@ -79,3 +79,18 @@ export async function listProjects(): Promise<ProjectMeta[]> {
   if (!json.ok) throw new Error('Failed to list projects')
   return json.projects
 }
+
+export async function updateProjectModel(
+  id: string,
+  model: string,
+): Promise<ProjectMeta> {
+  const response = await fetch(`${SERVER_URL}/api/projects/${id}`, {
+    body: JSON.stringify({ model }),
+    headers: { 'content-type': 'application/json' },
+    method: 'PATCH',
+  })
+  if (response.status === 404) throw new ProjectNotFoundError(id)
+  const json = (await response.json()) as { ok: boolean; project: ProjectMeta }
+  if (!json.ok) throw new Error('Failed to update project model')
+  return json.project
+}

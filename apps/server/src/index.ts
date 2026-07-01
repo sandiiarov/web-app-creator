@@ -14,10 +14,15 @@ import {
   getProject,
   listProjects,
   readProjectImage,
+  updateProjectModel,
 } from './mastra/lib/project-store.ts'
 import { resolveModelId, streamLandingAgent } from './mastra/route.ts'
 
-type AgentRequestBody = { model?: string; projectId?: unknown; prompt?: unknown }
+type AgentRequestBody = {
+  model?: string
+  projectId?: unknown
+  prompt?: unknown
+}
 
 const server = createServer(async (request, response) => {
   setCorsHeaders(response)
@@ -76,7 +81,10 @@ async function handleAgent(request: IncomingMessage, response: ServerResponse) {
     return
   }
 
-  if (body.model !== undefined && typeof body.model !== 'string') {
+  if (
+    body.model !== undefined &&
+    (typeof body.model !== 'string' || body.model.trim() === '')
+  ) {
     sendJson(response, 400, {
       error: 'Expected { model?: string }',
       ok: false,
@@ -171,6 +179,30 @@ async function handleListProjects(response: ServerResponse) {
   sendJson(response, 200, { ok: true, projects })
 }
 
+async function handlePatchProject(
+  id: string,
+  request: IncomingMessage,
+  response: ServerResponse,
+) {
+  const body = await readJsonObject(request)
+
+  if (typeof body.model !== 'string' || body.model.trim() === '') {
+    sendJson(response, 400, {
+      error: 'Expected { model: string }',
+      ok: false,
+    })
+    return
+  }
+
+  const project = await updateProjectModel(id, resolveModelId(body.model))
+  if (!project) {
+    sendJson(response, 404, { error: 'Project not found', ok: false })
+    return
+  }
+
+  sendJson(response, 200, { ok: true, project })
+}
+
 async function readJsonObject(
   request: IncomingMessage,
 ): Promise<Record<string, unknown>> {
@@ -215,6 +247,10 @@ async function routeProjects(
     }
     if (request.method === 'DELETE') {
       await handleDeleteProject(id, response)
+      return true
+    }
+    if (request.method === 'PATCH') {
+      await handlePatchProject(id, request, response)
       return true
     }
   }
@@ -278,6 +314,6 @@ async function serveProjectImage(
 
 function setCorsHeaders(response: ServerResponse) {
   response.setHeader('access-control-allow-headers', 'content-type')
-  response.setHeader('access-control-allow-methods', 'GET,POST,OPTIONS')
+  response.setHeader('access-control-allow-methods', 'GET,POST,PATCH,OPTIONS')
   response.setHeader('access-control-allow-origin', config.clientOrigin)
 }

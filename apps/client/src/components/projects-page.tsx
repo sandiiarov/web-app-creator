@@ -9,6 +9,8 @@ import {
   type ProjectMeta,
   createProject,
   deleteProject,
+  expandProjectImageUrls,
+  getProject,
   listProjects,
 } from '../lib/projects-api'
 
@@ -187,34 +189,44 @@ function ProjectCard({
   onOpen: (id: string) => void
   project: ProjectMeta
 }) {
+  const title = project.title || 'Untitled'
+
   return (
     <li className="group relative">
-      <button
+      <article
         className={cn(
-          'flex w-full flex-col items-start gap-3 border border-border bg-card p-4 text-left',
-          'transition-colors hover:border-foreground/30 hover:bg-muted/50',
-          'focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:outline-none',
+          'relative overflow-hidden border border-border bg-card',
+          'transition-colors group-hover:border-foreground/30 group-hover:bg-muted/50',
         )}
-        onClick={() => onOpen(project.id)}
-        type="button"
       >
-        <span className="flex size-9 items-center justify-center border border-border bg-background text-muted-foreground">
-          <FileCode2 className="size-4" />
-        </span>
-        <span className="min-w-0 flex-1">
-          <span className="block truncate text-sm font-medium text-foreground">
-            {project.title || 'Untitled'}
+        <ProjectCardPreview project={project} />
+        <div className="flex items-end gap-3 p-4">
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-sm font-medium text-foreground">
+              {title}
+            </span>
+            <span className="mt-0.5 block text-xs text-muted-foreground">
+              Updated {formatRelative(project.updatedAt)}
+            </span>
           </span>
-          <span className="mt-0.5 block text-xs text-muted-foreground">
-            Updated {formatRelative(project.updatedAt)}
-          </span>
-        </span>
-        <ArrowRight className="size-4 text-muted-foreground transition-colors group-hover:text-foreground" />
-      </button>
+          <ArrowRight className="size-4 text-muted-foreground transition-colors group-hover:text-foreground" />
+        </div>
+        <button
+          aria-label={`Open ${title}`}
+          className={cn(
+            'absolute inset-0 z-10',
+            'focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:outline-none',
+          )}
+          onClick={() => onOpen(project.id)}
+          type="button"
+        >
+          <span className="sr-only">Open {title}</span>
+        </button>
+      </article>
       <button
-        aria-label={`Delete ${project.title || 'project'}`}
+        aria-label={`Delete ${title}`}
         className={cn(
-          'absolute top-2 right-2 inline-flex size-7 items-center justify-center',
+          'absolute top-2 right-2 z-20 inline-flex size-7 items-center justify-center',
           'border border-border bg-background text-muted-foreground',
           'opacity-0 transition-opacity hover:bg-destructive/10 hover:text-destructive',
           'group-hover:opacity-100 focus-visible:opacity-100',
@@ -229,5 +241,53 @@ function ProjectCard({
         <Trash2 className="size-3.5" />
       </button>
     </li>
+  )
+}
+
+function ProjectCardPreview({ project }: { project: ProjectMeta }) {
+  const [failed, setFailed] = useState(false)
+  const [previewHtml, setPreviewHtml] = useState<null | string>(null)
+  const title = project.title || 'Untitled'
+
+  useEffect(() => {
+    let cancelled = false
+
+    setFailed(false)
+    setPreviewHtml(null)
+    void getProject(project.id)
+      .then((fullProject) => {
+        if (!cancelled) {
+          setPreviewHtml(expandProjectImageUrls(fullProject.indexHtml))
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setFailed(true)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [project.id, project.updatedAt])
+
+  return (
+    <div className="relative h-40 overflow-hidden border-b border-border bg-background">
+      {previewHtml ? (
+        <iframe
+          className="pointer-events-none size-[334%] origin-top-left scale-[0.3] border-0 bg-background"
+          loading="lazy"
+          sandbox=""
+          srcDoc={previewHtml}
+          tabIndex={-1}
+          title={`Preview of ${title}`}
+        />
+      ) : (
+        <div className="flex h-full flex-col items-center justify-center gap-2 text-muted-foreground">
+          <FileCode2 className="size-5" />
+          <span className="text-xs">
+            {failed ? 'Preview unavailable' : 'Loading preview…'}
+          </span>
+        </div>
+      )}
+    </div>
   )
 }
