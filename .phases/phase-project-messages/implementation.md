@@ -1,6 +1,6 @@
 # Implementation — project-messages
 
-Status: In Progress
+Status: Complete
 Prerequisite: plan.md `Status: Complete`
 
 > **Purpose:** execute the plan one slice at a time. Small increments, commit each todo, run checks after each sub-phase.
@@ -67,10 +67,13 @@ Record each run-local turn in `apps/server/src/mastra/route.ts`, append it to pr
 Extend client project types and `useLandingPage` loading so persisted turns render in the prompt panel when a project is reopened; update client DOX.
 
 ### Todo
-- [ ] Load persisted project messages into the prompt panel.
+- [x] Load persisted project messages into the prompt panel.
 
 ### Results
-_(fill at end of the sub-phase — what was implemented, commands run, checks passed)_
+- `apps/client/src/lib/projects-api.ts` now types full projects with `messages: LandingTurn[]`.
+- `apps/client/src/hooks/use-landing-page.ts` restores `project.messages` on editor load, forces restored turns to `isStreaming: false`, and terminalizes any persisted running/start tool states defensively.
+- Updated `apps/client/AGENTS.md` to document server-owned message history and no client-side message save path.
+- Checks passed: `pnpm --filter @workspace/client typecheck`; `pnpm --filter @workspace/client exec oxlint src/lib/projects-api.ts src/hooks/use-landing-page.ts`; `pnpm --filter @workspace/server typecheck`; `pnpm --filter @workspace/client build`.
 
 ### Gotchas
-_(fill at end of the sub-phase, if any)_
+- Client build still prints existing almostnode/Vite externalization and direct-eval warnings, but exits successfully.

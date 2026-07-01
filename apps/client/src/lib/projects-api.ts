@@ -1,7 +1,8 @@
-import { SERVER_URL } from './landing-agent'
+import { SERVER_URL, type LandingTurn } from './landing-agent'
 
 export interface Project extends ProjectMeta {
   indexHtml: string
+  messages: LandingTurn[]
 }
 
 export interface ProjectInput {

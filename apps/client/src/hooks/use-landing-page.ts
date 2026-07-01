@@ -56,6 +56,7 @@ export function useLandingPage({
       .then((project) => {
         if (cancelled) return
         setHtml(expandProjectImageUrls(project.indexHtml))
+        setTurns(restoreProjectTurns(project.messages))
         if (project.model) setModel(project.model)
       })
       .catch((err: unknown) => {
@@ -297,6 +298,20 @@ export function useLandingPage({
     stop,
     turns,
   }
+}
+
+function restoreProjectTurns(turns: LandingTurn[]): LandingTurn[] {
+  return turns.map((turn) => {
+    const restored = terminalizeActiveTools({
+      ...turn,
+      parts: turn.parts ?? [],
+    })
+    return {
+      ...restored,
+      htmlSwaps: turn.htmlSwaps ?? 0,
+      isStreaming: false,
+    }
+  })
 }
 
 function terminalizeActiveTools(
