@@ -20,7 +20,7 @@
 - Every user-visible tool call must include an `intent`; the client renders it in the conversation UI.
 - `tools/landing-tools.ts` is the source of truth for enabled tools, tool count/list, and tool guidance.
 - Additions or removals of tools must update SSE mapping, cost accounting, client event types, and this DOX when behavior changes.
-- `edit` must match Pi-style edit behavior: accept `edits: [{ oldText, newText }]` batches (with legacy single-edit fallback), match every `oldText` against the original file, require unique non-overlapping matches, preserve BOM/line endings, and write through to the project store on success.
+- `read` and `grep` must expose raw unnumbered text (`rawText`/`rawMatches`) for edit inputs; numbered output is navigation-only. `edit` must match Pi-style edit behavior: accept `edits: [{ oldText, newText }]` batches (with legacy single-edit fallback), match every `oldText` against the original file, tolerate snippets copied with `read`/`grep` line-number prefixes, require unique non-overlapping matches, preserve BOM/line endings, and write through to the project store on success.
 - `basetenModel()` uses Mastra `OpenAICompatibleConfig` with ids shaped as `baseten/${modelId}`; do not switch providers or routers without re-verifying Mastra docs.
 - `design-skill.ts` may read Pi design skill references from disk, but missing references must not break server boot.
 - The image store is process-memory during a live `generate_image` call; `createProjectHtmlStore`'s sync `set` copies those bytes into `.data/projects/<id>/images/` and rewrites their URLs to `/api/projects/:id/images/<file>` as the agent edits the file. The in-memory store is the source only during a run; the project file is the source of truth.

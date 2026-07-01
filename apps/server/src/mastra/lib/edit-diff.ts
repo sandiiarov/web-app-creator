@@ -76,7 +76,9 @@ export function applyEditsToNormalizedContent(
 ): AppliedEditsResult {
   const normalizedEdits = edits.map((edit) => ({
     newText: normalizeToLF(edit.newText),
-    oldText: normalizeToLF(edit.oldText),
+    oldText: normalizeToLF(
+      stripCopiedLinePrefixes(edit.oldText) ?? edit.oldText,
+    ),
   }))
 
   for (let i = 0; i < normalizedEdits.length; i++) {
@@ -393,4 +395,26 @@ function getReplacementLineRange(
 
 function splitLinesWithEndings(content: string): string[] {
   return content.match(/[^\n]*\n|[^\n]+/g) ?? []
+}
+
+function stripCopiedLinePrefixes(text: string): null | string {
+  const normalized = normalizeToLF(text)
+  const lines = normalized.split('\n')
+  let stripped = 0
+  const cleaned = lines.map((line) => {
+    if (line.trim().length === 0) return line
+    const readMatch = /^\s*\d+\s{2}(.*)$/.exec(line)
+    if (readMatch) {
+      stripped += 1
+      return readMatch[1]!
+    }
+    const grepMatch = /^\s*\d+[:-]\s(.*)$/.exec(line)
+    if (grepMatch) {
+      stripped += 1
+      return grepMatch[1]!
+    }
+    return line
+  })
+  const nonEmpty = lines.filter((line) => line.trim().length > 0).length
+  return nonEmpty > 0 && stripped === nonEmpty ? cleaned.join('\n') : null
 }

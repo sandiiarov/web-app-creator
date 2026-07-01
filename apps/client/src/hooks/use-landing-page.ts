@@ -139,7 +139,6 @@ export function useLandingPage({
                   ...terminalizeActiveTools(turn, message),
                   error: message,
                 }))
-                onError(message)
                 break
               }
               case 'stats': {
@@ -262,7 +261,6 @@ export function useLandingPage({
               ...terminalizeActiveTools(turn, message),
               error: message,
             }))
-            onError(message)
           }
         })
         .finally(() => {
@@ -274,15 +272,7 @@ export function useLandingPage({
           controllerRef.current = null
         })
     },
-    [
-      appendPart,
-      isStreaming,
-      model,
-      onError,
-      patchTurn,
-      projectId,
-      refreshHtml,
-    ],
+    [appendPart, isStreaming, model, patchTurn, projectId, refreshHtml],
   )
 
   const stop = useCallback(() => {

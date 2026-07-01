@@ -34,6 +34,32 @@ describe('applyEdits', () => {
     ).toBe('\uFEFF<div>gamma</div>\r\n<div>beta</div>\r\n')
   })
 
+  it('accepts oldText copied from numbered read output', () => {
+    const html = '<main>\n  <h1>Hello</h1>\n  <p>World</p>\n</main>'
+
+    expect(
+      applyEdits(html, [
+        {
+          newText: '  <h1>Hi</h1>\n  <p>World</p>',
+          oldText: '2    <h1>Hello</h1>\n3    <p>World</p>',
+        },
+      ]),
+    ).toBe('<main>\n  <h1>Hi</h1>\n  <p>World</p>\n</main>')
+  })
+
+  it('accepts oldText copied from grep context output', () => {
+    const html = '<main>\n  <h1>Hello</h1>\n  <p>World</p>\n</main>'
+
+    expect(
+      applyEdits(html, [
+        {
+          newText: '  <h1>Hi</h1>\n  <p>World</p>',
+          oldText: '2:   <h1>Hello</h1>\n3-   <p>World</p>',
+        },
+      ]),
+    ).toBe('<main>\n  <h1>Hi</h1>\n  <p>World</p>\n</main>')
+  })
+
   it('fails when oldText is not unique', () => {
     expect(() =>
       applyEdits('<p>x</p>\n<p>x</p>', [

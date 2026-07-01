@@ -30,7 +30,7 @@
 
 - Follow shadcn/Tailwind rules: semantic tokens, `cn()` for conditional classes, `gap-*` over `space-*`, `size-*` for square dimensions, and existing UI components before custom markup.
 - Keep streaming state changes in hooks and keep prompt UI components mostly presentational.
-- Update the client event model and server SSE mapping together. Failed tool calls and failed turns must render with destructive/red styling and any still-running tool rows must be terminalized when a run errors, completes, or is stopped.
+- Update the client event model and server SSE mapping together. Failed tool calls and failed turns must render with destructive/red styling and any still-running tool rows must be terminalized when a run errors, completes, or is stopped. Agent-run errors stay inside the turn; reserve the global error banner for app/preview/load failures.
 
 ## Verification
 

@@ -46,12 +46,12 @@ const LANDING_TOOL_DEFINITIONS = [
   ),
   tool(
     'read',
-    'Use `read` to inspect the current `/index.html` before making exact edits.',
+    'Use `read` to inspect the current `/index.html` before making exact edits. Copy `rawText` into `edit.edits[].oldText`; `numberedText` is only for navigation.',
     ({ store }) => createReadTool(store),
   ),
   tool(
     'grep',
-    'Use `grep` to locate exact text or CSS before editing.',
+    'Use `grep` to locate exact text or CSS before editing. Use `rawMatches` or follow up with `read`; do not copy line-numbered output into edits.',
     ({ store }) => createGrepTool(store),
   ),
   tool(

@@ -11,7 +11,7 @@ import type { HtmlStore } from '../lib/html-store.ts'
 export function createReadTool(store: HtmlStore) {
   return createTool({
     description:
-      'Read the current /index.html. Returns numbered lines (1-indexed). Use offset/limit to page through a long file. Always pass an intent describing why you are reading.',
+      'Read the current /index.html. Returns rawText (copy this into edit.oldText/edits[].oldText) plus numberedText for navigation. Use offset/limit to page through a long file. Always pass an intent describing why you are reading.',
     execute: async ({ limit, offset }) => {
       const lines = store
         .get()
@@ -25,9 +25,12 @@ export function createReadTool(store: HtmlStore) {
       const text = slice
         .map((line, i) => `${String(start + i).padStart(width, ' ')}  ${line}`)
         .join('\n')
+      const rawText = slice.join('\n')
       return {
         lines: end - start + 1,
-        text: `${text}\n\n(showing lines ${start}-${end} of ${lines.length})`,
+        numberedText: `${text}\n\n(showing lines ${start}-${end} of ${lines.length})`,
+        rawText,
+        text: `Use rawText for edit.oldText; numberedText is only for navigation.\n\nrawText:\n${rawText}\n\nnumberedText:\n${text}\n\n(showing lines ${start}-${end} of ${lines.length})`,
         totalLines: lines.length,
       }
     },
@@ -35,12 +38,26 @@ export function createReadTool(store: HtmlStore) {
     inputSchema: z.object({
       intent: z
         .string()
-        .describe('Short reason for reading (shown to the user), e.g. "review current hero markup"'),
-      limit: z.number().int().positive().optional().describe('Max lines to return (default 2000)'),
-      offset: z.number().int().positive().optional().describe('First line number to return, 1-indexed (default 1)'),
+        .describe(
+          'Short reason for reading (shown to the user), e.g. "review current hero markup"',
+        ),
+      limit: z
+        .number()
+        .int()
+        .positive()
+        .optional()
+        .describe('Max lines to return (default 2000)'),
+      offset: z
+        .number()
+        .int()
+        .positive()
+        .optional()
+        .describe('First line number to return, 1-indexed (default 1)'),
     }),
     outputSchema: z.object({
       lines: z.number(),
+      numberedText: z.string(),
+      rawText: z.string(),
       text: z.string(),
       totalLines: z.number(),
     }),
