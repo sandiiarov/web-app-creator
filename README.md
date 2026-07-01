@@ -1,6 +1,6 @@
 # web-app-creator
 
-Vite + React client and Node.js server monorepo scaffolded with pnpm, Turborepo, shadcn/ui, almostnode, Vercel AI SDK, tsgo, Oxlint, Oxfmt, and Fallow.
+Vite + React client and Node.js server monorepo scaffolded with pnpm, Turborepo, shadcn/ui, Vercel AI SDK, tsgo, Oxlint, Oxfmt, and Fallow.
 
 ## Requirements
 
@@ -23,13 +23,9 @@ Root files are only workspace/orchestration files. TS, Vite, Oxlint, and Oxfmt c
 
 ## Client preview
 
-`apps/client` renders a full-screen iframe. The iframe points to an in-browser Vite dev server created with almostnode `VirtualFS`, `ViteDevServer`, and `ServerBridge`.
+`apps/client` renders generated landing-page HTML in a full-screen sandboxed `srcDoc` iframe. The server owns each project's `index.html`; the client pulls it through `/api/projects/:id`, expands project image URLs to absolute server URLs, and passes the HTML directly into the iframe. After each successful agent `edit` tool call, the client refetches the project HTML and replaces the iframe document.
 
-The preview app includes a bippy-powered inspector. Press `Command+G` or click **Select element**, choose an element in the iframe, then describe a change in the prompt box. The client sends selected fiber/source context plus the current preview files to the server. The server streams status events while it creates or reuses a Docker Sandbox, runs a Vercel AI SDK `ToolLoopAgent` inside that sandbox, and returns changed files. The browser applies the final result to the live `VirtualFS` so the iframe updates through HMR. You can also submit a prompt without selecting an element.
-
-The sandbox agent ships a `/design`-style taste layer: a vendored design skill (`apps/server/sandbox/skills/design`) the agent reads on demand (`list_skills`, `read_skill`), a Design Philosophy baked into its system prompt, and a model-graded design review that runs after the correctness harness passes. High-severity "AI design slop" tells feed the same fix loop as lint/typecheck failures, so generated UI is checked for both correctness and taste.
-
-The almostnode service worker is served from `apps/client/public/__sw__.js`, so the shared/client Vite plugin configuration stays unchanged.
+Project cards on `/` use the same saved HTML source to render small sandboxed iframe thumbnails. The prompt panel and message history are browser UI only; project HTML and persisted messages live in the server's file-backed project store.
 
 ## Commands
 

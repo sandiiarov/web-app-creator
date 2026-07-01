@@ -1,6 +1,6 @@
 # Implementation — remove-almostnode
 
-Status: In Progress
+Status: Complete
 Prerequisite: plan.md `Status: Complete`
 
 > **Purpose:** execute the plan one slice at a time. Small increments, commit each todo, run checks after each sub-phase.
@@ -69,10 +69,12 @@ Remove almostnode package/public/config/source-comment traces now that no source
 Update active DOX and README so current contracts describe direct iframe preview, not almostnode.
 
 ### Todo
-- [ ] Update active docs for direct iframe preview.
+- [x] Update active docs for direct iframe preview.
 
 ### Results
-_(fill at end of the sub-phase — what was implemented, commands run, checks passed)_
+- Updated root `AGENTS.md`, `apps/AGENTS.md`, `apps/client/AGENTS.md`, and `README.md` to describe direct sandboxed `srcDoc` iframe previews instead of almostnode `VirtualFS`/`ViteDevServer` runtime.
+- Confirmed no current-behavior almostnode/VirtualFS/ViteDevServer/service-worker references remain in those active docs.
+- Checks passed: `pnpm --filter @workspace/client typecheck`; focused `pnpm --filter @workspace/client exec oxlint src/components/landing-preview.tsx src/lib/projects-api.ts`; `pnpm --filter @workspace/client build`.
 
 ### Gotchas
-_(fill at end of the sub-phase, if any)_
+- Historical plans and prior phase records still contain almostnode references as historical context; active DOX/README no longer do.

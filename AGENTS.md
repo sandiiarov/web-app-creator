@@ -100,7 +100,7 @@ When the user requests a durable behavior change, record it here or in the relev
 - `.firecrawl/AGENTS.md` — scraped external research snapshots and source evidence.
 - `.scratch/AGENTS.md` — disposable experiments and reference scaffolds.
 - `apps/AGENTS.md` — runnable app workspaces.
-  - `apps/client/AGENTS.md` — Vite/React browser UI, custom SSE client, and almostnode preview.
+  - `apps/client/AGENTS.md` — Vite/React browser UI, custom SSE client, and direct iframe preview.
   - `apps/server/AGENTS.md` — Node API, env contract, generated Mastra output boundary.
     - `apps/server/src/mastra/AGENTS.md` — Mastra landing-page agent, tools, skills, model/cost/SSE logic.
 - `packages/AGENTS.md` — shared internal workspace packages and config packages.

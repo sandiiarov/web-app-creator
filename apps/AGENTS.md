@@ -6,7 +6,7 @@
 
 ## Ownership
 
-- `client/`: Vite + React browser UI and almostnode preview runtime.
+- `client/`: Vite + React browser UI and direct iframe preview runtime.
 - `server/`: Node HTTP server and Mastra landing-page agent API.
 
 ## Local Contracts
@@ -28,5 +28,5 @@
 
 ## Child DOX Index
 
-- `client/AGENTS.md` — browser UI, prompt panel, custom SSE client, and almostnode preview.
+- `client/AGENTS.md` — browser UI, prompt panel, custom SSE client, and direct iframe preview.
 - `server/AGENTS.md` — Node API, environment contract, and Mastra server integration.
