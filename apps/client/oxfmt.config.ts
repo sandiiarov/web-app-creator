@@ -7,6 +7,5 @@ const tailwindStylesheet = fileURLToPath(
 )
 
 export default createOxfmtConfig({
-  ignorePatterns: ['public/__sw__.js'],
   tailwindStylesheet,
 })

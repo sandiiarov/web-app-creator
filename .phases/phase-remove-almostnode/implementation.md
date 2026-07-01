@@ -51,13 +51,17 @@ Replace almostnode-backed editor preview with direct `srcDoc` iframe rendering a
 Remove almostnode package/public/config/source-comment traces now that no source imports the runtime.
 
 ### Todo
-- [ ] Remove almostnode dependency, lockfile, service worker, config ignores, and source comments.
+- [x] Remove almostnode dependency, lockfile, service worker, config ignores, and source comments.
 
 ### Results
-_(fill at end of the sub-phase — what was implemented, commands run, checks passed)_
+- Removed `almostnode` from `apps/client/package.json`, removed the unused catalog entry from `pnpm-workspace.yaml`, and regenerated `pnpm-lock.yaml` with `pnpm install --lockfile-only`.
+- Deleted `apps/client/public/__sw__.js` and removed `public/__sw__.js` ignore entries from `apps/client/oxlint.config.ts` and `apps/client/oxfmt.config.ts`.
+- Updated `apps/client/src/lib/projects-api.ts` image-url comment to describe sandboxed `srcDoc` preview iframes.
+- Confirmed no `almostnode` matches remain in `apps/client/src`, `apps/client/package.json`, `pnpm-workspace.yaml`, `pnpm-lock.yaml`, or client oxlint/oxfmt configs.
+- Checks passed: `pnpm --filter @workspace/client typecheck`; focused `pnpm --filter @workspace/client exec oxlint package.json oxlint.config.ts oxfmt.config.ts src/lib/projects-api.ts src/components/landing-preview.tsx`; `pnpm --filter @workspace/client build`.
 
 ### Gotchas
-_(fill at end of the sub-phase, if any)_
+- Running filtered client commands after lockfile cleanup updated ignored `node_modules` contents (`Packages: +10 -93`), but only manifest/lock/source/config files are tracked.
 
 ## Phase 3: Active documentation cleanup
 

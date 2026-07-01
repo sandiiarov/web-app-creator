@@ -50,10 +50,10 @@ export async function deleteProject(id: string): Promise<void> {
 }
 
 /**
- * Expand root-relative project image URLs to absolute so they load inside the
- * preview iframe, which runs on a virtual almostnode origin (not this server).
- * Stored HTML uses `/api/projects/:id/images/<file>`; the preview needs the
- * full `${SERVER_URL}/api/projects/:id/images/<file>`.
+ * Expand root-relative project image URLs to absolute so they load inside
+ * sandboxed `srcDoc` preview iframes. Stored HTML uses
+ * `/api/projects/:id/images/<file>`; iframe documents need the full
+ * `${SERVER_URL}/api/projects/:id/images/<file>`.
  */
 export function expandProjectImageUrls(html: string): string {
   const pattern = /\/api\/projects\/[a-f0-9-]+\/images\/[^"')\]]+/gi

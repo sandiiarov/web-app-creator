@@ -7,6 +7,5 @@ const tailwindEntryPoint = fileURLToPath(
 )
 
 export default createReactConfig({
-  ignorePatterns: ['public/__sw__.js'],
   tailwindEntryPoint,
 })
