@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 
 import { config } from '../config.ts'
@@ -10,9 +11,13 @@ import {
   visionCost,
 } from './lib/cost.ts'
 import {
+  appendProjectMessageTurn,
   createProjectHtmlStore,
   getProject,
   setTitleIfUntitled,
+  type ProjectMessageStatsPart,
+  type ProjectMessageToolCallPart,
+  type ProjectMessageTurn,
 } from './lib/project-store.ts'
 import { sendSse, startSse } from './lib/sse.ts'
 
@@ -22,6 +27,9 @@ const READ_BEFORE_RETRY_MESSAGE =
   'Edit failed because oldText did not match the current project HTML. Read or grep /index.html before retrying; do not guess whitespace.'
 const REPEATED_EDIT_FAILURE_MESSAGE =
   'Edit failed twice in this turn. Stopping so the agent does not keep making blind edit attempts. Read/grep the current /index.html and try again.'
+
+type RecordedStatsPayload = Omit<ProjectMessageStatsPart, 'type'>
+type RecordedToolPayload = Omit<ProjectMessageToolCallPart, 'type'>
 
 interface StreamOptions {
   modelId: string
@@ -71,6 +79,7 @@ export async function streamLandingAgent({
 
   setTitleIfUntitled(projectId, prompt)
 
+  const recordedTurn = createRecordedTurn(prompt, modelId)
   const startedAt = Date.now()
   const store = createProjectHtmlStore(projectId)
   const baseUrl = `http://${request.headers.host ?? `localhost:${config.port}`}`
@@ -120,14 +129,17 @@ export async function streamLandingAgent({
             chunk.payload.error instanceof Error
               ? chunk.payload.error.message
               : String(chunk.payload.error)
+          recordTurnError(recordedTurn, message)
           sendSse(response, 'error', { message })
           break
         }
         case 'reasoning-delta': {
+          recordTextDelta(recordedTurn, 'thinking', chunk.payload.text)
           sendSse(response, 'thinking', { delta: chunk.payload.text })
           break
         }
         case 'text-delta': {
+          recordTextDelta(recordedTurn, 'text', chunk.payload.text)
           sendSse(response, 'text', { delta: chunk.payload.text })
           break
         }
@@ -144,7 +156,7 @@ export async function streamLandingAgent({
           callIntent.set(chunk.payload.toolCallId, display.intent)
 
           if (chunk.payload.toolName === 'edit' && editRequiresInspection) {
-            sendSse(response, 'tool_call', {
+            const toolPayload: RecordedToolPayload = {
               detail: display.detail,
               id: display.id,
               intent: display.intent,
@@ -152,22 +164,27 @@ export async function streamLandingAgent({
               result: READ_BEFORE_RETRY_MESSAGE,
               state: 'error',
               tool: chunk.payload.toolName,
-            })
+            }
+            recordToolCall(recordedTurn, toolPayload)
             completedCallIds.add(chunk.payload.toolCallId)
             fatalRunError = READ_BEFORE_RETRY_MESSAGE
+            recordTurnError(recordedTurn, fatalRunError)
+            sendSse(response, 'tool_call', toolPayload)
             sendSse(response, 'error', { message: fatalRunError })
             controller.abort()
             break streamLoop
           }
 
-          sendSse(response, 'tool_call', {
+          const toolPayload: RecordedToolPayload = {
             detail: display.detail,
             id: display.id,
             intent: display.intent,
             providerId: chunk.payload.toolCallId,
             state: 'running',
             tool: chunk.payload.toolName,
-          })
+          }
+          recordToolCall(recordedTurn, toolPayload)
+          sendSse(response, 'tool_call', toolPayload)
           break
         }
         case 'tool-call-input-streaming-start': {
@@ -180,7 +197,7 @@ export async function streamLandingAgent({
           )
 
           if (chunk.payload.toolName === 'edit' && editRequiresInspection) {
-            sendSse(response, 'tool_call', {
+            const toolPayload: RecordedToolPayload = {
               detail: display.detail,
               id: display.id,
               intent: display.intent,
@@ -188,22 +205,27 @@ export async function streamLandingAgent({
               result: READ_BEFORE_RETRY_MESSAGE,
               state: 'error',
               tool: chunk.payload.toolName,
-            })
+            }
+            recordToolCall(recordedTurn, toolPayload)
             completedCallIds.add(chunk.payload.toolCallId)
             fatalRunError = READ_BEFORE_RETRY_MESSAGE
+            recordTurnError(recordedTurn, fatalRunError)
+            sendSse(response, 'tool_call', toolPayload)
             sendSse(response, 'error', { message: fatalRunError })
             controller.abort()
             break streamLoop
           }
 
-          sendSse(response, 'tool_call', {
+          const toolPayload: RecordedToolPayload = {
             detail: display.detail,
             id: display.id,
             intent: display.intent,
             providerId: chunk.payload.toolCallId,
             state: 'start',
             tool: chunk.payload.toolName,
-          })
+          }
+          recordToolCall(recordedTurn, toolPayload)
+          sendSse(response, 'tool_call', toolPayload)
           break
         }
         case 'tool-error': {
@@ -217,7 +239,7 @@ export async function streamLandingAgent({
           )
           const intent =
             callIntent.get(chunk.payload.toolCallId) ?? display.intent
-          sendSse(response, 'tool_call', {
+          const toolPayload: RecordedToolPayload = {
             detail: display.detail,
             id: display.id,
             intent,
@@ -225,13 +247,16 @@ export async function streamLandingAgent({
             result: summarizeToolError(chunk.payload.error),
             state: 'error',
             tool: chunk.payload.toolName,
-          })
+          }
+          recordToolCall(recordedTurn, toolPayload)
+          sendSse(response, 'tool_call', toolPayload)
           completedCallIds.add(chunk.payload.toolCallId)
           if (chunk.payload.toolName === 'edit') {
             editFailures += 1
             editRequiresInspection = true
             if (editFailures >= MAX_EDIT_FAILURES) {
               fatalRunError = REPEATED_EDIT_FAILURE_MESSAGE
+              recordTurnError(recordedTurn, fatalRunError)
               sendSse(response, 'error', { message: fatalRunError })
               controller.abort()
               break streamLoop
@@ -256,7 +281,7 @@ export async function streamLandingAgent({
             chunk.payload.result,
             isError,
           )
-          sendSse(response, 'tool_call', {
+          const toolPayload: RecordedToolPayload = {
             detail: display.detail,
             id: display.id,
             intent,
@@ -264,7 +289,9 @@ export async function streamLandingAgent({
             result,
             state: isError ? 'error' : 'done',
             tool: chunk.payload.toolName,
-          })
+          }
+          recordToolCall(recordedTurn, toolPayload)
+          sendSse(response, 'tool_call', toolPayload)
           completedCallIds.add(chunk.payload.toolCallId)
           if (
             (chunk.payload.toolName === 'read' ||
@@ -279,12 +306,14 @@ export async function streamLandingAgent({
               editRequiresInspection = true
               if (editFailures >= MAX_EDIT_FAILURES) {
                 fatalRunError = REPEATED_EDIT_FAILURE_MESSAGE
+                recordTurnError(recordedTurn, fatalRunError)
                 sendSse(response, 'error', { message: fatalRunError })
                 controller.abort()
                 break streamLoop
               }
             } else {
               editRequiresInspection = false
+              recordedTurn.htmlSwaps += 1
             }
           }
           // The agent's `edit` tool writes the project file directly (the file
@@ -358,7 +387,7 @@ export async function streamLandingAgent({
       const scrapeCostUsd = firecrawlCostUsd + scrapeOcrCostUsd
       const totalCost = llmCost + scrapeCostUsd + imageCostUsd
 
-      sendSse(response, 'stats', {
+      const statsPayload: RecordedStatsPayload = {
         cost: totalCost,
         costBreakdown: {
           image: {
@@ -387,21 +416,35 @@ export async function streamLandingAgent({
           reasoningTokens: usage.reasoningTokens,
           totalTokens: usage.totalTokens,
         },
-      })
+      }
+      recordStats(recordedTurn, statsPayload)
+      sendSse(response, 'stats', statsPayload)
     }
   } catch (error) {
     const aborted = controller.signal.aborted
     if (!fatalRunError) {
-      sendSse(response, 'error', {
-        message: aborted
-          ? 'stopped'
-          : error instanceof Error
-            ? error.message
-            : 'Unknown error',
-      })
+      const message = aborted
+        ? 'stopped'
+        : error instanceof Error
+          ? error.message
+          : 'Unknown error'
+      if (aborted) {
+        terminalizeRecordedTools(recordedTurn, 'Stopped.')
+      } else {
+        recordTurnError(recordedTurn, message)
+      }
+      sendSse(response, 'error', { message })
     }
   } finally {
     request.off('close', onClose)
+    try {
+      await appendProjectMessageTurn(
+        projectId,
+        finalizeRecordedTurn(recordedTurn),
+      )
+    } catch (error) {
+      console.error('Failed to persist project message history', error)
+    }
     sendSse(response, 'done', {})
     response.end()
   }
@@ -421,6 +464,21 @@ function compactLines(lines: Array<null | string | undefined>): null | string {
     .map((line) => line?.trim())
     .filter((line): line is string => !!line)
   return compacted.length > 0 ? compacted.join('\n') : null
+}
+
+function createRecordedTurn(prompt: string, model: string): ProjectMessageTurn {
+  return {
+    htmlSwaps: 0,
+    id: `turn-${randomUUID()}`,
+    isStreaming: true,
+    model,
+    parts: [],
+    prompt,
+  }
+}
+
+function finalizeRecordedTurn(turn: ProjectMessageTurn): ProjectMessageTurn {
+  return terminalizeRecordedTools({ ...turn, isStreaming: false })
 }
 
 function getToolCallDisplay(
@@ -445,6 +503,65 @@ function getToolCallDisplay(
 
 function numberValue(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) ? value : undefined
+}
+
+function recordStats(turn: ProjectMessageTurn, stats: RecordedStatsPayload) {
+  turn.parts.push({ ...stats, type: 'stats' })
+}
+
+function recordTextDelta(
+  turn: ProjectMessageTurn,
+  type: 'text' | 'thinking',
+  delta: string,
+) {
+  if (!delta) return
+
+  const last = turn.parts[turn.parts.length - 1]
+  if (last?.type === type) {
+    last.text += delta
+    return
+  }
+
+  turn.parts.push({
+    id: `${turn.id}-${type}-${turn.parts.length + 1}`,
+    text: delta,
+    type,
+  })
+}
+
+function recordToolCall(
+  turn: ProjectMessageTurn,
+  payload: RecordedToolPayload,
+) {
+  const next: ProjectMessageToolCallPart = {
+    id: payload.id,
+    intent: payload.intent,
+    state: payload.state,
+    tool: payload.tool,
+    type: 'tool_call',
+  }
+  if (payload.detail !== undefined) next.detail = payload.detail
+  if (payload.providerId !== undefined) next.providerId = payload.providerId
+  if (payload.result !== undefined) next.result = payload.result
+
+  const existing = turn.parts.findIndex(
+    (part) => part.type === 'tool_call' && part.id === payload.id,
+  )
+
+  if (existing === -1) {
+    turn.parts.push(next)
+    return
+  }
+
+  turn.parts[existing] = {
+    ...(turn.parts[existing] as ProjectMessageToolCallPart),
+    ...next,
+  }
+}
+
+function recordTurnError(turn: ProjectMessageTurn, message: string) {
+  if (message === 'stopped') return
+  turn.error = message
 }
 
 function startToolCallDisplay(
@@ -639,5 +756,27 @@ function summarizeToolResult(
       return 'Search complete'
     default:
       return null
+  }
+}
+
+function terminalizeRecordedTools(
+  turn: ProjectMessageTurn,
+  result = 'Tool did not return a result before the response completed.',
+): ProjectMessageTurn {
+  return {
+    ...turn,
+    parts: turn.parts.map((part) => {
+      if (
+        part.type !== 'tool_call' ||
+        (part.state !== 'running' && part.state !== 'start')
+      ) {
+        return part
+      }
+      return {
+        ...part,
+        result: part.result ?? result,
+        state: 'error',
+      }
+    }),
   }
 }

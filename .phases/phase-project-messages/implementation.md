@@ -51,13 +51,15 @@ Implement `messages.json` persistence in `apps/server/src/mastra/lib/project-sto
 Record each run-local turn in `apps/server/src/mastra/route.ts`, append it to project messages in `finally`, and update Mastra DOX for the new server-side history contract.
 
 ### Todo
-- [ ] Save streamed agent turns to project message history.
+- [x] Save streamed agent turns to project message history.
 
 ### Results
-_(fill at end of the sub-phase — what was implemented, commands run, checks passed)_
+- `apps/server/src/mastra/route.ts` now creates a run-local `ProjectMessageTurn`, records streamed thinking/text/tool/stats/error payloads, increments `htmlSwaps` for successful edits, terminalizes unfinished tools, and appends the finalized non-streaming turn with `appendProjectMessageTurn` in `finally`.
+- Updated `apps/server/AGENTS.md` and `apps/server/src/mastra/AGENTS.md` to document `messages.json` and server-owned conversation history.
+- Checks passed: `pnpm --filter @workspace/server typecheck`; `pnpm --filter @workspace/server exec vitest run --config vitest.config.ts src/mastra/lib/project-store.test.ts src/mastra/lib/edit-diff.test.ts`; `pnpm --filter @workspace/server exec oxlint src/mastra/route.ts src/mastra/lib/project-store.ts src/mastra/lib/project-store.test.ts`.
 
 ### Gotchas
-_(fill at end of the sub-phase, if any)_
+- Persisting history failure is logged server-side and does not replace the existing SSE response, so a message-write failure should not hide the agent result from the active stream.
 
 ## Phase 3: Restore project messages in the client editor
 

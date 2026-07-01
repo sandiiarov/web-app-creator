@@ -12,7 +12,7 @@
 - `src/http-body.ts`: request body reading helper.
 - `src/mastra/`: Mastra agent, tools, skills, model wiring, SSE mapping, cost accounting, and file-backed project storage.
 - `mastra-smoke.ts`: local Mastra storage/observability boot smoke script.
-- `.data/`: local-only persisted projects (gitignored); one folder per project with `project.json`, `index.html`, and `images/`.
+- `.data/`: local-only persisted projects (gitignored); one folder per project with `project.json`, `index.html`, `messages.json`, and `images/`.
 - `.mastra/`: generated Mastra CLI build/studio output; do not hand-edit.
 
 ## Local Contracts
@@ -21,7 +21,7 @@
 - Project REST API (file-backed via `src/mastra/lib/project-store.ts` under `.data/projects/<id>/`):
   - `GET /api/projects` → list metadata, drafts (no HTML) hidden.
   - `POST /api/projects { title?, model? }` → create draft (seeded with the placeholder page).
-  - `GET /api/projects/:id` → full project (metadata + `indexHtml`).
+  - `GET /api/projects/:id` → full project (metadata + `indexHtml` + persisted `messages`).
   - `DELETE /api/projects/:id` → remove project + images.
   - `GET /api/projects/:id/images/:file` → serve a persisted project image.
 - `GET /images/:id` serves process-memory images created by the image generation tool.
