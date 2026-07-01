@@ -42,6 +42,11 @@ export type PromptPanelProps = {
   turns: LandingTurn[]
 }
 
+type StoredPanelState = Partial<PanelPosition> & {
+  collapsed?: boolean
+  layout?: PanelLayout
+}
+
 export function PromptPanel({
   isStreaming,
   model,
@@ -51,7 +56,7 @@ export function PromptPanel({
   turns,
 }: PromptPanelProps) {
   const navigate = useNavigate()
-  const [collapsed, setCollapsed] = useState(false)
+  const [collapsed, setCollapsed] = useState(initialPanelCollapsed)
   const [commandMenuOpen, setCommandMenuOpen] = useState(false)
   const [position, setPosition] = useState<PanelPosition>(initialPanelPosition)
   const [prompt, setPrompt] = useState('')
@@ -62,8 +67,8 @@ export function PromptPanel({
   useClampToViewport(position, setPosition, collapsed)
 
   useEffect(() => {
-    writeStoredPanelPosition(position)
-  }, [position])
+    writeStoredPanelState(position, collapsed)
+  }, [collapsed, position])
 
   const handleDragStart = useCallback(
     (event: ReactPointerEvent<HTMLDivElement>) => {
@@ -382,6 +387,10 @@ function floatingPositionFrom(position: PanelPosition): PanelPosition {
   return defaultPanelPosition()
 }
 
+function initialPanelCollapsed(): boolean {
+  return readStoredPanelCollapsed() ?? false
+}
+
 function initialPanelPosition(): PanelPosition {
   return readStoredPanelPosition() ?? defaultPanelPosition()
 }
@@ -390,20 +399,33 @@ function isFiniteNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value)
 }
 
+function readStoredPanelCollapsed(): boolean | null {
+  const collapsed = readStoredPanelState()?.collapsed
+  return typeof collapsed === 'boolean' ? collapsed : null
+}
+
 function readStoredPanelPosition(): null | PanelPosition {
+  const state = readStoredPanelState()
+  if (!state) return null
+  if (!isFiniteNumber(state.x) || !isFiniteNumber(state.y)) return null
+
+  if (state.layout === 'left-sidebar') return { x: 0, y: 0 }
+  if (state.layout === 'right-sidebar') return { x: rightDockX(), y: 0 }
+
+  return clampPanelPosition({ x: state.x, y: state.y }, false)
+}
+
+function readStoredPanelState(): null | StoredPanelState {
   try {
     const raw = window.localStorage.getItem(PANEL_POSITION_STORAGE_KEY)
     if (!raw) return null
 
-    const parsed = JSON.parse(raw) as Partial<PanelPosition> & {
-      layout?: PanelLayout
+    const parsed = JSON.parse(raw)
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return null
     }
-    if (!isFiniteNumber(parsed.x) || !isFiniteNumber(parsed.y)) return null
 
-    if (parsed.layout === 'left-sidebar') return { x: 0, y: 0 }
-    if (parsed.layout === 'right-sidebar') return { x: rightDockX(), y: 0 }
-
-    return clampPanelPosition({ x: parsed.x, y: parsed.y }, false)
+    return parsed as StoredPanelState
   } catch {
     return null
   }
@@ -437,7 +459,7 @@ function useClampToViewport(
   }, [collapsed, position, setPosition])
 }
 
-function writeStoredPanelPosition(position: PanelPosition) {
+function writeStoredPanelState(position: PanelPosition, collapsed: boolean) {
   try {
     const dockedSide = dockedPanelSide(position)
     const layout: PanelLayout = dockedSide
@@ -446,7 +468,7 @@ function writeStoredPanelPosition(position: PanelPosition) {
 
     window.localStorage.setItem(
       PANEL_POSITION_STORAGE_KEY,
-      JSON.stringify({ ...position, layout }),
+      JSON.stringify({ ...position, collapsed, layout }),
     )
   } catch {
     // Ignore storage errors from private mode or blocked localStorage.
