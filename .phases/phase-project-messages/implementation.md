@@ -77,3 +77,18 @@ Extend client project types and `useLandingPage` loading so persisted turns rend
 
 ### Gotchas
 - Client build still prints existing almostnode/Vite externalization and direct-eval warnings, but exits successfully.
+
+## Phase 4: Preserve stopped-tool message in persisted turns
+
+### Description
+Verification found that the aborted-run branch called `terminalizeRecordedTools(recordedTurn, 'Stopped.')` without using the returned turn, so persisted stopped runs would be terminalized later with the generic fallback message. Thread the desired terminalization result into finalization.
+
+### Todo
+- [x] Persist stopped tool calls with the stopped message.
+
+### Results
+- Added a `terminalToolResult` variable in `apps/server/src/mastra/route.ts` so aborted requests finalize persisted running tools with `Stopped.` instead of the generic completion fallback.
+- Checks passed: `pnpm --filter @workspace/server typecheck`; `pnpm --filter @workspace/server exec oxlint src/mastra/route.ts`; `pnpm --filter @workspace/server exec vitest run --config vitest.config.ts src/mastra/lib/project-store.test.ts src/mastra/lib/edit-diff.test.ts`; `pnpm --filter @workspace/server build`.
+
+### Gotchas
+_(none)_

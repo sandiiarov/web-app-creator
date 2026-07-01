@@ -114,6 +114,7 @@ export async function streamLandingAgent({
   let editFailures = 0
   let editRequiresInspection = false
   let fatalRunError: null | string = null
+  let terminalToolResult: string | undefined
 
   try {
     const stream = await agent.stream(prompt, {
@@ -429,7 +430,7 @@ export async function streamLandingAgent({
           ? error.message
           : 'Unknown error'
       if (aborted) {
-        terminalizeRecordedTools(recordedTurn, 'Stopped.')
+        terminalToolResult = 'Stopped.'
       } else {
         recordTurnError(recordedTurn, message)
       }
@@ -440,7 +441,7 @@ export async function streamLandingAgent({
     try {
       await appendProjectMessageTurn(
         projectId,
-        finalizeRecordedTurn(recordedTurn),
+        finalizeRecordedTurn(recordedTurn, terminalToolResult),
       )
     } catch (error) {
       console.error('Failed to persist project message history', error)
@@ -477,8 +478,14 @@ function createRecordedTurn(prompt: string, model: string): ProjectMessageTurn {
   }
 }
 
-function finalizeRecordedTurn(turn: ProjectMessageTurn): ProjectMessageTurn {
-  return terminalizeRecordedTools({ ...turn, isStreaming: false })
+function finalizeRecordedTurn(
+  turn: ProjectMessageTurn,
+  terminalToolResult?: string,
+): ProjectMessageTurn {
+  return terminalizeRecordedTools(
+    { ...turn, isStreaming: false },
+    terminalToolResult,
+  )
 }
 
 function getToolCallDisplay(
