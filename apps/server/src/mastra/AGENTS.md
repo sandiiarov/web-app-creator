@@ -10,7 +10,7 @@
 - `tools/`: Mastra tool factories and the landing tool registry.
 - `skills/`: inlined design skill bridge to Pi design references.
 - `lib/`: Baseten model config, cost accounting, edit/grep/html/image/SSE helpers, and file-backed project storage (`project-store.ts`).
-- `route.ts` maps Mastra `fullStream` chunks to the client-facing SSE protocol. It accepts `projectId`, validates the project exists, sets the title from the prompt, and builds a project-scoped write-through store. There is no `html` event: the client pulls HTML via `GET /api/projects/:id` after each successful `edit`. Mastra `tool-error` chunks must be surfaced as terminal `tool_call` events with `state: "error"` and the error message.
+- `route.ts` maps Mastra `fullStream` chunks to the client-facing SSE protocol. It accepts `projectId`, validates the project exists, sets the title from the prompt, and builds a project-scoped write-through store. There is no `html` event: the client pulls HTML via `GET /api/projects/:id` after each successful `edit`. Mastra `tool-error` chunks must be surfaced as terminal `tool_call` events with `state: "error"` and the error message. After an `edit` exact-match failure, the run must require a successful `read` or `grep` before another `edit`; repeated edit failures stop the run instead of allowing blind retries.
 - `index.ts`: Mastra instance, storage, logger, and observability setup.
 
 ## Local Contracts

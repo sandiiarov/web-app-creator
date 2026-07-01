@@ -350,12 +350,14 @@ function getNoChangeError(totalEdits: number): Error {
 }
 
 function getNotFoundError(editIndex: number, totalEdits: number): Error {
+  const retryGuidance =
+    'Read or grep the current /index.html before retrying; do not guess whitespace or reuse stale snippets.'
   return totalEdits === 1
     ? new Error(
-        'Could not find the exact text. The old text must match exactly including all whitespace and newlines.',
+        `Could not find the exact text. The old text must match exactly including all whitespace and newlines. ${retryGuidance}`,
       )
     : new Error(
-        `Could not find edits[${editIndex}]. The oldText must match exactly including all whitespace and newlines.`,
+        `Could not find edits[${editIndex}]. The oldText must match exactly including all whitespace and newlines. ${retryGuidance}`,
       )
 }
 

@@ -16,7 +16,12 @@ import {
 } from './lib/project-store.ts'
 import { sendSse, startSse } from './lib/sse.ts'
 
+const MAX_EDIT_FAILURES = 2
 const MAX_STEPS = 30
+const READ_BEFORE_RETRY_MESSAGE =
+  'Edit failed because oldText did not match the current project HTML. Read or grep /index.html before retrying; do not guess whitespace.'
+const REPEATED_EDIT_FAILURE_MESSAGE =
+  'Edit failed twice in this turn. Stopping so the agent does not keep making blind edit attempts. Read/grep the current /index.html and try again.'
 
 interface StreamOptions {
   modelId: string
@@ -96,6 +101,10 @@ export async function streamLandingAgent({
   let scrapeOcrCalls = 0
   let scrapeOcrCostUsd = 0
   let scrapeOcrImages = 0
+  // Prevent repeated blind edit attempts after exact-text failures.
+  let editFailures = 0
+  let editRequiresInspection = false
+  let fatalRunError: null | string = null
 
   try {
     const stream = await agent.stream(prompt, {
@@ -104,7 +113,7 @@ export async function streamLandingAgent({
       modelSettings: { maxOutputTokens: 16_384 },
     })
 
-    for await (const chunk of stream.fullStream) {
+    streamLoop: for await (const chunk of stream.fullStream) {
       switch (chunk.type) {
         case 'error': {
           const message =
@@ -123,15 +132,34 @@ export async function streamLandingAgent({
           break
         }
         case 'tool-call': {
+          const args = asToolArgs(chunk.payload.args)
           const display = startToolCallDisplay(
             callDisplay,
             completedCallIds,
             ++toolCallSeq,
             chunk.payload.toolCallId,
             chunk.payload.toolName,
-            asToolArgs(chunk.payload.args),
+            args,
           )
           callIntent.set(chunk.payload.toolCallId, display.intent)
+
+          if (chunk.payload.toolName === 'edit' && editRequiresInspection) {
+            sendSse(response, 'tool_call', {
+              detail: display.detail,
+              id: display.id,
+              intent: display.intent,
+              providerId: chunk.payload.toolCallId,
+              result: READ_BEFORE_RETRY_MESSAGE,
+              state: 'error',
+              tool: chunk.payload.toolName,
+            })
+            completedCallIds.add(chunk.payload.toolCallId)
+            fatalRunError = READ_BEFORE_RETRY_MESSAGE
+            sendSse(response, 'error', { message: fatalRunError })
+            controller.abort()
+            break streamLoop
+          }
+
           sendSse(response, 'tool_call', {
             detail: display.detail,
             id: display.id,
@@ -150,6 +178,24 @@ export async function streamLandingAgent({
             chunk.payload.toolCallId,
             chunk.payload.toolName,
           )
+
+          if (chunk.payload.toolName === 'edit' && editRequiresInspection) {
+            sendSse(response, 'tool_call', {
+              detail: display.detail,
+              id: display.id,
+              intent: display.intent,
+              providerId: chunk.payload.toolCallId,
+              result: READ_BEFORE_RETRY_MESSAGE,
+              state: 'error',
+              tool: chunk.payload.toolName,
+            })
+            completedCallIds.add(chunk.payload.toolCallId)
+            fatalRunError = READ_BEFORE_RETRY_MESSAGE
+            sendSse(response, 'error', { message: fatalRunError })
+            controller.abort()
+            break streamLoop
+          }
+
           sendSse(response, 'tool_call', {
             detail: display.detail,
             id: display.id,
@@ -181,6 +227,16 @@ export async function streamLandingAgent({
             tool: chunk.payload.toolName,
           })
           completedCallIds.add(chunk.payload.toolCallId)
+          if (chunk.payload.toolName === 'edit') {
+            editFailures += 1
+            editRequiresInspection = true
+            if (editFailures >= MAX_EDIT_FAILURES) {
+              fatalRunError = REPEATED_EDIT_FAILURE_MESSAGE
+              sendSse(response, 'error', { message: fatalRunError })
+              controller.abort()
+              break streamLoop
+            }
+          }
           break
         }
         case 'tool-result': {
@@ -210,6 +266,27 @@ export async function streamLandingAgent({
             tool: chunk.payload.toolName,
           })
           completedCallIds.add(chunk.payload.toolCallId)
+          if (
+            (chunk.payload.toolName === 'read' ||
+              chunk.payload.toolName === 'grep') &&
+            !isError
+          ) {
+            editRequiresInspection = false
+          }
+          if (chunk.payload.toolName === 'edit') {
+            if (isError) {
+              editFailures += 1
+              editRequiresInspection = true
+              if (editFailures >= MAX_EDIT_FAILURES) {
+                fatalRunError = REPEATED_EDIT_FAILURE_MESSAGE
+                sendSse(response, 'error', { message: fatalRunError })
+                controller.abort()
+                break streamLoop
+              }
+            } else {
+              editRequiresInspection = false
+            }
+          }
           // The agent's `edit` tool writes the project file directly (the file
           // is the source of truth). The UI pulls the updated HTML on edit-done,
           // so we do not push an `html` event here.
@@ -267,58 +344,62 @@ export async function streamLandingAgent({
       }
     }
 
-    const usage = await stream.usage
-    const llmCost = estimateCost(modelId, {
-      cachedInputTokens: usage.cachedInputTokens,
-      inputTokens: usage.inputTokens,
-      outputTokens: usage.outputTokens,
-      raw: usage.raw,
-      reasoningTokens: usage.reasoningTokens,
-      totalTokens: usage.totalTokens,
-    })
-    const firecrawlCostUsd = firecrawlCost(scrapeCredits)
-    const scrapeCostUsd = firecrawlCostUsd + scrapeOcrCostUsd
-    const totalCost = llmCost + scrapeCostUsd + imageCostUsd
-
-    sendSse(response, 'stats', {
-      cost: totalCost,
-      costBreakdown: {
-        image: {
-          cost: imageCostUsd,
-          count: imageCount,
-        },
-        llm: llmCost,
-        scrape: {
-          calls: scrapeCalls,
-          cost: scrapeCostUsd,
-          credits: scrapeCredits,
-          firecrawlCost: firecrawlCostUsd,
-          ocrCalls: scrapeOcrCalls,
-          ocrCost: scrapeOcrCostUsd,
-          ocrImages: scrapeOcrImages,
-        },
-        total: totalCost,
-      },
-      durationMs: Date.now() - startedAt,
-      finishReason: (await stream.finishReason) ?? 'stop',
-      model: modelId,
-      usage: {
+    if (!fatalRunError) {
+      const usage = await stream.usage
+      const llmCost = estimateCost(modelId, {
         cachedInputTokens: usage.cachedInputTokens,
         inputTokens: usage.inputTokens,
         outputTokens: usage.outputTokens,
+        raw: usage.raw,
         reasoningTokens: usage.reasoningTokens,
         totalTokens: usage.totalTokens,
-      },
-    })
+      })
+      const firecrawlCostUsd = firecrawlCost(scrapeCredits)
+      const scrapeCostUsd = firecrawlCostUsd + scrapeOcrCostUsd
+      const totalCost = llmCost + scrapeCostUsd + imageCostUsd
+
+      sendSse(response, 'stats', {
+        cost: totalCost,
+        costBreakdown: {
+          image: {
+            cost: imageCostUsd,
+            count: imageCount,
+          },
+          llm: llmCost,
+          scrape: {
+            calls: scrapeCalls,
+            cost: scrapeCostUsd,
+            credits: scrapeCredits,
+            firecrawlCost: firecrawlCostUsd,
+            ocrCalls: scrapeOcrCalls,
+            ocrCost: scrapeOcrCostUsd,
+            ocrImages: scrapeOcrImages,
+          },
+          total: totalCost,
+        },
+        durationMs: Date.now() - startedAt,
+        finishReason: (await stream.finishReason) ?? 'stop',
+        model: modelId,
+        usage: {
+          cachedInputTokens: usage.cachedInputTokens,
+          inputTokens: usage.inputTokens,
+          outputTokens: usage.outputTokens,
+          reasoningTokens: usage.reasoningTokens,
+          totalTokens: usage.totalTokens,
+        },
+      })
+    }
   } catch (error) {
     const aborted = controller.signal.aborted
-    sendSse(response, 'error', {
-      message: aborted
-        ? 'stopped'
-        : error instanceof Error
-          ? error.message
-          : 'Unknown error',
-    })
+    if (!fatalRunError) {
+      sendSse(response, 'error', {
+        message: aborted
+          ? 'stopped'
+          : error instanceof Error
+            ? error.message
+            : 'Unknown error',
+      })
+    }
   } finally {
     request.off('close', onClose)
     sendSse(response, 'done', {})
