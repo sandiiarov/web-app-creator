@@ -78,3 +78,19 @@ Update active DOX and README so current contracts describe direct iframe preview
 
 ### Gotchas
 - Historical plans and prior phase records still contain almostnode references as historical context; active DOX/README no longer do.
+
+## Phase 4: Remove stale service-worker reference from Fallow config
+
+### Description
+Verification found `.fallowrc.jsonc` still ignoring the deleted `apps/client/public/__sw__.js` service-worker path. Remove that stale active-config reference and re-check tracked non-historical almostnode references.
+
+### Todo
+- [x] Remove the deleted service-worker path from Fallow config.
+
+### Results
+- Removed stale `apps/client/public/__sw__.js` ignore pattern from `.fallowrc.jsonc`.
+- `git grep -n -E 'almostnode|VirtualFS|ViteDevServer|__sw__|preview bridge' -- ':!plans/**' ':!.phases/**' ':!mastra-migration-plan.md'` returned no tracked active references.
+- `pnpm run fallow:health` parsed and ran with the updated config, then exited 1 due existing health thresholds (`48 above threshold · 532 analyzed · maintainability 92.9`), not because of the removed service-worker path.
+
+### Gotchas
+- Fallow health is useful as a config smoke check here, but this repo currently fails its thresholds; do not treat that as a remove-almostnode regression.
