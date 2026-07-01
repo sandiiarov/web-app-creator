@@ -18,10 +18,6 @@ export interface ProjectMeta {
   updatedAt: string
 }
 
-export interface ProjectUpdate extends ProjectInput {
-  indexHtml?: string
-}
-
 export class ProjectNotFoundError extends Error {
   readonly id: string
   constructor(id: string) {
@@ -81,18 +77,4 @@ export async function listProjects(): Promise<ProjectMeta[]> {
   }
   if (!json.ok) throw new Error('Failed to list projects')
   return json.projects
-}
-
-export async function updateProject(
-  id: string,
-  update: ProjectUpdate,
-): Promise<Project> {
-  const response = await fetch(`${SERVER_URL}/api/projects/${id}`, {
-    body: JSON.stringify(update),
-    headers: { 'content-type': 'application/json' },
-    method: 'PUT',
-  })
-  const json = (await response.json()) as { ok: boolean; project: Project }
-  if (!json.ok) throw new Error('Failed to save project')
-  return json.project
 }

@@ -24,8 +24,6 @@ export type CostBreakdown = {
 
 export type ErrorEvent = { message: string }
 
-export type HtmlEvent = { html: string }
-
 export type ImageCost = {
   cost: number
   count: number

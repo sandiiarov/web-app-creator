@@ -22,7 +22,7 @@ export function createEditTool(store: HtmlStore) {
       return {
         bytes,
         changedLines,
-        html: after,
+        html: store.get(),
         ok: true,
       }
     },

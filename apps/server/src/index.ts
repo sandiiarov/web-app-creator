@@ -14,11 +14,10 @@ import {
   getProject,
   listProjects,
   readProjectImage,
-  updateProject,
 } from './mastra/lib/project-store.ts'
 import { resolveModelId, streamLandingAgent } from './mastra/route.ts'
 
-type AgentRequestBody = { model?: string; prompt?: unknown }
+type AgentRequestBody = { model?: string; projectId?: unknown; prompt?: unknown }
 
 const server = createServer(async (request, response) => {
   setCorsHeaders(response)
@@ -69,6 +68,14 @@ async function handleAgent(request: IncomingMessage, response: ServerResponse) {
     return
   }
 
+  if (typeof body.projectId !== 'string' || body.projectId.trim() === '') {
+    sendJson(response, 400, {
+      error: 'Expected { projectId: string }',
+      ok: false,
+    })
+    return
+  }
+
   if (body.model !== undefined && typeof body.model !== 'string') {
     sendJson(response, 400, {
       error: 'Expected { model?: string }',
@@ -79,6 +86,7 @@ async function handleAgent(request: IncomingMessage, response: ServerResponse) {
 
   await streamLandingAgent({
     modelId: resolveModelId(body.model),
+    projectId: body.projectId,
     prompt: body.prompt,
     request,
     response,
@@ -163,24 +171,6 @@ async function handleListProjects(response: ServerResponse) {
   sendJson(response, 200, { ok: true, projects })
 }
 
-async function handleUpdateProject(
-  id: string,
-  request: IncomingMessage,
-  response: ServerResponse,
-) {
-  const body = await readJsonObject(request)
-  const project = await updateProject(id, {
-    indexHtml: typeof body.indexHtml === 'string' ? body.indexHtml : undefined,
-    model: typeof body.model === 'string' ? body.model : undefined,
-    title: typeof body.title === 'string' ? body.title : undefined,
-  })
-  if (!project) {
-    sendJson(response, 404, { error: 'Project not found', ok: false })
-    return
-  }
-  sendJson(response, 200, { ok: true, project })
-}
-
 async function readJsonObject(
   request: IncomingMessage,
 ): Promise<Record<string, unknown>> {
@@ -221,10 +211,6 @@ async function routeProjects(
     const id = itemMatch[1]!
     if (request.method === 'GET') {
       await handleGetProject(id, response)
-      return true
-    }
-    if (request.method === 'PUT') {
-      await handleUpdateProject(id, request, response)
       return true
     }
     if (request.method === 'DELETE') {

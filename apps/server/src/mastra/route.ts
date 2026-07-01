@@ -9,13 +9,18 @@ import {
   imageGenCost,
   visionCost,
 } from './lib/cost.ts'
-import { createHtmlStore } from './lib/html-store.ts'
+import {
+  createProjectHtmlStore,
+  getProject,
+  setTitleIfUntitled,
+} from './lib/project-store.ts'
 import { sendSse, startSse } from './lib/sse.ts'
 
 const MAX_STEPS = 30
 
 interface StreamOptions {
   modelId: string
+  projectId: string
   prompt: string
   request: IncomingMessage
   response: ServerResponse
@@ -45,12 +50,24 @@ export function resolveModelId(model?: string): string {
  */
 export async function streamLandingAgent({
   modelId,
+  projectId,
   prompt,
   request,
   response,
 }: StreamOptions) {
+  const project = await getProject(projectId)
+  if (!project) {
+    startSse(response, 404)
+    sendSse(response, 'error', { message: 'Project not found' })
+    sendSse(response, 'done', {})
+    response.end()
+    return
+  }
+
+  setTitleIfUntitled(projectId, prompt)
+
   const startedAt = Date.now()
-  const store = createHtmlStore()
+  const store = createProjectHtmlStore(projectId)
   const baseUrl = `http://${request.headers.host ?? `localhost:${config.port}`}`
   const agent = createLandingPageAgent(store, mastra, baseUrl, modelId)
   const controller = new AbortController()
@@ -169,13 +186,9 @@ export async function streamLandingAgent({
             tool: chunk.payload.toolName,
           })
           completedCallIds.add(chunk.payload.toolCallId)
-          // After a successful edit, push the full HTML so the preview swaps.
-          if (chunk.payload.toolName === 'edit' && !isError) {
-            const result = chunk.payload.result as { html?: string }
-            if (result?.html) {
-              sendSse(response, 'html', { html: result.html })
-            }
-          }
+          // The agent's `edit` tool writes the project file directly (the file
+          // is the source of truth). The UI pulls the updated HTML on edit-done,
+          // so we do not push an `html` event here.
           // Accumulate Firecrawl + bundled image-OCR usage from successful scrape calls.
           if (chunk.payload.toolName === 'scrape' && !isError) {
             const result = chunk.payload.result as {

@@ -17,12 +17,11 @@
 
 ## Local Contracts
 
-- `POST /agent` accepts `{ prompt: string, model?: string }` and streams `thinking`, `text`, `tool_call`, `html`, `stats`, `error`, and `done` SSE events.
+- `POST /agent` accepts `{ prompt: string, projectId: string, model?: string }` and streams `thinking`, `text`, `tool_call`, `stats`, `error`, and `done` SSE events. The agent edits the project's `index.html` file directly; there is **no** `html` push event — the client pulls the updated HTML via `GET /api/projects/:id` after each `edit` tool completes.
 - Project REST API (file-backed via `src/mastra/lib/project-store.ts` under `.data/projects/<id>/`):
   - `GET /api/projects` → list metadata, drafts (no HTML) hidden.
-  - `POST /api/projects { title?, model? }` → create draft.
+  - `POST /api/projects { title?, model? }` → create draft (seeded with the placeholder page).
   - `GET /api/projects/:id` → full project (metadata + `indexHtml`).
-  - `PUT /api/projects/:id { title?, model?, indexHtml? }` → update; on `indexHtml`, locally-generated image refs (`*/images/img-N.ext`) are rewritten to `/api/projects/:id/images/<file>` and their bytes copied out of the in-memory image store.
   - `DELETE /api/projects/:id` → remove project + images.
   - `GET /api/projects/:id/images/:file` → serve a persisted project image.
 - `GET /images/:id` serves process-memory images created by the image generation tool.

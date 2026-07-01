@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 import {
   LANDING_AGENT_API,
@@ -7,42 +7,67 @@ import {
   type ToolCallPart,
   type TurnPart,
 } from '../lib/landing-agent'
+import {
+  ProjectNotFoundError,
+  expandProjectImageUrls,
+  getProject,
+} from '../lib/projects-api'
 import { streamSSE } from '../lib/sse-client'
 
 export interface UseLandingPage {
   html: string
   isStreaming: boolean
+  missing: boolean
   model: string
   send: (prompt: string) => void
-  setHtml: (html: string) => void
   setModel: (model: string) => void
   stop: () => void
   turns: LandingTurn[]
 }
 
 export interface UseLandingPageOptions {
-  initialHtml?: string
-  initialModel?: string
   onError: (message: string) => void
-  onHtml?: (html: string) => void
+  projectId: string
 }
 
 let turnSeq = 0
 const nextTurnId = () => `turn-${Date.now()}-${turnSeq++}`
 
 export function useLandingPage({
-  initialHtml = '',
-  initialModel,
   onError,
-  onHtml,
+  projectId,
 }: UseLandingPageOptions): UseLandingPage {
   const [turns, setTurns] = useState<LandingTurn[]>([])
-  const [html, setHtml] = useState(initialHtml)
-  const [model, setModel] = useState(
-    initialModel ?? LANDING_MODEL_OPTIONS[0]!.id,
-  )
+  const [html, setHtml] = useState('')
+  const [model, setModel] = useState(LANDING_MODEL_OPTIONS[0]!.id)
   const [isStreaming, setIsStreaming] = useState(false)
+  const [missing, setMissing] = useState(false)
   const controllerRef = useRef<AbortController | null>(null)
+
+  // Load the project on mount (and when switching projects): the server owns
+  // the HTML, so the UI pulls it rather than holding its own canonical copy.
+  useEffect(() => {
+    let cancelled = false
+    setMissing(false)
+    setHtml('')
+    setTurns([])
+
+    void getProject(projectId)
+      .then((project) => {
+        if (cancelled) return
+        setHtml(expandProjectImageUrls(project.indexHtml))
+        if (project.model) setModel(project.model)
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return
+        if (err instanceof ProjectNotFoundError) setMissing(true)
+        else onError(err instanceof Error ? err.message : 'Failed to load project')
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [projectId, onError])
 
   const patchTurn = useCallback(
     (turnId: string, fn: (turn: LandingTurn) => LandingTurn) => {
@@ -62,6 +87,17 @@ export function useLandingPage({
     },
     [patchTurn],
   )
+
+  // Pull the latest HTML from the server after an `edit` completes. The agent
+  // writes the project file directly; this is how the preview stays in sync.
+  const refreshHtml = useCallback(async () => {
+    try {
+      const project = await getProject(projectId)
+      setHtml(expandProjectImageUrls(project.indexHtml))
+    } catch {
+      // Swallow — the run's own error reporting handles hard failures.
+    }
+  }, [projectId])
 
   const send = useCallback(
     (prompt: string) => {
@@ -84,7 +120,7 @@ export function useLandingPage({
 
       void streamSSE(
         LANDING_AGENT_API,
-        { model, prompt },
+        { model, projectId, prompt },
         {
           onEvent: ({ data, event }) => {
             switch (event) {
@@ -97,16 +133,6 @@ export function useLandingPage({
                 if (message === 'stopped') break
                 patchTurn(turnId, (turn) => ({ ...turn, error: message }))
                 onError(message)
-                break
-              }
-              case 'html': {
-                const { html: nextHtml } = data as { html: string }
-                setHtml(nextHtml)
-                onHtml?.(nextHtml)
-                patchTurn(turnId, (turn) => ({
-                  ...turn,
-                  htmlSwaps: turn.htmlSwaps + 1,
-                }))
                 break
               }
               case 'stats': {
@@ -205,6 +231,14 @@ export function useLandingPage({
                   }
                   return { ...turn, parts: [...turn.parts, payload] }
                 })
+                // The edit tool writes the project file; pull the new HTML.
+                if (payload.tool === 'edit' && payload.state === 'done') {
+                  patchTurn(turnId, (turn) => ({
+                    ...turn,
+                    htmlSwaps: turn.htmlSwaps + 1,
+                  }))
+                  void refreshHtml()
+                }
                 break
               }
               default:
@@ -213,39 +247,35 @@ export function useLandingPage({
           },
           signal: controller.signal,
         },
-      )
-        .catch((error: unknown) => {
-          const message = error instanceof Error ? error.message : String(error)
-          if (message !== 'stopped' && !controller.signal.aborted) {
-            patchTurn(turnId, (turn) => ({ ...turn, error: message }))
-            onError(message)
-          }
-        })
-        .finally(() => {
-          patchTurn(turnId, (turn) => ({ ...turn, isStreaming: false }))
-          setIsStreaming(false)
-          controllerRef.current = null
-        })
+      ).catch((error: unknown) => {
+        const message = error instanceof Error ? error.message : String(error)
+        if (message !== 'stopped' && !controller.signal.aborted) {
+          patchTurn(turnId, (turn) => ({ ...turn, error: message }))
+          onError(message)
+        }
+      }).finally(() => {
+        patchTurn(turnId, (turn) => ({ ...turn, isStreaming: false }))
+        setIsStreaming(false)
+        controllerRef.current = null
+      })
     },
-    [appendPart, isStreaming, model, onError, onHtml, patchTurn],
+    [appendPart, isStreaming, model, onError, patchTurn, projectId, refreshHtml],
   )
 
   const stop = useCallback(() => {
     controllerRef.current?.abort()
     setIsStreaming(false)
     setTurns((prev) =>
-      prev.map((turn) =>
-        turn.isStreaming ? { ...turn, isStreaming: false } : turn,
-      ),
+      prev.map((turn) => (turn.isStreaming ? { ...turn, isStreaming: false } : turn)),
     )
   }, [])
 
   return {
     html,
     isStreaming,
+    missing,
     model,
     send,
-    setHtml,
     setModel,
     stop,
     turns,

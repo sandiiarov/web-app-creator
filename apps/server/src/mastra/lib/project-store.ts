@@ -2,21 +2,27 @@
  * File-backed project storage.
  *
  * Each project lives at `<dataDir>/projects/<id>/` with:
- *   - `project.json`  metadata (id, title, model, timestamps, hasHtml)
- *   - `index.html`    generated landing page (may be empty for drafts)
- *   - `images/<file>` generated image bytes copied out of the in-memory image store
+ *   - `project.json`   metadata (id, title, model, timestamps, hasHtml)
+ *   - `index.html`     the landing page the agent edits — THE source of truth
+ *   - `images/<file>`  generated image bytes copied out of the in-memory store
  *
- * The data dir is local-only (gitignored). This is the persistence layer that
- * the process-memory `html-store`/`image-store` lacked: it lets generated
- * landing pages and their locally-generated images survive across reloads and
- * server restarts.
+ * The agent operates directly on the project's `index.html` via
+ * `createProjectHtmlStore`. The UI never writes HTML; it only reads it back
+ * (`getProject`) after each `edit` tool completes.
  */
 import { randomUUID } from 'node:crypto'
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  writeFileSync,
+} from 'node:fs'
 import { mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { getImage } from './image-store.ts'
+import { PLACEHOLDER_INDEX_HTML, type HtmlStore } from './html-store.ts'
 
 const MODULE_DIR = dirname(fileURLToPath(import.meta.url))
 const DATA_DIR = join(MODULE_DIR, '..', '..', '..', '.data')
@@ -44,14 +50,10 @@ export interface ProjectMeta {
   updatedAt: string
 }
 
-export interface ProjectUpdate extends ProjectInput {
-  indexHtml?: string
-}
+// ── async CRUD (HTTP handlers) ───────────────────────────────────
 
-/** Create a new draft project and return it. */
-export async function createProject(
-  input: ProjectInput = {},
-): Promise<Project> {
+/** Create a new draft project seeded with the placeholder page. */
+export async function createProject(input: ProjectInput = {}): Promise<Project> {
   const id = randomUUID()
   const now = new Date().toISOString()
   const meta: ProjectMeta = {
@@ -65,9 +67,37 @@ export async function createProject(
 
   await ensureProjectDir(id)
   await writeMeta(id, meta)
-  await writeIndexHtml(id, '')
+  await writeIndexHtml(id, PLACEHOLDER_INDEX_HTML)
 
-  return { ...meta, indexHtml: '' }
+  return { ...meta, indexHtml: PLACEHOLDER_INDEX_HTML }
+}
+
+/**
+ * A write-through store bound to a project's `index.html`. The agent reads and
+ * edits this file; every `set` persists to disk, copies any referenced
+ * in-memory generated images into the project folder, and marks the project as
+ * having content. Sync so the write is complete before Mastra emits the
+ * `edit` tool-result (the UI fetches on edit-done — no race).
+ */
+export function createProjectHtmlStore(projectId: string): HtmlStore {
+  let html = readIndexHtmlSync(projectId) ?? PLACEHOLDER_INDEX_HTML
+
+  return {
+    get() {
+      return html
+    },
+    reset(seed) {
+      html = seed ?? PLACEHOLDER_INDEX_HTML
+      writeIndexHtmlSync(projectId, html)
+    },
+    set(next) {
+      const normalized = persistProjectImagesSync(projectId, next)
+      writeIndexHtmlSync(projectId, normalized)
+      markHasHtmlSync(projectId)
+      html = normalized
+      return Buffer.byteLength(normalized, 'utf8')
+    },
+  }
 }
 
 /** Delete a project and its images. No-op if missing. */
@@ -83,14 +113,14 @@ export async function getProject(id: string): Promise<null | Project> {
   return { ...meta, indexHtml }
 }
 
-/** List all projects (metadata only), newest first. Drafts without HTML included. */
+/** List all projects (metadata only), newest first. Drafts (no HTML) hidden. */
 export async function listProjects(): Promise<ProjectMeta[]> {
   const ids = await readDirSafe(PROJECTS_DIR)
   const metas: ProjectMeta[] = []
 
   for (const id of ids) {
     const meta = await readMeta(id)
-    if (meta) metas.push(meta)
+    if (meta && meta.hasHtml) metas.push(meta)
   }
 
   return metas.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
@@ -112,44 +142,20 @@ export async function readProjectImage(
   }
 }
 
-/** Update metadata and/or index.html. Returns the updated full project. */
-export async function updateProject(
-  id: string,
-  update: ProjectUpdate,
-): Promise<null | Project> {
-  const existing = await readMeta(id)
-  if (!existing) return null
+// ── agent-facing project HTML store (sync, write-through) ─────────
 
-  let nextHtml: string | undefined
-  if (typeof update.indexHtml === 'string' && update.indexHtml.trim()) {
-    const normalized = await persistProjectImages(id, update.indexHtml)
-    await writeIndexHtml(id, normalized)
-    nextHtml = normalized
-  }
-
-  const now = new Date().toISOString()
-  const meta: ProjectMeta = {
-    ...existing,
-    model: update.model?.trim() ? update.model : existing.model,
-    title: update.title?.trim() ? update.title : existing.title,
-    updatedAt: now,
-  }
-
-  if (typeof update.indexHtml === 'string') {
-    meta.hasHtml = update.indexHtml.trim().length > 0
-  }
-
-  await writeMeta(id, meta)
-
-  return {
-    ...meta,
-    indexHtml: nextHtml ?? (await readIndexHtml(id)),
-  }
+/** Set the title from the prompt if it is still the default. Sync, server-side. */
+export function setTitleIfUntitled(id: string, title: string): void {
+  const meta = readMetaSync(id)
+  if (!meta || meta.title !== 'Untitled') return
+  meta.title = truncateTitle(title)
+  meta.updatedAt = new Date().toISOString()
+  writeMetaSync(id, meta)
 }
 
-// ── image URL normalization ──────────────────────────────────────
+// ── image URL normalization (sync) ───────────────────────────────
 
-function copyAgentImage(
+function copyAgentImageSync(
   projectId: string,
   imgId: string,
   ext: string,
@@ -159,7 +165,9 @@ function copyAgentImage(
 
   const extension = ext || `.${stored.extension}` || '.png'
   const fileName = `${imgId}${extension}`
-  void persistImageBytes(projectId, fileName, stored.buffer)
+  const dir = join(projectDir(projectId), IMAGES_DIR)
+  mkdirSync(dir, { recursive: true })
+  writeFileSync(join(dir, fileName), stored.buffer)
   return `/api/projects/${projectId}/images/${fileName}`
 }
 
@@ -171,23 +179,20 @@ async function ensureProjectsRoot() {
   await mkdir(PROJECTS_DIR, { recursive: true })
 }
 
-async function hasIndexHtml(id: string): Promise<boolean> {
-  try {
-    const content = await readFile(join(projectDir(id), INDEX_HTML), 'utf8')
-    return content.trim().length > 0
-  } catch {
-    return false
-  }
-}
-
-// ── fs helpers ───────────────────────────────────────────────────
+// ── sync fs helpers ──────────────────────────────────────────────
 
 function isSafeImageName(name: string): boolean {
-  return (
-    /^(img-\d+|img-\d+\.[a-z0-9]+|[a-z0-9_-]+\.[a-z0-9]+)$/i.test(name) &&
+  return /^(img-\d+|img-\d+\.[a-z0-9]+|[a-z0-9_-]+\.[a-z0-9]+)$/i.test(name) &&
     !name.includes('..') &&
     !name.includes('/')
-  )
+}
+
+function markHasHtmlSync(id: string) {
+  const meta = readMetaSync(id)
+  if (!meta) return
+  meta.hasHtml = true
+  meta.updatedAt = new Date().toISOString()
+  writeMetaSync(id, meta)
 }
 
 function mediaTypeForName(name: string): string {
@@ -207,33 +212,20 @@ function mediaTypeForName(name: string): string {
   }
 }
 
-async function persistImageBytes(
-  projectId: string,
-  fileName: string,
-  buffer: Buffer,
-) {
-  const dir = join(projectDir(projectId), IMAGES_DIR)
-  await mkdir(dir, { recursive: true })
-  await writeFile(join(dir, fileName), buffer)
-}
-
 /**
- * Normalize locally-generated image URLs in the saved HTML into a stable
- * root-relative form and copy their bytes into the project's image folder.
+ * Normalize locally-generated image URLs in the HTML into a stable
+ * project-relative form and copy their bytes into the project's image folder.
  *
- * Handles three input shapes (the editor may hold any of them):
- *   - `${origin}/images/img-N.ext`        agent endpoint, absolute (fresh gen)
- *   - `/images/img-N.ext`                 agent endpoint, root-relative
+ * Handles three input shapes:
+ *   - `${origin}/images/img-N.ext`   agent endpoint, absolute (fresh generation)
+ *   - `/images/img-N.ext`            agent endpoint, root-relative
  *   - `${origin}/api/projects/<id>/images/<file>` or root-relative (already persisted)
  *
  * Agent-endpoint images are copied from the in-memory `image-store` and
- * rewritten to `/api/projects/<projectId>/images/img-N.ext`. Already-project
- * URLs are collapsed to root-relative (origin stripped) and left untouched.
+ * rewritten to `/api/projects/<projectId>/images/img-N.ext`. Unknown ids are
+ * left untouched. Already-project URLs are collapsed to root-relative.
  */
-async function persistProjectImages(
-  projectId: string,
-  html: string,
-): Promise<string> {
+function persistProjectImagesSync(projectId: string, html: string): string {
   const sentinels: string[] = []
   const PROJ_IMG =
     /(?:https?:\/\/[^"' )\]]+)?\/api\/projects\/[a-f0-9-]+\/images\/[^"' )\]]+/gi
@@ -242,10 +234,9 @@ async function persistProjectImages(
     return `__PROJIMG_${sentinels.length - 1}__`
   })
 
-  const AGENT_IMG =
-    /(?:https?:\/\/[^"' )\]]+)?\/images\/(img-\d+)(\.[a-z0-9]+)?/gi
+  const AGENT_IMG = /(?:https?:\/\/[^"' )\]]+)?\/images\/(img-\d+)(\.[a-z0-9]+)?/gi
   working = working.replace(AGENT_IMG, (match, imgId: string, ext = '') => {
-    return copyAgentImage(projectId, imgId, ext) ?? match
+    return copyAgentImageSync(projectId, imgId, ext) ?? match
   })
 
   working = working.replace(/__PROJIMG_(\d+)__/g, (_m, idx: string) => {
@@ -259,13 +250,13 @@ function projectDir(id: string) {
   return join(PROJECTS_DIR, id)
 }
 
+// ── async fs helpers (HTTP CRUD) ─────────────────────────────────
+
 async function readDirSafe(dir: string): Promise<string[]> {
   try {
-    await ensureProjectsRoot()
+    if (!existsSync(dir)) await ensureProjectsRoot()
     const entries = await readdir(dir, { withFileTypes: true })
-    return entries
-      .filter((entry) => entry.isDirectory())
-      .map((entry) => entry.name)
+    return entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name)
   } catch {
     return []
   }
@@ -279,12 +270,27 @@ async function readIndexHtml(id: string): Promise<string> {
   }
 }
 
+function readIndexHtmlSync(id: string): null | string {
+  try {
+    return readFileSync(join(projectDir(id), INDEX_HTML), 'utf8')
+  } catch {
+    return null
+  }
+}
+
 async function readMeta(id: string): Promise<null | ProjectMeta> {
   try {
     const raw = await readFile(join(projectDir(id), PROJECT_JSON), 'utf8')
-    const meta = JSON.parse(raw) as ProjectMeta
-    const hasHtml = await hasIndexHtml(id)
-    return { ...meta, hasHtml }
+    return JSON.parse(raw) as ProjectMeta
+  } catch {
+    return null
+  }
+}
+
+function readMetaSync(id: string): null | ProjectMeta {
+  try {
+    const raw = readFileSync(join(projectDir(id), PROJECT_JSON), 'utf8')
+    return JSON.parse(raw) as ProjectMeta
   } catch {
     return null
   }
@@ -294,17 +300,35 @@ function stripOrigin(url: string): string {
   return url.replace(/^https?:\/\/[^/]+/i, '')
 }
 
+function truncateTitle(value: string): string {
+  const trimmed = value.trim().replace(/\s+/g, ' ')
+  return trimmed.length > 60 ? `${trimmed.slice(0, 60)}…` : trimmed
+}
+
 async function writeIndexHtml(id: string, html: string) {
   await ensureProjectDir(id)
   await writeFile(join(projectDir(id), INDEX_HTML), html, 'utf8')
 }
 
+function writeIndexHtmlSync(id: string, html: string) {
+  mkdirSync(projectDir(id), { recursive: true })
+  writeFileSync(join(projectDir(id), INDEX_HTML), html, 'utf8')
+}
+
 async function writeMeta(id: string, meta: ProjectMeta) {
-  const { hasHtml: _ignored, ...persisted } = meta
   await ensureProjectDir(id)
   await writeFile(
     join(projectDir(id), PROJECT_JSON),
-    JSON.stringify(persisted, null, 2),
+    JSON.stringify(meta, null, 2),
+    'utf8',
+  )
+}
+
+function writeMetaSync(id: string, meta: ProjectMeta) {
+  mkdirSync(projectDir(id), { recursive: true })
+  writeFileSync(
+    join(projectDir(id), PROJECT_JSON),
+    JSON.stringify(meta, null, 2),
     'utf8',
   )
 }
