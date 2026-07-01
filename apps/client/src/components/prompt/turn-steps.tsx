@@ -24,8 +24,17 @@ export function TurnSteps({ steps }: { steps: ToolCallPart[] }) {
     return null
   }
 
+  const hasError = steps.some((step) => step.state === 'error')
+
   return (
-    <div className="flex flex-col gap-1 rounded-none border border-border/60 bg-background/50 p-2">
+    <div
+      className={cn(
+        'flex flex-col gap-1 rounded-none border bg-background/50 p-2',
+        hasError
+          ? 'border-destructive/45 bg-destructive/10 dark:bg-destructive/15'
+          : 'border-border/60',
+      )}
+    >
       {steps.map((step) => (
         <StepRow key={step.id} step={step} />
       ))}
@@ -76,7 +85,14 @@ function StepRow({ step }: { step: ToolCallPart }) {
         </span>
         {detail ? <ToolText>{detail}</ToolText> : null}
         {result ? (
-          <ToolText className="border-l border-border/70 pl-2 text-foreground/85">
+          <ToolText
+            className={cn(
+              'border-l pl-2',
+              step.state === 'error'
+                ? 'border-destructive/60 text-destructive'
+                : 'border-border/70 text-foreground/85',
+            )}
+          >
             {result}
           </ToolText>
         ) : null}

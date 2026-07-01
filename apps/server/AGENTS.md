@@ -17,7 +17,7 @@
 
 ## Local Contracts
 
-- `POST /agent` accepts `{ prompt: string, projectId: string, model?: string }` and streams `thinking`, `text`, `tool_call`, `stats`, `error`, and `done` SSE events. The agent edits the project's `index.html` file directly; there is **no** `html` push event — the client pulls the updated HTML via `GET /api/projects/:id` after each `edit` tool completes.
+- `POST /agent` accepts `{ prompt: string, projectId: string, model?: string }` and streams `thinking`, `text`, `tool_call`, `stats`, `error`, and `done` SSE events. `tool_call` events must include terminal `done`/`error` states for tool results and errors. The agent edits the project's `index.html` file directly; there is **no** `html` push event — the client pulls the updated HTML via `GET /api/projects/:id` after each successful `edit` tool completes.
 - Project REST API (file-backed via `src/mastra/lib/project-store.ts` under `.data/projects/<id>/`):
   - `GET /api/projects` → list metadata, drafts (no HTML) hidden.
   - `POST /api/projects { title?, model? }` → create draft (seeded with the placeholder page).

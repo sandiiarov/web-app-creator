@@ -42,20 +42,28 @@ interface TextReplacement {
 }
 
 /**
- * Apply a single edit to the raw store string. Handles BOM stripping + LF
- * normalization of the input and returns the new full content.
+ * Apply a single edit to the raw store string. Handles BOM stripping + line
+ * ending normalization while preserving the file's original BOM/line endings.
  */
 export function applyEdit(
   currentHtml: string,
   oldText: string,
   newText: string,
 ): string {
-  const { text } = stripBom(currentHtml)
+  return applyEdits(currentHtml, [{ newText, oldText }])
+}
+
+/**
+ * Apply one or more edits to the raw store string. All oldText matches are
+ * resolved against the original file content (not incrementally), matching Pi's
+ * edit tool semantics.
+ */
+export function applyEdits(currentHtml: string, edits: Edit[]): string {
+  const { bom, text } = stripBom(currentHtml)
+  const originalEnding = detectLineEnding(text)
   const normalizedContent = normalizeToLF(text)
-  const { newContent } = applyEditsToNormalizedContent(normalizedContent, [
-    { newText, oldText },
-  ])
-  return newContent
+  const { newContent } = applyEditsToNormalizedContent(normalizedContent, edits)
+  return bom + restoreLineEndings(newContent, originalEnding)
 }
 
 /**
@@ -145,6 +153,14 @@ export function countChangedLines(oldContent: string, newContent: string) {
   return changed
 }
 
+export function detectLineEnding(content: string): '\n' | '\r\n' {
+  const crlfIdx = content.indexOf('\r\n')
+  const lfIdx = content.indexOf('\n')
+  if (lfIdx === -1) return '\n'
+  if (crlfIdx === -1) return '\n'
+  return crlfIdx < lfIdx ? '\r\n' : '\n'
+}
+
 /**
  * Find oldText in content: exact match first, then fuzzy-normalized match.
  * Returns offsets in whichever content space matched (original or normalized).
@@ -205,6 +221,13 @@ export function normalizeForFuzzyMatch(text: string): string {
 
 export function normalizeToLF(text: string): string {
   return text.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
+}
+
+export function restoreLineEndings(
+  text: string,
+  ending: '\n' | '\r\n',
+): string {
+  return ending === '\r\n' ? text.replace(/\n/g, '\r\n') : text
 }
 
 export function stripBom(content: string): { bom: string; text: string } {
@@ -322,9 +345,7 @@ function getLineSpans(content: string): LineSpan[] {
 
 function getNoChangeError(totalEdits: number): Error {
   return totalEdits === 1
-    ? new Error(
-        'No changes made. The replacement produced identical content.',
-      )
+    ? new Error('No changes made. The replacement produced identical content.')
     : new Error('No changes made. The replacements produced identical content.')
 }
 

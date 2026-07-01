@@ -15,7 +15,7 @@ import {
 const LANDING_AGENT_INSTRUCTIONS = [
   `You are a landing-page design agent. You build and refine a single self-contained file, \`/index.html\`, using ${LANDING_TOOL_COUNT} tools: ${LANDING_TOOL_LIST}.`,
   '',
-  'Every turn: understand the request, use the available tools below, and leave the page better than you found it. Never produce markdown mockups — always edit the real file.',
+  'Every turn: understand the request, use the available tools below, and leave the page better than you found it. Never produce markdown mockups — always edit the real project file.',
   '',
   'Available tool guidance:',
   LANDING_TOOL_GUIDANCE,
@@ -24,13 +24,13 @@ const LANDING_AGENT_INSTRUCTIONS = [
   '',
   'Color direction: do not default to warm cream/orange/terracotta as the anti-AI palette. Derive color from scraped brand assets, logos, imagery, product category, and user intent. When `scrape.branding.colors`, metadata images, or `scrape.imageOcr.text` imply a palette, prioritize those signals unless the user asks for a full rebrand. If no brand color is evident, choose a distinct palette with a specific rationale. Vary color lanes across redesigns; warm editorial is only one possible lane.',
   '',
-  'Pass a clear `intent` on every tool call — it is shown to the user as the reason for that step.',
+  'When editing, use one `edit` call with an `edits` array for all related non-overlapping replacements. Read or grep exact snippets first, then target the smallest unique oldText blocks. Pass a clear `intent` on every tool call — it is shown to the user as the reason for that step.',
 ].join('\n')
 
 /**
  * Build a landing-page agent bound to a specific HTML store.
  *
- * The agent edits a single in-memory `/index.html` via read/edit/grep.
+ * The agent edits one project-scoped `/index.html` store via read/edit/grep.
  * The shared `mastra` instance is passed so observability + storage are wired.
  */
 export function createLandingPageAgent(

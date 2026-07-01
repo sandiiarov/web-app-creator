@@ -61,7 +61,8 @@ export function useLandingPage({
       .catch((err: unknown) => {
         if (cancelled) return
         if (err instanceof ProjectNotFoundError) setMissing(true)
-        else onError(err instanceof Error ? err.message : 'Failed to load project')
+        else
+          onError(err instanceof Error ? err.message : 'Failed to load project')
       })
 
     return () => {
@@ -125,13 +126,19 @@ export function useLandingPage({
           onEvent: ({ data, event }) => {
             switch (event) {
               case 'done': {
-                patchTurn(turnId, (turn) => ({ ...turn, isStreaming: false }))
+                patchTurn(turnId, (turn) => ({
+                  ...terminalizeActiveTools(turn),
+                  isStreaming: false,
+                }))
                 break
               }
               case 'error': {
                 const { message } = data as { message: string }
                 if (message === 'stopped') break
-                patchTurn(turnId, (turn) => ({ ...turn, error: message }))
+                patchTurn(turnId, (turn) => ({
+                  ...terminalizeActiveTools(turn, message),
+                  error: message,
+                }))
                 onError(message)
                 break
               }
@@ -247,26 +254,46 @@ export function useLandingPage({
           },
           signal: controller.signal,
         },
-      ).catch((error: unknown) => {
-        const message = error instanceof Error ? error.message : String(error)
-        if (message !== 'stopped' && !controller.signal.aborted) {
-          patchTurn(turnId, (turn) => ({ ...turn, error: message }))
-          onError(message)
-        }
-      }).finally(() => {
-        patchTurn(turnId, (turn) => ({ ...turn, isStreaming: false }))
-        setIsStreaming(false)
-        controllerRef.current = null
-      })
+      )
+        .catch((error: unknown) => {
+          const message = error instanceof Error ? error.message : String(error)
+          if (message !== 'stopped' && !controller.signal.aborted) {
+            patchTurn(turnId, (turn) => ({
+              ...terminalizeActiveTools(turn, message),
+              error: message,
+            }))
+            onError(message)
+          }
+        })
+        .finally(() => {
+          patchTurn(turnId, (turn) => ({
+            ...terminalizeActiveTools(turn),
+            isStreaming: false,
+          }))
+          setIsStreaming(false)
+          controllerRef.current = null
+        })
     },
-    [appendPart, isStreaming, model, onError, patchTurn, projectId, refreshHtml],
+    [
+      appendPart,
+      isStreaming,
+      model,
+      onError,
+      patchTurn,
+      projectId,
+      refreshHtml,
+    ],
   )
 
   const stop = useCallback(() => {
     controllerRef.current?.abort()
     setIsStreaming(false)
     setTurns((prev) =>
-      prev.map((turn) => (turn.isStreaming ? { ...turn, isStreaming: false } : turn)),
+      prev.map((turn) =>
+        turn.isStreaming
+          ? { ...terminalizeActiveTools(turn, 'Stopped.'), isStreaming: false }
+          : turn,
+      ),
     )
   }, [])
 
@@ -280,4 +307,26 @@ export function useLandingPage({
     stop,
     turns,
   }
+}
+
+function terminalizeActiveTools(
+  turn: LandingTurn,
+  result: string = 'Tool did not return a result before the response completed.',
+): LandingTurn {
+  let changed = false
+  const parts = turn.parts.map((part) => {
+    if (
+      part.type !== 'tool_call' ||
+      (part.state !== 'running' && part.state !== 'start')
+    ) {
+      return part
+    }
+    changed = true
+    return {
+      ...part,
+      result: part.result ?? result,
+      state: 'error' as const,
+    }
+  })
+  return changed ? { ...turn, parts } : turn
 }

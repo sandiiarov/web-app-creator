@@ -46,7 +46,7 @@ export function resolveModelId(model?: string): string {
 /**
  * Run the landing-page agent and stream the custom SSE protocol by mapping
  * Mastra `fullStream` chunks. Emits: thinking, text, tool_call (with intent +
- * state), html (full file after a successful edit), stats, error, done.
+ * terminal error/result states), stats, error, done.
  */
 export async function streamLandingAgent({
   modelId,
@@ -160,6 +160,29 @@ export async function streamLandingAgent({
           })
           break
         }
+        case 'tool-error': {
+          const args = asToolArgs(chunk.payload.args)
+          const display = getToolCallDisplay(
+            callDisplay,
+            chunk.payload.toolCallId,
+            chunk.payload.toolName,
+            args,
+            ++toolCallSeq,
+          )
+          const intent =
+            callIntent.get(chunk.payload.toolCallId) ?? display.intent
+          sendSse(response, 'tool_call', {
+            detail: display.detail,
+            id: display.id,
+            intent,
+            providerId: chunk.payload.toolCallId,
+            result: summarizeToolError(chunk.payload.error),
+            state: 'error',
+            tool: chunk.payload.toolName,
+          })
+          completedCallIds.add(chunk.payload.toolCallId)
+          break
+        }
         case 'tool-result': {
           const isError = chunk.payload.isError === true
           const args = asToolArgs(chunk.payload.args)
@@ -170,7 +193,8 @@ export async function streamLandingAgent({
             args,
             ++toolCallSeq,
           )
-          const intent = callIntent.get(chunk.payload.toolCallId) ?? display.intent
+          const intent =
+            callIntent.get(chunk.payload.toolCallId) ?? display.intent
           const result = summarizeToolResult(
             chunk.payload.toolName,
             chunk.payload.result,
@@ -197,13 +221,11 @@ export async function streamLandingAgent({
                 cost?: number
                 imagesAnalyzed?: number
                 ok?: boolean
-                usage?:
-                  | null
-                  | {
-                    cachedTokens?: number
-                    completionTokens?: number
-                    promptTokens?: number
-                  }
+                usage?: null | {
+                  cachedTokens?: number
+                  completionTokens?: number
+                  promptTokens?: number
+                }
               }
             }
             scrapeCalls += 1
@@ -232,10 +254,7 @@ export async function streamLandingAgent({
             }
             if (typeof result.imagesGenerated === 'number') {
               imageCount += result.imagesGenerated
-              imageCostUsd += imageGenCost(
-                result.imagesGenerated,
-                result.cost,
-              )
+              imageCostUsd += imageGenCost(result.imagesGenerated, result.cost)
             }
           }
           break
@@ -407,7 +426,9 @@ function summarizeToolArgs(tool: string, args: ToolArgs): null | string {
     case 'grep':
       return compactLines([
         intent,
-        stringValue(args.pattern) ? `Pattern: ${stringValue(args.pattern)}` : null,
+        stringValue(args.pattern)
+          ? `Pattern: ${stringValue(args.pattern)}`
+          : null,
       ])
     case 'read': {
       const offset = numberValue(args.offset)
@@ -448,6 +469,25 @@ function summarizeToolArgs(tool: string, args: ToolArgs): null | string {
   }
 }
 
+function summarizeToolError(error: unknown): string {
+  if (error instanceof Error) return error.message
+  if (typeof error === 'string') return error
+  if (error && typeof error === 'object') {
+    const data = error as Record<string, unknown>
+    const message = stringValue(data.message)
+    if (message) return message
+    const details = asToolArgs(data.details)
+    const detailMessage = stringValue(details.errorMessage)
+    if (detailMessage) return detailMessage
+    try {
+      return JSON.stringify(data)
+    } catch {
+      return String(error)
+    }
+  }
+  return 'Tool failed.'
+}
+
 function summarizeToolResult(
   tool: string,
   result: unknown,
@@ -456,7 +496,7 @@ function summarizeToolResult(
   const data = asToolArgs(result)
   const reason = stringValue(data.reason)
 
-  if (isError) return reason ?? 'Tool failed.'
+  if (isError) return reason ?? summarizeToolError(result)
 
   switch (tool) {
     case 'edit': {
@@ -468,7 +508,8 @@ function summarizeToolResult(
     case 'generate_image': {
       const count = numberValue(data.imagesGenerated)
       const url = stringValue(data.url)
-      if (booleanValue(data.ok) === false) return reason ?? 'No image generated.'
+      if (booleanValue(data.ok) === false)
+        return reason ?? 'No image generated.'
       return compactLines([
         typeof count === 'number'
           ? `Generated ${count} image${count === 1 ? '' : 's'}`
