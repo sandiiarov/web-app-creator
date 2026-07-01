@@ -4,6 +4,7 @@
  * Each project lives at `<dataDir>/projects/<id>/` with:
  *   - `project.json`   metadata (id, title, model, timestamps, hasHtml)
  *   - `index.html`     the landing page the agent edits — THE source of truth
+ *   - `messages.json`  persisted chat/tool/stats turns for the project
  *   - `images/<file>`  generated image bytes copied out of the in-memory store
  *
  * The agent operates directly on the project's `index.html` via
@@ -11,18 +12,13 @@
  * (`getProject`) after each `edit` tool completes.
  */
 import { randomUUID } from 'node:crypto'
-import {
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  writeFileSync,
-} from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { getImage } from './image-store.ts'
 import { PLACEHOLDER_INDEX_HTML, type HtmlStore } from './html-store.ts'
+import { getImage } from './image-store.ts'
 
 const MODULE_DIR = dirname(fileURLToPath(import.meta.url))
 const DATA_DIR = join(MODULE_DIR, '..', '..', '..', '.data')
@@ -30,15 +26,66 @@ const PROJECTS_DIR = join(DATA_DIR, 'projects')
 
 const INDEX_HTML = 'index.html'
 const PROJECT_JSON = 'project.json'
+const MESSAGES_JSON = 'messages.json'
 const IMAGES_DIR = 'images'
 
 export interface Project extends ProjectMeta {
   indexHtml: string
+  messages: ProjectMessageTurn[]
 }
 
 export interface ProjectInput {
   model?: string
   title?: string
+}
+
+export type ProjectMessagePart =
+  | ProjectMessageStatsPart
+  | ProjectMessageTextPart
+  | ProjectMessageThinkingPart
+  | ProjectMessageToolCallPart
+
+export interface ProjectMessageStatsPart {
+  cost: number
+  costBreakdown?: unknown
+  durationMs: number
+  finishReason: string
+  model: string
+  type: 'stats'
+  usage: Record<string, number | undefined>
+}
+
+export interface ProjectMessageTextPart {
+  id: string
+  text: string
+  type: 'text'
+}
+
+export interface ProjectMessageThinkingPart {
+  id: string
+  text: string
+  type: 'thinking'
+}
+
+export interface ProjectMessageToolCallPart {
+  detail?: null | string
+  id: string
+  intent: null | string
+  providerId?: string
+  result?: null | string
+  state: 'done' | 'error' | 'running' | 'start'
+  tool: string
+  type: 'tool_call'
+}
+
+export interface ProjectMessageTurn {
+  error?: string
+  htmlSwaps: number
+  id: string
+  isStreaming: boolean
+  model: string
+  parts: ProjectMessagePart[]
+  prompt: string
 }
 
 export interface ProjectMeta {
@@ -52,8 +99,21 @@ export interface ProjectMeta {
 
 // ── async CRUD (HTTP handlers) ───────────────────────────────────
 
+/** Append a completed project conversation turn and return the full history. */
+export async function appendProjectMessageTurn(
+  id: string,
+  turn: ProjectMessageTurn,
+): Promise<ProjectMessageTurn[]> {
+  const messages = await readMessages(id)
+  const next = [...messages, turn]
+  await writeMessages(id, next)
+  return next
+}
+
 /** Create a new draft project seeded with the placeholder page. */
-export async function createProject(input: ProjectInput = {}): Promise<Project> {
+export async function createProject(
+  input: ProjectInput = {},
+): Promise<Project> {
   const id = randomUUID()
   const now = new Date().toISOString()
   const meta: ProjectMeta = {
@@ -68,8 +128,9 @@ export async function createProject(input: ProjectInput = {}): Promise<Project> 
   await ensureProjectDir(id)
   await writeMeta(id, meta)
   await writeIndexHtml(id, PLACEHOLDER_INDEX_HTML)
+  await writeMessages(id, [])
 
-  return { ...meta, indexHtml: PLACEHOLDER_INDEX_HTML }
+  return { ...meta, indexHtml: PLACEHOLDER_INDEX_HTML, messages: [] }
 }
 
 /**
@@ -105,12 +166,13 @@ export async function deleteProject(id: string): Promise<void> {
   await rm(projectDir(id), { force: true, recursive: true })
 }
 
-/** Full project (metadata + index.html), or null if missing. */
+/** Full project (metadata + index.html + messages), or null if missing. */
 export async function getProject(id: string): Promise<null | Project> {
   const meta = await readMeta(id)
   if (!meta) return null
   const indexHtml = await readIndexHtml(id)
-  return { ...meta, indexHtml }
+  const messages = await readMessages(id)
+  return { ...meta, indexHtml, messages }
 }
 
 /** List all projects (metadata only), newest first. Drafts (no HTML) hidden. */
@@ -182,9 +244,11 @@ async function ensureProjectsRoot() {
 // ── sync fs helpers ──────────────────────────────────────────────
 
 function isSafeImageName(name: string): boolean {
-  return /^(img-\d+|img-\d+\.[a-z0-9]+|[a-z0-9_-]+\.[a-z0-9]+)$/i.test(name) &&
+  return (
+    /^(img-\d+|img-\d+\.[a-z0-9]+|[a-z0-9_-]+\.[a-z0-9]+)$/i.test(name) &&
     !name.includes('..') &&
     !name.includes('/')
+  )
 }
 
 function markHasHtmlSync(id: string) {
@@ -234,7 +298,8 @@ function persistProjectImagesSync(projectId: string, html: string): string {
     return `__PROJIMG_${sentinels.length - 1}__`
   })
 
-  const AGENT_IMG = /(?:https?:\/\/[^"' )\]]+)?\/images\/(img-\d+)(\.[a-z0-9]+)?/gi
+  const AGENT_IMG =
+    /(?:https?:\/\/[^"' )\]]+)?\/images\/(img-\d+)(\.[a-z0-9]+)?/gi
   working = working.replace(AGENT_IMG, (match, imgId: string, ext = '') => {
     return copyAgentImageSync(projectId, imgId, ext) ?? match
   })
@@ -256,7 +321,9 @@ async function readDirSafe(dir: string): Promise<string[]> {
   try {
     if (!existsSync(dir)) await ensureProjectsRoot()
     const entries = await readdir(dir, { withFileTypes: true })
-    return entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name)
+    return entries
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => entry.name)
   } catch {
     return []
   }
@@ -275,6 +342,16 @@ function readIndexHtmlSync(id: string): null | string {
     return readFileSync(join(projectDir(id), INDEX_HTML), 'utf8')
   } catch {
     return null
+  }
+}
+
+async function readMessages(id: string): Promise<ProjectMessageTurn[]> {
+  try {
+    const raw = await readFile(join(projectDir(id), MESSAGES_JSON), 'utf8')
+    const parsed = JSON.parse(raw)
+    return Array.isArray(parsed) ? (parsed as ProjectMessageTurn[]) : []
+  } catch {
+    return []
   }
 }
 
@@ -313,6 +390,15 @@ async function writeIndexHtml(id: string, html: string) {
 function writeIndexHtmlSync(id: string, html: string) {
   mkdirSync(projectDir(id), { recursive: true })
   writeFileSync(join(projectDir(id), INDEX_HTML), html, 'utf8')
+}
+
+async function writeMessages(id: string, messages: ProjectMessageTurn[]) {
+  await ensureProjectDir(id)
+  await writeFile(
+    join(projectDir(id), MESSAGES_JSON),
+    JSON.stringify(messages, null, 2),
+    'utf8',
+  )
 }
 
 async function writeMeta(id: string, meta: ProjectMeta) {
