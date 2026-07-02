@@ -1,107 +1,81 @@
-import { readFileSync, readdirSync } from 'node:fs'
-import { homedir } from 'node:os'
-import { join, resolve } from 'node:path'
-
 import { createSkill } from '@mastra/core/skills'
 
-/**
- * Design skill, inlined from the pi design skill (`~/.pi/agent/skills/design`).
- *
- * `instructions` adapts the design philosophy to the landing-page agent's job
- * (build/refine a single self-contained `/index.html` via read/edit/grep).
- * `references` bundles all 25 design reference docs so the agent can load the
- * detailed rules on demand via the auto-added `skill_read` / `skill_search`
- * tools — instead of stuffing ~50K tokens into every prompt.
- */
+const DESIGN_REFERENCES = {
+  'border.md': `# Border
+Borders clarify structure, state, focus, and containment. Use thin rules for separation, stronger treatments for focus/selected/error states, and a consistent radius language. In this product, sharp architectural edges are the default: set radius to 0 unless the user's prompt explicitly asks for softness. A border earns its place when removing it would make grouping or state less clear.`,
+  'button.md': `# Button
+Buttons make decisions visible. Each action needs a clear verb, accessible name, visible focus, usable hit area, and distinct rest/hover/active/disabled/loading treatment when those states apply. One primary action should lead a decision surface. Secondary actions support without competing. Labels such as "Compare plans", "Book a demo", or "Generate preview" beat vague labels when the outcome can be named.`,
+  'color.md': `# Color
+Choose color from the requested product, audience, proof, brand evidence, imagery, and emotional arc. Define semantic roles in CSS variables: canvas, surface, text, muted text, border, primary action, focus, selection, success, warning, error, and disabled. Check contrast and grayscale hierarchy. Avoid generic blue-purple tech gradients, AI-rainbow palettes, and category-default colors unless the brief gives a real reason.`,
+  'create.md': `# Create
+Build the generated landing page inside the existing /index.html document. Replace the placeholder with semantic HTML, responsive CSS, accessible landmarks, real copy, a clear first viewport, and a proof object specific to the user's domain. Start from structure, then spacing, then surface, then responsive behavior, then meaningful interaction and motion.`,
+  'finish.md': `# Finish
+Finish means the page is ready to view without apology. Tighten rough spacing, remove placeholders, fix weak CTAs, align tokens, verify image alt text, check mobile layout, preserve focus states, and make the page title and metadata fit the current project. Completion claims should match visible changes in /index.html.`,
+  'interaction.md': `# Interaction
+Interaction covers hover, focus, active, loading, empty, error, success, disabled, selected, and overflow states where the page includes them. Focus must be visible. Touch targets must be usable. Keyboard order should follow visual order. Motion and state changes should explain what happened rather than decorate the page.`,
+  'layout.md': `# Layout
+Layout directs attention. Name the visitor's dominant job first: monitor, operate, compare, configure, learn, decide, or explore. Then place content so the first read, second read, proof, and action are obvious. Use spacing, alignment, section rhythm, and visual mass to create a path. Cards are for genuinely discrete objects, not the default answer to every section.`,
+  'motion.md': `# Motion
+Motion communicates state, direction, causality, and attention. Default to calm static presentation; add movement only where it makes the interface clearer or the brand moment stronger. Prefer transform and opacity, short durations, consistent easing, and reduced-motion alternatives. Press feedback around 150ms and subtle state transitions are usually enough.`,
+  'redesign.md': `# Redesign
+Redesign changes the visual world while preserving the user's goal. Shift composition, type, color, component language, edges, depth, state treatment, and responsive behavior together. The new direction should be visible before color alone is noticed. Choose a lane that fits the brief: editorial, technical, tactile, strict grid, type-led, expressive, dense utility, or another specific direction.`,
+  'refine.md': `# Refine
+Refinement changes character, clarity, resilience, or delight without losing the current page's purpose. Pick the move that fits: push a flat page, settle a loud page, strip clutter, proof edge cases, activate first value, add texture at meaningful moments, or increase technical ambition where it matters. The rendered page should feel meaningfully improved, not merely adjusted.`,
+  'relayout.md': `# Relayout
+Relayout changes the structure while keeping identity mostly intact. Make at least one visible structural move: new focal point, changed hero relationship, reordered sequence, transformed grid, new action placement, or mobile order that changes the path. Spacing tweaks support relayout but cannot be the whole change.`,
+  'responsive.md': `# Responsive
+Responsive design preserves the story and task across viewports, input modes, zoom, and preferences. Start with the narrowest useful canvas, then add structure as space earns it. Watch for horizontal overflow, crushed labels, unreachable actions, tiny targets, runaway line length, and hover-only affordances. Mobile can reorder content so the decision path remains clear.`,
+  'shadow.md': `# Shadow
+Shadow explains elevation. Use it for raised surfaces, popovers, overlays, dragged/active elements, or focused hierarchy. Keep the light source consistent. On dark sections, surface value and border often communicate elevation better than heavy shadow. If a shadow only fills visual emptiness, fix layout, spacing, type, or color instead.`,
+  'surface.md': `# Surface
+Product-like sections serve repeated use. Prioritize stable controls, clear labels, real data shapes, state vocabulary, density that matches the work, keyboard path, loading/error/empty handling, and predictable interaction. Familiarity can be a feature. Surprise should serve trust or comprehension.`,
+  'tokenize.md': `# Tokenize
+Use tokens when repeated choices share a meaning. Define reusable CSS variables for color roles, spacing rhythm, type scale, borders, shadows, and motion timings when they reduce arbitrary decisions. Keep one-off values near the section-specific markup when they express a specific art direction.`,
+  'typeset.md': `# Typeset
+Typography gives the page voice and hierarchy. Choose fonts from the brand lane and reading context, not category reflex. One well-tuned family can beat two weak pairings. Use clear display/body/label roles, readable measure, useful line-height, responsive heading scale, tabular numbers for aligned data, and deliberate weight contrast.`,
+  'voice.md': `# Voice
+Brand surfaces must prove the current name, category, user, job, artifact, and evidence quickly. The proof object should come from the product world: a record, route, invoice, room, canvas, map, transformation, comparison, workflow, or other concrete domain object. Copy should be specific enough that it would not work unchanged for an unrelated product.`,
+  'writing.md': `# Writing
+Words are part of the interface. Use concrete nouns and verbs. Button labels name actions. Empty states explain what belongs there and how to start. Loading text names the work. Error text explains recovery. Keep terminology consistent. Prefer short, direct sentences over marketing filler.`,
+} satisfies Record<string, string>
 
-function loadReferenceMap(root: string): Record<string, string> {
-  const dir = join(root, 'references')
-  const map: Record<string, string> = {}
-  try {
-    const files = readdirSync(dir).filter((f) => f.endsWith('.md'))
-    for (const file of files) {
-      map[file] = readFileSync(join(dir, file), 'utf8')
-    }
-  } catch {
-    // references unavailable — skill still works with just instructions
-  }
-  return map
-}
-
-function loadSkillInstructions(root: string): string {
-  try {
-    return readFileSync(join(root, 'SKILL.md'), 'utf8')
-  } catch {
-    return ''
-  }
-}
-
-function resolveDesignRoot(): string {
-  const home = homedir()
-  const candidates = [
-    resolve(home, '.pi/agent/skills/design'),
-    resolve(process.cwd(), '.pi/skills/design'),
-  ]
-  for (const candidate of candidates) {
-    try {
-      readFileSync(join(candidate, 'SKILL.md'))
-      return candidate
-    } catch {
-      // try next
-    }
-  }
-  return candidates[0]!
-}
-
-const DESIGN_ROOT = resolveDesignRoot()
-const DESIGN_REFERENCES = loadReferenceMap(DESIGN_ROOT)
-const PI_SKILL_BODY = loadSkillInstructions(DESIGN_ROOT)
+export const BROWSER_SAFE_REFERENCE_FILES = Object.keys(DESIGN_REFERENCES)
+export { DESIGN_REFERENCES }
 
 export const designSkill = createSkill({
   description:
-    'Use for every landing-page design decision: building a new page from a prompt, refining layout, color, typography, spacing, motion, voice, responsive behavior, or auditing an existing page. Load the relevant reference before making changes.',
+    'Design guidance for a browser-rendered landing page whose only editable document is /index.html: layout, color, typography, motion, interaction, responsive behavior, voice, and refinement.',
   instructions: [
-    '# Landing-page design agent',
+    '# Browser landing-page design',
     '',
-    'You build and refine a single self-contained file: `/index.html`. Every change is an edit to that one file. The file is the only artifact and the only thing the user ever sees.',
+    'The work surface is the project-scoped `/index.html` rendered in the browser preview. Every design decision becomes markup, CSS, or inline script inside that document.',
     '',
-    '## How a turn runs',
-    '1. Understand the request. If it is a new page, read the `create` reference first and build from scratch (a sequence of edits starting from the placeholder). If it refines an existing page, `grep`/`read` the current file to find the exact text, then `edit`.',
-    '2. Decide — do not ask for confirmation on a complete prompt. Infer ordinary details and choose the strongest interpretation. Ask only if a truly ambiguous goal would change what gets built.',
-    '3. Ship — apply edits to real markup. No markdown mockups, no describing what you would do. Every turn must leave `/index.html` better than it found it.',
+    '## Turn shape',
+    '1. Extract the prompt invariants: exact name, category, audience, user pressure, job, domain artifact, proof, constraints, and visual drift to avoid.',
+    '2. Read the current `/index.html` with `grep` or `read` before exact edits. Use `skill_read` for the compact reference that matches the design problem.',
+    '3. Apply related changes with one batched `edit` call when practical. Keep replacements small, unique, and based on text present in `/index.html`.',
+    '4. Re-check the changed region and continue until the browser page is more specific, accessible, responsive, and visually intentional.',
     '',
-    '## Design taste (apply always)',
-    'These rules are non-negotiable. Load the full reference for any area before working in it.',
-    '- **Color**: intentional, accessible palette; never default blue/purple gradients or generic AI rainbow. Define tokens, use them consistently.',
-    '- **Typography**: a deliberate type scale; real hierarchy via size/weight, not decoration. Avoid Inter/Geist defaults unless intentional.',
-    '- **Layout**: composition follows the work, never habit. Generous whitespace, clear visual rhythm, strong alignment.',
-    '- **Spacing**: consistent scale; breathing room; no cramped clusters.',
-    '- **Motion**: none unless it earns its place. Default to static. No fade-ins, scale-on-hover, or count-ups without a reason.',
-    '- **Voice**: clear, specific, human copy. Cut adjectives and buzzwords. No "powerful", "seamless", "leverage".',
-    '- **Responsive**: works from mobile up; test breakpoints; never horizontally scroll on a phone.',
-    '- **Surfaces**: restrained borders and shadows; flat by default; depth only where it communicates hierarchy.',
-    '- **No rounded corners**: use `border-radius: 0` (or tailwind `rounded-none`). Sharp, architectural corners only.',
+    '## Default design bar',
+    '- The first viewport communicates the current product name, category, audience, proof, and next action.',
+    '- Layout follows the visitor job: monitor, operate, compare, configure, learn, decide, or explore.',
+    '- Color uses semantic roles and accessible contrast.',
+    '- Typography has deliberate hierarchy, readable measure, and a voice that fits the brief.',
+    '- Interactions have visible focus and clear state feedback where controls exist.',
+    '- Responsive behavior preserves the story from narrow phone to desktop.',
+    '- Motion is purposeful, restrained, and paired with reduced-motion handling when used.',
+    '- Corners stay sharp by default with `border-radius: 0`.',
     '',
-    '## Anti-patterns (never ship these)',
-    '- AI-generated smell: generic gradient heroes, glassmorphism, aurora blobs, centered-trio layouts, emoji feature icons, "trusted by" logo strips, 3-card feature grids with outline icons.',
-    '- Decoration without purpose: gradients, glows, drop shadows, borders added "to look nice".',
-    '- Inconsistent tokens: ad-hoc hex values, mixed spacing units, mismatched corner radii.',
-    '- Bloated copy: marketing adjective soup, vague headlines, placeholder Lorem.',
+    '## Generated-design tells to replace with specific choices',
+    '- Generic blue-purple gradients, glass panels, aurora blobs, and glow effects.',
+    '- Centered hero plus equal feature cards when the content needs another structure.',
+    '- Emoji or rounded-square icon toppers used as decoration.',
+    '- Fake logo strips, vague metrics, placeholder dashboards, and proof objects that could fit any product.',
+    '- Default typography with timid scale and no brand or product reason.',
+    '- Copy built from vague claims such as powerful, seamless, transform, unlock, or leverage.',
     '',
-    '## Tool usage',
-    '- `grep` — find exact text/structure before editing. Always grep first so oldText is unique and exact.',
-    '- `read` — inspect a region of the file when you need surrounding context or line numbers.',
-    '- `edit` — apply a change. oldText must match exactly (whitespace + newlines) and be unique. Pass a clear `intent` for every call — it is shown to the user.',
-    '',
-    '## Before you finish',
-    'Re-read the file once. Confirm: no rounded corners, no unearned motion, real copy (no Lorem), consistent tokens, responsive, accessible contrast. If any anti-pattern remains, fix it before stopping.',
-    '',
-    '---',
-    '',
-    '## Full pi design skill (reference)',
-    'Below is the complete pi design skill body. Treat it as authoritative design guidance; ignore the parts about CLI commands (`/design ...`), `.commandcode/design/` reports, and tools that do not exist here (recolor, relayout as separate tools — fold them into `edit`). The design taste, references, and checklists are directly applicable.',
-    '',
-    PI_SKILL_BODY,
+    '## Completion check',
+    'Before finishing, inspect the relevant `/index.html` region. Confirm the page has real copy, accessible contrast, visible focus, responsive structure, consistent tokens, sharp corners, purposeful motion, and a proof object tied to the current prompt.',
   ].join('\n'),
   name: 'design',
   references: DESIGN_REFERENCES,

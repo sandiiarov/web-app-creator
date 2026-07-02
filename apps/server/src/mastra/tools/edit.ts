@@ -40,8 +40,8 @@ const editInputSchema = z.object({
 type EditInput = z.infer<typeof editInputSchema>
 
 /**
- * Apply exact-text replacements to `/index.html`. Matches Pi's edit semantics:
- * all edits are matched against the original file, must be unique and
+ * Apply exact-text replacements to `/index.html`. Batched edits are matched
+ * against the original document, must be unique and
  * non-overlapping, and fuzzy matching tolerates trailing whitespace, smart
  * quotes/dashes, special spaces, BOMs, and line endings. `intent` is surfaced
  * to the UI; on success the project file has already been written.
@@ -49,7 +49,7 @@ type EditInput = z.infer<typeof editInputSchema>
 export function createEditTool(store: HtmlStore) {
   return createTool({
     description:
-      'Edit /index.html using Pi-style exact text replacement. Prefer edits: [{ oldText, newText }] and combine related non-overlapping replacements in one call. Each oldText must be unique in the original file and include exact whitespace/newlines. Use grep/read first to get exact text. The preview updates automatically after a successful edit. Always pass an intent describing the change.',
+      'Edit /index.html using exact text replacement. Prefer edits: [{ oldText, newText }] and combine related non-overlapping replacements in one call. Each oldText must be unique in the original document and include exact whitespace/newlines. Use grep/read first to get exact text. The preview updates automatically after a successful edit. Always pass an intent describing the change.',
     execute: async (input) => {
       const edits = prepareEdits(input)
       const before = store.get()

@@ -1,6 +1,6 @@
 /**
- * Fuzzy text matching + safe edit application, ported from pi's edit-diff.ts.
- * Operates purely on strings — no filesystem. Same semantics: exact match
+ * Fuzzy text matching + safe edit application for `/index.html`.
+ * Operates purely on strings. Semantics: exact match
  * first, then a normalized fuzzy pass; edits must be unique and non-overlapping;
  * a no-op replacement is an error.
  */
@@ -55,8 +55,7 @@ export function applyEdit(
 
 /**
  * Apply one or more edits to the raw store string. All oldText matches are
- * resolved against the original file content (not incrementally), matching Pi's
- * edit tool semantics.
+ * resolved against the original document content, not incrementally.
  */
 export function applyEdits(currentHtml: string, edits: Edit[]): string {
   const { bom, text } = stripBom(currentHtml)

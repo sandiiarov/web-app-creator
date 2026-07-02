@@ -56,7 +56,7 @@ const LANDING_TOOL_DEFINITIONS = [
   ),
   tool(
     'edit',
-    'Use `edit` to change `/index.html` with Pi-style `edits: [{ oldText, newText }]`. Combine related non-overlapping replacements in one call; each oldText is matched against the original file and must be exact, unique, and as small as possible. After every successful edit the project file is written and the preview updates automatically.',
+    'Use `edit` to change `/index.html` with `edits: [{ oldText, newText }]`. Combine related non-overlapping replacements in one call; each oldText is matched against the original document and must be exact, unique, and as small as possible. After every successful edit the project document is written and the preview updates automatically.',
     ({ store }) => createEditTool(store),
   ),
   tool(

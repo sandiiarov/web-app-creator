@@ -1,6 +1,6 @@
 /**
- * In-memory line-based pattern search, ported from pi's grep.ts.
- * Searches a single string (the `/index.html` workspace). Regex by default,
+ * In-memory line-based pattern search for `/index.html`.
+ * Searches a single string. Regex by default,
  * literal mode on request; case-insensitive option; N lines of context around
  * each match; per-line truncation + match cap.
  */
@@ -35,7 +35,11 @@ export interface GrepResult {
   truncatedLines: boolean
 }
 
-export function grepHtml(content: string, pattern: string, options: GrepOptions = {}): GrepResult {
+export function grepHtml(
+  content: string,
+  pattern: string,
+  options: GrepOptions = {},
+): GrepResult {
   const contextValue = Math.max(0, options.context ?? DEFAULT_CONTEXT)
   const effectiveLimit = Math.max(1, options.limit ?? DEFAULT_LIMIT)
   const ignoreCase = options.ignoreCase ?? false
@@ -52,7 +56,9 @@ export function grepHtml(content: string, pattern: string, options: GrepOptions 
       matchCount: 0,
       matches: [],
       matchLimitReached: false,
-      notices: [`Invalid regex: ${error instanceof Error ? error.message : String(error)}`],
+      notices: [
+        `Invalid regex: ${error instanceof Error ? error.message : String(error)}`,
+      ],
       output: '',
       truncatedLines: false,
     }
@@ -106,13 +112,17 @@ export function grepHtml(content: string, pattern: string, options: GrepOptions 
         const { text, wasTruncated } = truncateLine(lineText)
         if (wasTruncated) truncatedLines = true
         const isMatchLine = current === match.lineNumber
-        outputLines.push(isMatchLine ? `${current}: ${text}` : `${current}- ${text}`)
+        outputLines.push(
+          isMatchLine ? `${current}: ${text}` : `${current}- ${text}`,
+        )
       }
     }
   }
 
   if (truncatedLines) {
-    notices.push(`Some lines truncated to ${MAX_LINE_LENGTH} chars. Use read to see full lines.`)
+    notices.push(
+      `Some lines truncated to ${MAX_LINE_LENGTH} chars. Use read to see full lines.`,
+    )
   }
 
   return {
@@ -135,5 +145,8 @@ function truncateLine(line: string): { text: string; wasTruncated: boolean } {
   if (line.length <= MAX_LINE_LENGTH) {
     return { text: line, wasTruncated: false }
   }
-  return { text: `${line.slice(0, MAX_LINE_LENGTH)}... [truncated]`, wasTruncated: true }
+  return {
+    text: `${line.slice(0, MAX_LINE_LENGTH)}... [truncated]`,
+    wasTruncated: true,
+  }
 }
