@@ -7,34 +7,45 @@ import {
   TooltipTrigger,
 } from '@workspace/ui/components/tooltip'
 import { cn } from '@workspace/ui/lib/utils'
-import { ArrowUp, Square } from 'lucide-react'
-import { type FormEvent, type KeyboardEvent } from 'react'
+import { ArrowUp, Paperclip, Square, X } from 'lucide-react'
+import { type FormEvent, type KeyboardEvent, useRef } from 'react'
 
+import type { ImageAttachmentInput } from '../../lib/landing-agent'
 import { KeyboardShortcut } from './keyboard-shortcut'
 import { KEYBOARD_SHORTCUTS } from './keyboard-shortcuts'
 import { ModelDropdown } from './model-dropdown'
 
 export function Composer({
+  attachmentError,
+  attachments,
   disabled,
   isStreaming,
   model,
+  onAttachFiles,
   onChange,
   onKeyDown,
   onModelChange,
+  onRemoveAttachment,
   onStop,
   onSubmit,
   prompt,
 }: {
+  attachmentError: null | string
+  attachments: ImageAttachmentInput[]
   disabled: boolean
   isStreaming: boolean
   model: string
+  onAttachFiles: (files: FileList | null) => void
   onChange: (value: string) => void
   onKeyDown: (event: KeyboardEvent<HTMLTextAreaElement>) => void
   onModelChange: (model: string) => void
+  onRemoveAttachment: (id: string) => void
   onStop: () => void
   onSubmit: (event: FormEvent<HTMLFormElement>) => void
   prompt: string
 }) {
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
+
   return (
     <form
       className="h-full min-h-0 border-t border-border/70 bg-background/35 p-2"
@@ -55,8 +66,66 @@ export function Composer({
           rows={4}
           value={prompt}
         />
+        {attachments.length > 0 || attachmentError ? (
+          <div className="flex shrink-0 flex-col gap-1 border-t border-border/60 px-2 py-1.5">
+            {attachments.length > 0 ? (
+              <div className="flex flex-wrap gap-1">
+                {attachments.map((attachment) => (
+                  <AttachmentChip
+                    attachment={attachment}
+                    disabled={isStreaming}
+                    key={attachment.id}
+                    onRemove={onRemoveAttachment}
+                  />
+                ))}
+              </div>
+            ) : null}
+            {attachmentError ? (
+              <p className="text-[11px] leading-relaxed text-destructive">
+                {attachmentError}
+              </p>
+            ) : null}
+          </div>
+        ) : null}
         <div className="flex shrink-0 items-center justify-between gap-2 border-t border-border/60 p-2">
-          <ModelDropdown model={model} onModelChange={onModelChange} />
+          <div className="flex min-w-0 items-center gap-1.5">
+            <input
+              accept="image/png,image/jpeg,image/webp,image/gif"
+              className="hidden"
+              multiple
+              onChange={(event) => {
+                onAttachFiles(event.currentTarget.files)
+                event.currentTarget.value = ''
+              }}
+              ref={fileInputRef}
+              type="file"
+            />
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className="inline-flex">
+                    <Button
+                      aria-label="Attach image"
+                      disabled={isStreaming}
+                      onClick={() => fileInputRef.current?.click()}
+                      size="icon-sm"
+                      type="button"
+                      variant="outline"
+                    >
+                      <Paperclip />
+                    </Button>
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent side="top">
+                  Attach image
+                  <span className="ml-2 text-background/80">
+                    PNG, JPEG, WEBP, or GIF
+                  </span>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+            <ModelDropdown model={model} onModelChange={onModelChange} />
+          </div>
           <div>
             {isStreaming ? (
               <TooltipProvider>
@@ -116,4 +185,39 @@ export function Composer({
       </div>
     </form>
   )
+}
+
+function AttachmentChip({
+  attachment,
+  disabled,
+  onRemove,
+}: {
+  attachment: ImageAttachmentInput
+  disabled: boolean
+  onRemove: (id: string) => void
+}) {
+  return (
+    <span className="inline-flex max-w-full items-center gap-1 border border-border bg-muted/45 px-1.5 py-0.5 text-[11px] leading-5 text-muted-foreground">
+      <span className="truncate text-foreground">{attachment.name}</span>
+      <span className="shrink-0">{formatAttachmentSize(attachment.size)}</span>
+      <Button
+        aria-label={`Remove ${attachment.name}`}
+        className="size-5 text-muted-foreground hover:text-foreground"
+        disabled={disabled}
+        onClick={() => onRemove(attachment.id)}
+        size="icon-sm"
+        type="button"
+        variant="ghost"
+      >
+        <X className="size-3" />
+      </Button>
+    </span>
+  )
+}
+
+function formatAttachmentSize(size: number) {
+  if (size < 1024) return `${size} B`
+  const kib = size / 1024
+  if (kib < 1024) return `${Math.round(kib)} KB`
+  return `${(kib / 1024).toFixed(1)} MB`
 }

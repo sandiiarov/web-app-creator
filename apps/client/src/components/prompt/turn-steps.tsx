@@ -9,6 +9,7 @@ import { Check, CircleAlert, LoaderCircle } from 'lucide-react'
 import type { ToolCallPart, ToolCallState } from '../../lib/landing-agent'
 
 const TOOL_LABELS: Record<string, string> = {
+  analyze_image: 'Analyze image',
   edit: 'Edit',
   generate_image: 'Generate image',
   grep: 'Search',

@@ -24,11 +24,36 @@ export type CostBreakdown = {
 
 export type ErrorEvent = { message: string }
 
+export type ImageAttachmentInput = ImageAttachmentMeta & {
+  dataUrl: string
+}
+
+export type ImageAttachmentMediaType =
+  | 'image/gif'
+  | 'image/jpeg'
+  | 'image/png'
+  | 'image/webp'
+
+export type ImageAttachmentMeta = {
+  analysisText?: string
+  id: string
+  mediaType: ImageAttachmentMediaType
+  name: string
+  size: number
+}
+
 export type ImageCost = {
   cost: number
   count: number
 }
+
+export type LandingAgentSendInput = {
+  attachments?: ImageAttachmentInput[]
+  prompt: string
+}
+
 export type LandingTurn = {
+  attachments?: ImageAttachmentMeta[]
   error?: string
   htmlSwaps: number
   id: string

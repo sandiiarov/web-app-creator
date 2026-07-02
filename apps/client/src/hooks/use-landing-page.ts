@@ -3,6 +3,9 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   LANDING_AGENT_API,
   LANDING_MODEL_OPTIONS,
+  type ImageAttachmentInput,
+  type ImageAttachmentMeta,
+  type LandingAgentSendInput,
   type LandingTurn,
   type ToolCallPart,
   type TurnPart,
@@ -20,7 +23,7 @@ export interface UseLandingPage {
   isStreaming: boolean
   missing: boolean
   model: string
-  send: (prompt: string) => void
+  send: (input: LandingAgentSendInput) => void
   setModel: (model: string) => void
   stop: () => void
   turns: LandingTurn[]
@@ -131,11 +134,13 @@ export function useLandingPage({
   )
 
   const send = useCallback(
-    (prompt: string) => {
+    ({ attachments = [], prompt }: LandingAgentSendInput) => {
       if (isStreaming) return
 
       const turnId = nextTurnId()
+      const attachmentMetadata = attachments.map(stripAttachmentData)
       const turn: LandingTurn = {
+        attachments: attachmentMetadata,
         htmlSwaps: 0,
         id: turnId,
         isStreaming: true,
@@ -151,7 +156,12 @@ export function useLandingPage({
 
       void streamSSE(
         LANDING_AGENT_API,
-        { model, projectId, prompt },
+        {
+          attachments,
+          model,
+          projectId,
+          prompt,
+        },
         {
           onEvent: ({ data, event }) => {
             switch (event) {
@@ -337,10 +347,18 @@ function restoreProjectTurns(turns: LandingTurn[]): LandingTurn[] {
     })
     return {
       ...restored,
+      attachments: turn.attachments ?? [],
       htmlSwaps: turn.htmlSwaps ?? 0,
       isStreaming: false,
     }
   })
+}
+
+function stripAttachmentData({
+  dataUrl: _dataUrl,
+  ...metadata
+}: ImageAttachmentInput): ImageAttachmentMeta {
+  return metadata
 }
 
 function terminalizeActiveTools(

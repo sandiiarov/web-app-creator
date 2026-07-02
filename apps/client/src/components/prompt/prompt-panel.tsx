@@ -16,7 +16,12 @@ import {
 import { useHotkeys } from 'react-hotkeys-hook'
 import { useNavigate } from 'react-router-dom'
 
-import type { LandingTurn } from '../../lib/landing-agent'
+import type {
+  ImageAttachmentInput,
+  ImageAttachmentMediaType,
+  LandingAgentSendInput,
+  LandingTurn,
+} from '../../lib/landing-agent'
 import { Composer } from './composer'
 import { KEYBOARD_SHORTCUTS } from './keyboard-shortcuts'
 import { PanelBody } from './panel-body'
@@ -31,13 +36,22 @@ import {
 import { PanelHeader } from './panel-header'
 import { panelStatus } from './panel-status'
 
+const ACCEPTED_ATTACHMENT_TYPES = new Set<ImageAttachmentMediaType>([
+  'image/gif',
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+])
+const MAX_ATTACHMENT_COUNT = 4
+const MAX_ATTACHMENT_SIZE = 8 * 1024 * 1024
+const MAX_ATTACHMENT_TOTAL_SIZE = 16 * 1024 * 1024
 const PANEL_POSITION_STORAGE_KEY = 'landing.promptPanel.position.v1'
 
 export type PromptPanelProps = {
   isStreaming: boolean
   model: string
   onModelChange: (model: string) => void
-  onSend: (prompt: string) => void
+  onSend: (input: LandingAgentSendInput) => void
   onStop: () => void
   turns: LandingTurn[]
 }
@@ -60,6 +74,8 @@ export function PromptPanel({
   const [commandMenuOpen, setCommandMenuOpen] = useState(false)
   const [position, setPosition] = useState<PanelPosition>(initialPanelPosition)
   const [prompt, setPrompt] = useState('')
+  const [attachments, setAttachments] = useState<ImageAttachmentInput[]>([])
+  const [attachmentError, setAttachmentError] = useState<null | string>(null)
   const [dragging, setDragging] = useState(false)
 
   const dragStart = useRef<null | { offsetX: number; offsetY: number }>(null)
@@ -133,16 +149,45 @@ export function PromptPanel({
     setCommandMenuOpen(true)
   }, [])
 
+  const handleAttachFiles = useCallback(
+    (files: FileList | null) => {
+      const selected = Array.from(files ?? [])
+      if (selected.length === 0) return
+
+      void attachImageFiles(selected, attachments)
+        .then((nextAttachments) => {
+          setAttachments(nextAttachments)
+          setAttachmentError(null)
+        })
+        .catch((error: unknown) => {
+          setAttachmentError(
+            error instanceof Error ? error.message : 'Failed to attach image',
+          )
+        })
+    },
+    [attachments],
+  )
+
+  const handleRemoveAttachment = useCallback((id: string) => {
+    setAttachments((current) => current.filter((item) => item.id !== id))
+    setAttachmentError(null)
+  }, [])
+
   const sendPrompt = useCallback(() => {
     const trimmed = prompt.trim()
 
-    if (!trimmed || isStreaming) {
+    if ((!trimmed && attachments.length === 0) || isStreaming) {
       return
     }
 
-    onSend(trimmed)
+    onSend({
+      attachments,
+      prompt: trimmed || 'Use the attached image as reference.',
+    })
     setPrompt('')
-  }, [isStreaming, onSend, prompt])
+    setAttachments([])
+    setAttachmentError(null)
+  }, [attachments, isStreaming, onSend, prompt])
 
   const stopGeneration = useCallback(() => {
     if (isStreaming) {
@@ -309,12 +354,19 @@ export function PromptPanel({
               minSize="30%"
             >
               <Composer
-                disabled={isStreaming || prompt.trim().length === 0}
+                attachmentError={attachmentError}
+                attachments={attachments}
+                disabled={
+                  isStreaming ||
+                  (prompt.trim().length === 0 && attachments.length === 0)
+                }
                 isStreaming={isStreaming}
                 model={model}
+                onAttachFiles={handleAttachFiles}
                 onChange={setPrompt}
                 onKeyDown={handleKeyDown}
                 onModelChange={onModelChange}
+                onRemoveAttachment={handleRemoveAttachment}
                 onStop={onStop}
                 onSubmit={handleSubmit}
                 prompt={prompt}
@@ -325,6 +377,45 @@ export function PromptPanel({
       )}
     </section>
   )
+}
+
+function assertAttachableImageFile(
+  file: File,
+): asserts file is File & { type: ImageAttachmentMediaType } {
+  if (!isAcceptedAttachmentType(file.type)) {
+    throw new Error('Attach PNG, JPEG, WEBP, or GIF images only.')
+  }
+
+  if (file.size > MAX_ATTACHMENT_SIZE) {
+    throw new Error('Each image must be 8 MiB or smaller.')
+  }
+}
+
+async function attachImageFiles(
+  files: File[],
+  current: ImageAttachmentInput[],
+): Promise<ImageAttachmentInput[]> {
+  const availableSlots = MAX_ATTACHMENT_COUNT - current.length
+  if (availableSlots <= 0) {
+    throw new Error(`Attach up to ${MAX_ATTACHMENT_COUNT} images.`)
+  }
+
+  const selected = files.slice(0, availableSlots)
+  if (files.length > availableSlots) {
+    throw new Error(`Attach up to ${MAX_ATTACHMENT_COUNT} images.`)
+  }
+
+  const additions = await Promise.all(selected.map(fileToImageAttachment))
+  const totalSize = [...current, ...additions].reduce(
+    (sum, item) => sum + item.size,
+    0,
+  )
+
+  if (totalSize > MAX_ATTACHMENT_TOTAL_SIZE) {
+    throw new Error('Attached images must be 16 MiB or smaller in total.')
+  }
+
+  return [...current, ...additions]
 }
 
 function clampPanelPosition(
@@ -346,6 +437,12 @@ function clampPanelPosition(
     x: Math.max(0, x),
     y: Math.max(0, y),
   }
+}
+
+function createAttachmentId() {
+  return typeof crypto.randomUUID === 'function'
+    ? crypto.randomUUID()
+    : `image-${Date.now()}-${Math.random().toString(16).slice(2)}`
 }
 
 function defaultPanelPosition(): PanelPosition {
@@ -377,6 +474,21 @@ function dockedPanelSide(position: PanelPosition) {
   return null
 }
 
+async function fileToImageAttachment(
+  file: File,
+): Promise<ImageAttachmentInput> {
+  assertAttachableImageFile(file)
+  const dataUrl = await readFileAsDataUrl(file)
+
+  return {
+    dataUrl,
+    id: createAttachmentId(),
+    mediaType: file.type,
+    name: file.name || 'image',
+    size: file.size,
+  }
+}
+
 function floatingPositionFrom(position: PanelPosition): PanelPosition {
   const dockedSide = dockedPanelSide(position)
 
@@ -399,8 +511,29 @@ function initialPanelPosition(): PanelPosition {
   return readStoredPanelPosition() ?? defaultPanelPosition()
 }
 
+function isAcceptedAttachmentType(
+  value: string,
+): value is ImageAttachmentMediaType {
+  return ACCEPTED_ATTACHMENT_TYPES.has(value as ImageAttachmentMediaType)
+}
+
 function isFiniteNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value)
+}
+
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onerror = () => reject(new Error('Failed to read image file.'))
+    reader.onload = () => {
+      if (typeof reader.result === 'string') {
+        resolve(reader.result)
+        return
+      }
+      reject(new Error('Failed to read image file.'))
+    }
+    reader.readAsDataURL(file)
+  })
 }
 
 function readStoredPanelCollapsed(): boolean | null {
