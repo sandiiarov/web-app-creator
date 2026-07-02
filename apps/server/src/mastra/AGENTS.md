@@ -17,7 +17,7 @@
 
 - The agent edits the project's `index.html` file directly via a write-through store (`createProjectHtmlStore`). Tools must not mutate repository files, and the server file is the single source of truth — the UI never writes HTML, it only reads it back (`getProject`) after each `edit`.
 - The project title is set server-side from the first prompt (`setTitleIfUntitled`) on `POST /agent`; the selected model is persisted to project metadata at run start while each saved message turn keeps the model used for that turn.
-- Project conversation history is server-owned: `streamLandingAgent` records the same prompt/text/thinking/tool/stats/error shape it streams to the client and appends a finalized non-streaming turn to `messages.json` when the request finishes. Prompt image attachments are OCR analyzed before the Baseten agent run; only attachment metadata is saved in `messages.json`, never base64 image bytes.
+- Project conversation history is server-owned and LLM-visible: `streamLandingAgent` replays persisted project turns into the Baseten agent call before the current prompt, records the same prompt/text/thinking/tool/stats/error shape it streams to the client, and appends a finalized non-streaming turn to `messages.json` when the request finishes. Prompt image attachments are OCR analyzed before the Baseten agent run; only attachment metadata and OCR summary are saved in `messages.json`, never base64 image bytes.
 - Every user-visible tool call must include an `intent`; the client renders it in the conversation UI.
 - `tools/landing-tools.ts` is the source of truth for enabled tools, tool count/list, and tool guidance.
 - Additions or removals of tools must update SSE mapping, cost accounting, client event types, and this DOX when behavior changes.

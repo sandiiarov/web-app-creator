@@ -38,6 +38,10 @@ export interface AgentImageAttachmentInput extends ProjectMessageAttachment {
   dataUrl: string
 }
 
+type AgentConversationMessage =
+  | { content: string; role: 'assistant' }
+  | { content: string; role: 'user' }
+
 interface AttachmentAnalysis {
   contextBlock: string
   cost: number
@@ -178,8 +182,9 @@ export async function streamLandingAgent({
     const agentPrompt = attachmentAnalysis.contextBlock
       ? `${prompt}\n\n${attachmentAnalysis.contextBlock}`
       : prompt
+    const agentMessages = buildAgentMessages(project.messages, agentPrompt)
 
-    const stream = await agent.stream(agentPrompt, {
+    const stream = await agent.stream(agentMessages, {
       abortSignal: controller.signal,
       maxSteps: MAX_STEPS,
       modelSettings: { maxOutputTokens: 16_384 },
@@ -588,6 +593,8 @@ async function analyzePromptAttachments({
     const cost = visionCost(result.usage ?? {}, result.cost)
     const images = result.imagesAnalyzed
 
+    recordAttachmentAnalysis(recordedTurn, result.text)
+
     if (!result.ok) {
       const reason = result.reason ?? 'Image analysis failed.'
       const errorPayload: RecordedToolPayload = {
@@ -654,6 +661,25 @@ function booleanValue(value: unknown): boolean | undefined {
   return typeof value === 'boolean' ? value : undefined
 }
 
+function buildAgentMessages(
+  history: ProjectMessageTurn[],
+  currentPrompt: string,
+): AgentConversationMessage[] {
+  return [
+    ...history.flatMap((turn) => {
+      const messages: AgentConversationMessage[] = []
+      const userContent = buildHistoryUserContent(turn)
+      if (userContent) messages.push({ content: userContent, role: 'user' })
+      const assistantContent = buildHistoryAssistantContent(turn)
+      if (assistantContent) {
+        messages.push({ content: assistantContent, role: 'assistant' })
+      }
+      return messages
+    }),
+    { content: currentPrompt, role: 'user' },
+  ]
+}
+
 function buildAttachmentContext(
   attachments: AgentImageAttachmentInput[],
   result: ImageOcrResult,
@@ -670,6 +696,41 @@ function buildAttachmentContext(
     '',
     result.text || 'No text returned.',
   ].join('\n')
+}
+
+function buildHistoryAssistantContent(turn: ProjectMessageTurn): null | string {
+  const lines = turn.parts.flatMap((part) => {
+    switch (part.type) {
+      case 'stats':
+        return []
+      case 'text':
+        return [part.text]
+      case 'thinking':
+        return []
+      case 'tool_call':
+        return [summarizeHistoryTool(part)]
+    }
+  })
+
+  if (turn.error) lines.push(`Turn error: ${turn.error}`)
+  return compactLines(lines)
+}
+
+function buildHistoryUserContent(turn: ProjectMessageTurn): null | string {
+  const attachmentLines = (turn.attachments ?? []).flatMap(
+    (attachment, index) => [
+      `${index + 1}. ${attachment.name} (${attachment.mediaType}, ${attachment.size} bytes)`,
+      attachment.analysisText
+        ? `OCR/visual transcript: ${attachment.analysisText}`
+        : null,
+    ],
+  )
+
+  return compactLines([
+    turn.prompt,
+    attachmentLines.length > 0 ? 'Attachments:' : null,
+    ...attachmentLines,
+  ])
 }
 
 function compactLines(lines: Array<null | string | undefined>): null | string {
@@ -727,6 +788,17 @@ function getToolCallDisplay(
 
 function numberValue(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) ? value : undefined
+}
+
+function recordAttachmentAnalysis(
+  turn: ProjectMessageTurn,
+  analysisText: string,
+) {
+  if (!analysisText || !turn.attachments?.length) return
+  turn.attachments = turn.attachments.map((attachment) => ({
+    ...attachment,
+    analysisText,
+  }))
 }
 
 function recordStats(turn: ProjectMessageTurn, stats: RecordedStatsPayload) {
@@ -835,6 +907,19 @@ function stripAttachmentData({
   ...metadata
 }: AgentImageAttachmentInput): ProjectMessageAttachment {
   return metadata
+}
+
+function summarizeHistoryTool(part: ProjectMessageToolCallPart): string {
+  return (
+    compactLines([
+      `Tool ${part.tool} ${part.state}`,
+      part.intent ? `Intent: ${part.intent}` : null,
+      part.detail && part.detail !== part.intent
+        ? `Detail: ${part.detail}`
+        : null,
+      part.result ? `Result: ${part.result}` : null,
+    ]) ?? `Tool ${part.tool} ${part.state}`
+  )
 }
 
 function summarizeToolArgs(tool: string, args: ToolArgs): null | string {

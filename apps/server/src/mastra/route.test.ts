@@ -26,12 +26,12 @@ describe('streamLandingAgent attachments', () => {
     vi.stubEnv('BASETEN_API_KEY', 'test-baseten-key')
     vi.stubEnv('OPENROUTER_API_KEY', 'test-openrouter-key')
 
-    let capturedPrompt = ''
+    let capturedMessages: Array<{ content: string; role: string }> = []
     vi.doMock('./index.ts', () => ({ mastra: {} }))
     vi.doMock('./agents/landing-page-agent.ts', () => ({
       createLandingPageAgent: () => ({
-        stream: async (prompt: string) => {
-          capturedPrompt = prompt
+        stream: async (messages: Array<{ content: string; role: string }>) => {
+          capturedMessages = messages
           return fakeAgentStream()
         },
       }),
@@ -83,10 +83,19 @@ describe('streamLandingAgent attachments', () => {
       response: response as unknown as ServerResponse,
     })
 
-    expect(capturedPrompt).toContain('Use this reference image.')
-    expect(capturedPrompt).toContain('Attached image OCR/visual transcript')
-    expect(capturedPrompt).toContain('Headline: Ship a sharper page')
-    expect(capturedPrompt).toContain('wireframe.png (image/png, 68 bytes)')
+    expect(capturedMessages.at(-1)).toMatchObject({
+      content: expect.stringContaining('Use this reference image.'),
+      role: 'user',
+    })
+    expect(capturedMessages.at(-1)?.content).toContain(
+      'Attached image OCR/visual transcript',
+    )
+    expect(capturedMessages.at(-1)?.content).toContain(
+      'Headline: Ship a sharper page',
+    )
+    expect(capturedMessages.at(-1)?.content).toContain(
+      'wireframe.png (image/png, 68 bytes)',
+    )
 
     const events = parseSseEvents(response.body)
     expect(events).toEqual(
@@ -121,6 +130,9 @@ describe('streamLandingAgent attachments', () => {
     expect(saved?.messages[0]).toMatchObject({
       attachments: [
         {
+          analysisText: expect.stringContaining(
+            'Headline: Ship a sharper page',
+          ),
           id: 'image-1',
           mediaType: 'image/png',
           name: 'wireframe.png',
@@ -137,6 +149,76 @@ describe('streamLandingAgent attachments', () => {
       prompt: 'Use this reference image.',
     })
     expect(JSON.stringify(saved?.messages[0])).not.toContain(PNG_DATA_URL)
+  })
+})
+
+describe('streamLandingAgent history', () => {
+  it('sends persisted project messages before the current prompt', async () => {
+    vi.stubEnv('BASETEN_API_KEY', 'test-baseten-key')
+
+    let capturedMessages: Array<{ content: string; role: string }> = []
+    vi.doMock('./index.ts', () => ({ mastra: {} }))
+    vi.doMock('./agents/landing-page-agent.ts', () => ({
+      createLandingPageAgent: () => ({
+        stream: async (messages: Array<{ content: string; role: string }>) => {
+          capturedMessages = messages
+          return fakeAgentStream()
+        },
+      }),
+    }))
+
+    const { appendProjectMessageTurn, createProject } =
+      await import('./lib/project-store.ts')
+    const project = await createProject()
+    createdProjectIds.push(project.id)
+    await appendProjectMessageTurn(project.id, {
+      htmlSwaps: 1,
+      id: 'turn-history-1',
+      isStreaming: false,
+      model: 'zai-org/GLM-5.2',
+      parts: [
+        {
+          id: 'turn-history-1-text-1',
+          text: 'I created the initial Forge landing page.',
+          type: 'text',
+        },
+        {
+          id: 'tool-history-1-read',
+          intent: 'Inspect /index.html',
+          result: 'Read 50 lines of 943',
+          state: 'done',
+          tool: 'read',
+          type: 'tool_call',
+        },
+      ],
+      prompt: 'Create a nice landing page for AI coding agent',
+    })
+
+    const { streamLandingAgent } = await import('./route.ts')
+    const response = new FakeResponse()
+
+    await streamLandingAgent({
+      modelId: 'zai-org/GLM-5.2',
+      projectId: project.id,
+      prompt: 'what i asked you todo',
+      request: fakeRequest(),
+      response: response as unknown as ServerResponse,
+    })
+
+    expect(capturedMessages).toEqual([
+      {
+        content: 'Create a nice landing page for AI coding agent',
+        role: 'user',
+      },
+      {
+        content: expect.stringContaining(
+          'I created the initial Forge landing page.',
+        ),
+        role: 'assistant',
+      },
+      { content: 'what i asked you todo', role: 'user' },
+    ])
+    expect(capturedMessages[1]?.content).toContain('Tool read done')
   })
 })
 

@@ -1,6 +1,6 @@
 import { snapdom } from '@zumer/snapdom'
 
-import { SERVER_URL, type ScreenshotResponseInput } from './landing-agent'
+import { type ScreenshotResponseInput } from './landing-agent'
 
 export interface CaptureProjectScreenshotInput {
   height: number
@@ -21,7 +21,6 @@ export async function captureProjectScreenshot({
   width,
 }: CaptureProjectScreenshotInput): Promise<ScreenshotCapture> {
   const iframe = document.createElement('iframe')
-  const loaded = waitForIframeLoad(iframe, IFRAME_LOAD_TIMEOUT_MS)
 
   iframe.setAttribute('aria-hidden', 'true')
   iframe.setAttribute('sandbox', 'allow-same-origin')
@@ -38,7 +37,8 @@ export async function captureProjectScreenshot({
   document.body.appendChild(iframe)
 
   try {
-    iframe.srcdoc = withBaseHref(html, SERVER_URL)
+    const loaded = waitForIframeLoad(iframe, IFRAME_LOAD_TIMEOUT_MS)
+    iframe.srcdoc = html
     await loaded
 
     const doc = iframe.contentDocument
@@ -79,10 +79,6 @@ function blobToDataUrl(blob: Blob): Promise<string> {
     }
     reader.readAsDataURL(blob)
   })
-}
-
-function escapeHtmlAttribute(value: string): string {
-  return value.replace(/&/g, '&amp;').replace(/"/g, '&quot;')
 }
 
 async function waitForFonts(doc: Document) {
@@ -155,12 +151,4 @@ async function waitForResources(doc: Document, timeoutMs: number) {
     waitForFonts(doc),
     ...Array.from(doc.images).map((image) => waitForImage(image, timeoutMs)),
   ])
-}
-
-function withBaseHref(html: string, baseUrl: string): string {
-  const base = `<base href="${escapeHtmlAttribute(baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`)}">`
-  if (/<head[\s>]/i.test(html)) {
-    return html.replace(/<head([^>]*)>/i, `<head$1>${base}`)
-  }
-  return `${base}${html}`
 }
