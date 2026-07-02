@@ -36,7 +36,7 @@ Add the SnapDOM client dependency and extend the existing OpenRouter vision help
 
 ### Todo
 - [x] Add `@zumer/snapdom` to the workspace catalog, client package, and lockfile.
-- [ ] Extend `image-ocr.ts` to accept validated data-url image inputs while preserving existing `ocrImages(urls)` behavior.
+- [x] Extend `image-ocr.ts` to accept validated data-url image inputs while preserving existing `ocrImages(urls)` behavior.
 - [ ] Add focused server tests for image data-url normalization, unsupported media, missing API key, and OpenRouter payload shape.
 
 ### Results
