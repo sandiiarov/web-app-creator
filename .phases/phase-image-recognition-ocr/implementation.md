@@ -86,7 +86,7 @@ Add image attachment UI in the prompt composer, carry attachment inputs through 
 Add a process-local pending screenshot registry, `POST /api/screenshot-responses/:requestId`, a Mastra `screenshot` tool, and client handling of `screenshot_request` events using SnapDOM capture in an offscreen no-script iframe.
 
 ### Todo
-- [ ] Add server screenshot registry, response endpoint, and tests for resolve/error/timeout behavior.
+- [x] Add server screenshot registry, response endpoint, and tests for resolve/error/timeout behavior.
 - [ ] Add `screenshot` Mastra tool, register it, emit `screenshot_request` SSE, OCR returned screenshots, and update tool summaries/cost accounting.
 - [ ] Add client screenshot capture helper with `@zumer/snapdom`, handle `screenshot_request`, and post correlated responses.
 - [ ] Add/adjust focused tests where practical and run focused client/server checks for the screenshot slice.

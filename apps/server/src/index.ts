@@ -7,6 +7,12 @@ import { fileURLToPath } from 'node:url'
 
 import { config } from './config.ts'
 import { readRequestBody } from './http-body.ts'
+import {
+  rejectPendingBrowserScreenshot,
+  resolvePendingBrowserScreenshot,
+  type BrowserScreenshotMediaType,
+  type BrowserScreenshotResult,
+} from './mastra/lib/browser-screenshot.ts'
 import { getImage } from './mastra/lib/image-store.ts'
 import {
   createProject,
@@ -31,6 +37,11 @@ const ACCEPTED_ATTACHMENT_MEDIA_TYPES = new Set([
 const MAX_ATTACHMENT_COUNT = 4
 const MAX_ATTACHMENT_SIZE = 8 * 1024 * 1024
 const MAX_ATTACHMENT_TOTAL_SIZE = 16 * 1024 * 1024
+const SCREENSHOT_MEDIA_TYPES = new Set<BrowserScreenshotMediaType>([
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+])
 
 type AgentRequestBody = {
   attachments?: unknown
@@ -166,6 +177,10 @@ async function routeRequest(
     return
   }
 
+  if (await routeScreenshotResponse(request, response, pathname)) {
+    return
+  }
+
   if (await routeProjects(request, response, pathname)) {
     return
   }
@@ -182,6 +197,7 @@ async function routeRequest(
 }
 
 const PROJECT_LIST_RE = /^\/api\/projects\/?$/i
+const SCREENSHOT_RESPONSE_RE = /^\/api\/screenshot-responses\/([a-f0-9-]+)$/i
 const PROJECT_ITEM_RE = /^\/api\/projects\/([a-f0-9-]+)$/i
 const PROJECT_IMAGE_RE = /^\/api\/projects\/([a-f0-9-]+)\/images\/([^/]+)$/i
 
@@ -242,6 +258,43 @@ async function handlePatchProject(
   sendJson(response, 200, { ok: true, project })
 }
 
+async function handleScreenshotResponse(
+  requestId: string,
+  request: IncomingMessage,
+  response: ServerResponse,
+) {
+  const body = await readJsonObject(request)
+  const error = stringField(body.error, 500)
+
+  if (error) {
+    if (!rejectPendingBrowserScreenshot(requestId, error)) {
+      sendJson(response, 404, {
+        error: 'Screenshot request not found',
+        ok: false,
+      })
+      return
+    }
+    sendJson(response, 200, { ok: true })
+    return
+  }
+
+  const screenshot = validateScreenshotResponse(body)
+  if (typeof screenshot === 'string') {
+    sendJson(response, 400, { error: screenshot, ok: false })
+    return
+  }
+
+  if (!resolvePendingBrowserScreenshot(requestId, screenshot)) {
+    sendJson(response, 404, {
+      error: 'Screenshot request not found',
+      ok: false,
+    })
+    return
+  }
+
+  sendJson(response, 200, { ok: true })
+}
+
 async function readJsonObject(
   request: IncomingMessage,
 ): Promise<Record<string, unknown>> {
@@ -295,6 +348,28 @@ async function routeProjects(
   }
 
   return false
+}
+
+async function routeScreenshotResponse(
+  request: IncomingMessage,
+  response: ServerResponse,
+  pathname: string,
+): Promise<boolean> {
+  const match = pathname.match(SCREENSHOT_RESPONSE_RE)
+  if (!match) return false
+  if (request.method !== 'POST') return false
+
+  await handleScreenshotResponse(match[1]!, request, response)
+  return true
+}
+
+function screenshotMediaType(
+  value: unknown,
+): BrowserScreenshotMediaType | undefined {
+  return typeof value === 'string' &&
+    SCREENSHOT_MEDIA_TYPES.has(value as BrowserScreenshotMediaType)
+    ? (value as BrowserScreenshotMediaType)
+    : undefined
 }
 
 function sendJson(
@@ -425,4 +500,37 @@ function validateAgentAttachments(
   }
 
   return attachments
+}
+
+function validateScreenshotResponse(
+  value: Record<string, unknown>,
+): BrowserScreenshotResult | string {
+  const mediaType = screenshotMediaType(value.mediaType)
+  const dataUrl = typeof value.dataUrl === 'string' ? value.dataUrl.trim() : ''
+  const height = value.height
+  const width = value.width
+
+  if (!mediaType)
+    return 'Expected screenshot mediaType image/jpeg, image/png, or image/webp.'
+  if (!isValidImageDataUrl(dataUrl, mediaType)) {
+    return 'Expected matching screenshot base64 dataUrl.'
+  }
+  if (
+    typeof width !== 'number' ||
+    !Number.isInteger(width) ||
+    width <= 0 ||
+    width > 4096
+  ) {
+    return 'Expected screenshot width between 1 and 4096.'
+  }
+  if (
+    typeof height !== 'number' ||
+    !Number.isInteger(height) ||
+    height <= 0 ||
+    height > 4096
+  ) {
+    return 'Expected screenshot height between 1 and 4096.'
+  }
+
+  return { dataUrl, height, mediaType, width }
 }
