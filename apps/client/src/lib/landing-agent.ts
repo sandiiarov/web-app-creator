@@ -74,6 +74,25 @@ export type ScrapeCost = {
   ocrImages?: number
 }
 
+export type ScreenshotMediaType = 'image/jpeg' | 'image/png' | 'image/webp'
+
+export type ScreenshotRequestEvent = {
+  height: number
+  intent: string
+  projectId: string
+  requestId: string
+  width: number
+}
+
+export type ScreenshotResponseInput =
+  | {
+      dataUrl: string
+      height: number
+      mediaType: ScreenshotMediaType
+      width: number
+    }
+  | { error: string }
+
 export type StatsEvent = {
   cost: number
   costBreakdown?: CostBreakdown

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
+import { captureProjectScreenshot } from '../lib/browser-screenshot'
 import {
   LANDING_AGENT_API,
   LANDING_MODEL_OPTIONS,
@@ -7,6 +8,7 @@ import {
   type ImageAttachmentMeta,
   type LandingAgentSendInput,
   type LandingTurn,
+  type ScreenshotRequestEvent,
   type ToolCallPart,
   type TurnPart,
 } from '../lib/landing-agent'
@@ -14,6 +16,7 @@ import {
   ProjectNotFoundError,
   expandProjectImageUrls,
   getProject,
+  postScreenshotResponse,
   updateProjectModel,
 } from '../lib/projects-api'
 import { streamSSE } from '../lib/sse-client'
@@ -133,6 +136,32 @@ export function useLandingPage({
     [onError, projectId],
   )
 
+  const respondToScreenshotRequest = useCallback(
+    async (event: ScreenshotRequestEvent) => {
+      try {
+        if (event.projectId !== projectId) {
+          throw new Error('Screenshot request targeted a different project.')
+        }
+        const project = await getProject(event.projectId)
+        const screenshot = await captureProjectScreenshot({
+          height: event.height,
+          html: expandProjectImageUrls(project.indexHtml),
+          width: event.width,
+        })
+        await postScreenshotResponse(event.requestId, screenshot)
+      } catch (error) {
+        const message =
+          error instanceof Error
+            ? error.message
+            : 'Browser screenshot capture failed.'
+        await postScreenshotResponse(event.requestId, { error: message }).catch(
+          () => undefined,
+        )
+      }
+    },
+    [projectId],
+  )
+
   const send = useCallback(
     ({ attachments = [], prompt }: LandingAgentSendInput) => {
       if (isStreaming) return
@@ -179,6 +208,10 @@ export function useLandingPage({
                   ...terminalizeActiveTools(turn, message),
                   error: message,
                 }))
+                break
+              }
+              case 'screenshot_request': {
+                void respondToScreenshotRequest(data as ScreenshotRequestEvent)
                 break
               }
               case 'stats': {
@@ -317,7 +350,15 @@ export function useLandingPage({
           controllerRef.current = null
         })
     },
-    [appendPart, isStreaming, model, patchTurn, projectId, refreshHtml],
+    [
+      appendPart,
+      isStreaming,
+      model,
+      patchTurn,
+      projectId,
+      refreshHtml,
+      respondToScreenshotRequest,
+    ],
   )
 
   const stop = useCallback(() => {

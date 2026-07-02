@@ -88,7 +88,7 @@ Add a process-local pending screenshot registry, `POST /api/screenshot-responses
 ### Todo
 - [x] Add server screenshot registry, response endpoint, and tests for resolve/error/timeout behavior.
 - [x] Add `screenshot` Mastra tool, register it, emit `screenshot_request` SSE, OCR returned screenshots, and update tool summaries/cost accounting.
-- [ ] Add client screenshot capture helper with `@zumer/snapdom`, handle `screenshot_request`, and post correlated responses.
+- [x] Add client screenshot capture helper with `@zumer/snapdom`, handle `screenshot_request`, and post correlated responses.
 - [ ] Add/adjust focused tests where practical and run focused client/server checks for the screenshot slice.
 
 ### Results

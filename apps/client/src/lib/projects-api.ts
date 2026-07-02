@@ -1,4 +1,8 @@
-import { SERVER_URL, type LandingTurn } from './landing-agent'
+import {
+  SERVER_URL,
+  type LandingTurn,
+  type ScreenshotResponseInput,
+} from './landing-agent'
 
 export interface Project extends ProjectMeta {
   indexHtml: string
@@ -78,6 +82,22 @@ export async function listProjects(): Promise<ProjectMeta[]> {
   }
   if (!json.ok) throw new Error('Failed to list projects')
   return json.projects
+}
+
+export async function postScreenshotResponse(
+  requestId: string,
+  payload: ScreenshotResponseInput,
+): Promise<void> {
+  const response = await fetch(
+    `${SERVER_URL}/api/screenshot-responses/${requestId}`,
+    {
+      body: JSON.stringify(payload),
+      headers: { 'content-type': 'application/json' },
+      method: 'POST',
+    },
+  )
+  const json = (await response.json()) as { ok: boolean }
+  if (!json.ok) throw new Error('Failed to post screenshot response')
 }
 
 export async function updateProjectModel(
