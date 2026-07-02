@@ -96,7 +96,13 @@ export function createScrapeTool() {
   return createTool({
     description:
       'Scrape a URL into markdown + links + images + branding (palette, fonts, logo), then OCR all scraped image URLs and return the OCR/visual transcript in `imageOcr`. Handles JavaScript-rendered pages. Use to pull a brand identity before building or refining a landing page. Always pass an intent describing what you are scraping and why.',
-    execute: async ({ excludeTags, includeTags, onlyMainContent, url, waitFor }) => {
+    execute: async ({
+      excludeTags,
+      includeTags,
+      onlyMainContent,
+      url,
+      waitFor,
+    }) => {
       const fc = getClient()
       if (!fc) {
         return {
@@ -175,18 +181,24 @@ export function createScrapeTool() {
         .describe('HTML tags to include, e.g. ["main","article"]'),
       intent: z
         .string()
-        .describe('Short reason for scraping (shown to the user), e.g. "pull acme.com brand palette + voice before redesigning"'),
+        .describe(
+          'Short reason for scraping (shown to the user), e.g. "pull acme.com brand palette + voice before redesigning"',
+        ),
       onlyMainContent: z
         .boolean()
         .optional()
-        .describe('Strip nav/footer/sidebar for the markdown body (default true). Links/images/branding are always extracted from the whole page.'),
+        .describe(
+          'Strip nav/footer/sidebar for the markdown body (default true). Links/images/branding are always extracted from the whole page.',
+        ),
       url: z.string().url().describe('Absolute URL to scrape (https://...)'),
       waitFor: z
         .number()
         .int()
         .nonnegative()
         .optional()
-        .describe('Milliseconds to wait for JS rendering before scraping (default 0)'),
+        .describe(
+          'Milliseconds to wait for JS rendering before scraping (default 0)',
+        ),
     }),
     outputSchema: z.object({
       branding: BrandingSchema.nullable(),

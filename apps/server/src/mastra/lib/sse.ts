@@ -1,7 +1,11 @@
 import type { ServerResponse } from 'node:http'
 
 /** Write one SSE event: `event: <type>\ndata: <json>\n\n`. */
-export function sendSse(response: ServerResponse, event: string, payload: unknown) {
+export function sendSse(
+  response: ServerResponse,
+  event: string,
+  payload: unknown,
+) {
   response.write(`event: ${event}\n`)
   response.write(`data: ${JSON.stringify(payload)}\n\n`)
 }

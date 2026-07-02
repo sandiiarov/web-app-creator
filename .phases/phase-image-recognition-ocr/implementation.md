@@ -1,6 +1,6 @@
 # Implementation — image-recognition-ocr
 
-Status: In Progress
+Status: Complete
 Prerequisite: plan.md `Status: Complete`
 
 > **Purpose:** execute the plan one slice at a time. Small increments, commit each todo, run checks after each sub-phase.
@@ -116,10 +116,22 @@ Update durable app/server/Mastra contracts for attachments, OpenRouter vision OC
 
 ### Todo
 - [x] Update nearest owning AGENTS docs for client, server, and Mastra behavior changes.
-- [ ] Run final focused format/lint/typecheck/test/build checks and record exact results.
+- [x] Run final focused format/lint/typecheck/test/build checks and record exact results.
 
 ### Results
-_(fill at end of the sub-phase — what was implemented, commands run, checks passed)_
+- Updated client/server/Mastra DOX contracts for prompt image attachments, OpenRouter vision OCR, `screenshot_request`, `/api/screenshot-responses/:requestId`, SnapDOM capture, and process-local screenshot registry state.
+- Added `.mastra/**` to the server Oxfmt ignore list and formatted the server source files reported by final verification.
+- Final focused verification run:
+  - `pnpm --filter @workspace/client exec oxfmt -c oxfmt.config.ts --check .` — passed.
+  - `pnpm --filter @workspace/client typecheck` — passed.
+  - `pnpm --filter @workspace/client lint` — passed with existing `react-refresh(only-export-components)` warning in `src/main.tsx` and Node `DEP0205` warning.
+  - `pnpm --filter @workspace/client build` — passed with Node `DEP0205` warning and Vite chunk-size warning.
+  - `pnpm --filter @workspace/server exec oxfmt -c oxfmt.config.ts --check .` — passed.
+  - `pnpm --filter @workspace/server typecheck` — passed.
+  - `pnpm --filter @workspace/server lint` — passed.
+  - `pnpm --filter @workspace/server test` — passed (8 files, 34 tests).
+  - `pnpm --filter @workspace/server build` — passed.
 
 ### Gotchas
-_(fill at end of the sub-phase, if any)_
+- Client package `test` remains intentionally unrun for this final pass because there are no client test files and the package script exits 1 by design.
+- Client build still reports a large chunk warning; this is non-blocking and pre-existing for the current bundle shape.

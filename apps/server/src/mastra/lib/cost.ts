@@ -4,7 +4,10 @@
  *
  * Prices are per 1M tokens, USD. Update when Baseten publishes confirmed rates.
  */
-const PRICING_PER_MILLION: Record<string, { cachedInput: number; input: number; output: number }> = {
+const PRICING_PER_MILLION: Record<
+  string,
+  { cachedInput: number; input: number; output: number }
+> = {
   'moonshotai/Kimi-K2.7-Code': { cachedInput: 0.15, input: 0.6, output: 2.5 },
   'zai-org/GLM-5.2': { cachedInput: 0.15, input: 0.6, output: 2.2 },
 }
@@ -41,13 +44,16 @@ export function estimateCost(modelId: string, usage: Usage): number {
   const providerCost = extractProviderCost(usage.raw)
   if (providerCost !== undefined) return providerCost
 
-  const price = PRICING_PER_MILLION[modelId] ?? PRICING_PER_MILLION['zai-org/GLM-5.2']!
+  const price =
+    PRICING_PER_MILLION[modelId] ?? PRICING_PER_MILLION['zai-org/GLM-5.2']!
   const input = usage.inputTokens ?? 0
   const output = usage.outputTokens ?? 0
   const cached = usage.cachedInputTokens ?? 0
   const billableInput = Math.max(0, input - cached)
   return (
-    (billableInput * price.input + cached * price.cachedInput + output * price.output) /
+    (billableInput * price.input +
+      cached * price.cachedInput +
+      output * price.output) /
     1_000_000
   )
 }

@@ -80,7 +80,8 @@ export function createGenerateImageTool(baseUrl: string) {
       const url = `${baseUrl}/images/${id}.${extension}`
 
       return {
-        cost: typeof json.usage?.cost === 'number' ? json.usage.cost : undefined,
+        cost:
+          typeof json.usage?.cost === 'number' ? json.usage.cost : undefined,
         imagesGenerated: 1,
         ok: true,
         prompt,
@@ -92,14 +93,20 @@ export function createGenerateImageTool(baseUrl: string) {
       aspectRatio: z
         .enum(['1:1', '16:9', '9:16', '4:3', '3:4', '3:2', '2:3', '4:5', '5:4'])
         .optional()
-        .describe('Output aspect ratio (default 16:9). Match the slot the image fills.'),
+        .describe(
+          'Output aspect ratio (default 16:9). Match the slot the image fills.',
+        ),
       intent: z
         .string()
-        .describe('Short reason for generating this image (shown to the user), e.g. "hero product shot for the landing page"'),
+        .describe(
+          'Short reason for generating this image (shown to the user), e.g. "hero product shot for the landing page"',
+        ),
       prompt: z
         .string()
         .min(8)
-        .describe('Art-directed text prompt: subject, composition, lighting, style, mood. Be specific.'),
+        .describe(
+          'Art-directed text prompt: subject, composition, lighting, style, mood. Be specific.',
+        ),
     }),
     outputSchema: z.object({
       cost: z.number().optional(),
@@ -133,7 +140,10 @@ function detectMediaType(buffer: Buffer): string | undefined {
   if (hex.startsWith('ffd8')) return 'image/jpeg'
   if (hex.startsWith('89504e47')) return 'image/png'
   if (hex.startsWith('47494638')) return 'image/gif'
-  if (hex.startsWith('52494646') && buffer.subarray(8, 12).toString('ascii') === 'WEBP') {
+  if (
+    hex.startsWith('52494646') &&
+    buffer.subarray(8, 12).toString('ascii') === 'WEBP'
+  ) {
     return 'image/webp'
   }
   return undefined
