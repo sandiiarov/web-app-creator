@@ -89,13 +89,25 @@ Add a process-local pending screenshot registry, `POST /api/screenshot-responses
 - [x] Add server screenshot registry, response endpoint, and tests for resolve/error/timeout behavior.
 - [x] Add `screenshot` Mastra tool, register it, emit `screenshot_request` SSE, OCR returned screenshots, and update tool summaries/cost accounting.
 - [x] Add client screenshot capture helper with `@zumer/snapdom`, handle `screenshot_request`, and post correlated responses.
-- [ ] Add/adjust focused tests where practical and run focused client/server checks for the screenshot slice.
+- [x] Add/adjust focused tests where practical and run focused client/server checks for the screenshot slice.
 
 ### Results
-_(fill at end of the sub-phase — what was implemented, commands run, checks passed)_
+- Added a process-local browser screenshot registry with resolve/reject/timeout cleanup and `POST /api/screenshot-responses/:requestId`.
+- Added the Mastra `screenshot` tool, `screenshot_request` SSE event, OpenRouter GLM-5V OCR of returned screenshots, and screenshot OCR accounting in the `vision` cost bucket.
+- Added client SnapDOM capture in an offscreen same-origin/no-script iframe; the client fetches latest server-owned project HTML, captures a JPEG data URL, and posts the correlated response or error back to the server.
+- Added tests for registry resolve/error/timeout, screenshot response endpoint resolve/error/404, screenshot_request SSE correlation, and screenshot tool summary/cost handling.
+- Checks run:
+  - `pnpm --filter @workspace/client typecheck` — passed.
+  - `pnpm --filter @workspace/client lint` — passed with existing `react-refresh(only-export-components)` warning in `src/main.tsx`.
+  - `pnpm --filter @workspace/client build` — passed with Vite chunk-size warning.
+  - `pnpm --filter @workspace/server typecheck` — passed.
+  - `pnpm --filter @workspace/server lint` — passed.
+  - `pnpm --filter @workspace/server test` — passed (8 files, 34 tests).
+  - `pnpm --filter @workspace/server build` — passed.
 
 ### Gotchas
-_(fill at end of the sub-phase, if any)_
+- `tsgo` did not resolve the installed `@types/react-dom/client` subpath reliably, so `apps/client/tsconfig.json` now pins a `paths` entry for `react-dom/client` to the local type declaration.
+- Client package `test` still was not run because this package has no client test files and exits 1 by design.
 
 ## Phase 4: DOX pass and final focused verification
 
