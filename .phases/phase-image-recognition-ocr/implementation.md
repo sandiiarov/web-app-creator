@@ -115,7 +115,7 @@ Add a process-local pending screenshot registry, `POST /api/screenshot-responses
 Update durable app/server/Mastra contracts for attachments, OpenRouter vision OCR, screenshot request/response transport, SnapDOM capture, and process-local runtime state; then run final focused verification.
 
 ### Todo
-- [ ] Update nearest owning AGENTS docs for client, server, and Mastra behavior changes.
+- [x] Update nearest owning AGENTS docs for client, server, and Mastra behavior changes.
 - [ ] Run final focused format/lint/typecheck/test/build checks and record exact results.
 
 ### Results

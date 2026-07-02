@@ -7,9 +7,9 @@
 ## Ownership
 
 - `agents/`: landing-page agent factory and singleton registration config.
-- `tools/`: Mastra tool factories and the landing tool registry.
+- `tools/`: Mastra tool factories and the landing tool registry, including scrape/read/grep/edit/generate_image/screenshot.
 - `skills/`: self-contained browser design guidance for the landing-page agent.
-- `lib/`: Baseten model config, cost accounting, edit/grep/html/image/SSE helpers, and file-backed project storage (`project-store.ts`).
+- `lib/`: Baseten model config, OpenRouter vision OCR, browser screenshot response registry, cost accounting, edit/grep/html/image/SSE helpers, and file-backed project storage (`project-store.ts`).
 - `route.ts` maps Mastra `fullStream` chunks to the client-facing SSE protocol. It accepts `projectId`, validates the project exists, sets the title from the prompt, builds a project-scoped write-through store, and records each completed turn to the project's `messages.json`. There is no `html` event: the client pulls HTML via `GET /api/projects/:id` after each successful `edit`. Mastra `tool-error` chunks must be surfaced as terminal `tool_call` events with `state: "error"` and the error message. After an `edit` exact-match failure, the run must require a successful `read` or `grep` before another `edit`; repeated edit failures stop the run instead of allowing blind retries.
 - `index.ts`: Mastra instance, storage, logger, and observability setup.
 
@@ -17,12 +17,14 @@
 
 - The agent edits the project's `index.html` file directly via a write-through store (`createProjectHtmlStore`). Tools must not mutate repository files, and the server file is the single source of truth — the UI never writes HTML, it only reads it back (`getProject`) after each `edit`.
 - The project title is set server-side from the first prompt (`setTitleIfUntitled`) on `POST /agent`; the selected model is persisted to project metadata at run start while each saved message turn keeps the model used for that turn.
-- Project conversation history is server-owned: `streamLandingAgent` records the same prompt/text/thinking/tool/stats/error shape it streams to the client and appends a finalized non-streaming turn to `messages.json` when the request finishes.
+- Project conversation history is server-owned: `streamLandingAgent` records the same prompt/text/thinking/tool/stats/error shape it streams to the client and appends a finalized non-streaming turn to `messages.json` when the request finishes. Prompt image attachments are OCR analyzed before the Baseten agent run; only attachment metadata is saved in `messages.json`, never base64 image bytes.
 - Every user-visible tool call must include an `intent`; the client renders it in the conversation UI.
 - `tools/landing-tools.ts` is the source of truth for enabled tools, tool count/list, and tool guidance.
 - Additions or removals of tools must update SSE mapping, cost accounting, client event types, and this DOX when behavior changes.
 - `read` and `grep` must expose raw unnumbered text (`rawText`/`rawMatches`) for edit inputs; numbered output is navigation-only. `edit` must accept `edits: [{ oldText, newText }]` batches (with legacy single-edit fallback), match every `oldText` against the original document, tolerate snippets copied with `read`/`grep` line-number prefixes, require unique non-overlapping matches, preserve BOM/line endings, and write through to the project store on success.
-- `basetenModel()` uses Mastra `OpenAICompatibleConfig` with ids shaped as `baseten/${modelId}`; do not switch providers or routers without re-verifying Mastra docs.
+- `basetenModel()` uses Mastra `OpenAICompatibleConfig` with ids shaped as `baseten/${modelId}`; do not switch providers or routers without re-verifying Mastra docs. Baseten is the only provider for agent LLM traffic.
+- OpenRouter is used only for vision OCR (`z-ai/glm-5v-turbo`) and image generation services; keep those costs in the `vision`, `scrape.ocr*`, or `image` stats buckets as appropriate.
+- The `screenshot` tool emits a `screenshot_request` SSE event, waits on the process-local browser screenshot registry, OCRs the returned screenshot with OpenRouter vision, and returns visual QA notes without creating files or auxiliary artifacts.
 - `design-skill.ts` is self-contained browser design guidance. Its instructions and references must keep the agent anchored to project `/index.html` as the only editable document.
 - The image store is process-memory during a live `generate_image` call; `createProjectHtmlStore`'s sync `set` copies those bytes into `.data/projects/<id>/images/` and rewrites their URLs to `/api/projects/:id/images/<file>` as the agent edits the file. The in-memory store is the source only during a run; the project file is the source of truth.
 

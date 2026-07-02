@@ -12,15 +12,15 @@
 - `src/components/projects-page.tsx`: project list + new-project redirect.
 - `src/components/`: app-specific UI; `components/prompt/` owns conversation and composer components.
 - `src/hooks/`: streaming hooks.
-- `src/lib/`: custom SSE client, landing-agent event types, image URL expansion, and the project REST API client.
+- `src/lib/`: custom SSE client, landing-agent event types, image URL expansion, browser screenshot capture, and the project REST API client.
 - `components.json`: shadcn project config that targets shared UI code in `packages/ui`.
 
 ## Local Contracts
 
-- The server API is custom SSE `POST /agent` at `VITE_SERVER_URL` or `http://localhost:3001`; keep `src/lib/landing-agent.ts` event types aligned with `apps/server/src/mastra/route.ts`.
+- The server API is custom SSE `POST /agent` at `VITE_SERVER_URL` or `http://localhost:3001`; prompts may include image attachments as JSON data URLs, and streamed events include `screenshot_request` in addition to text/tool/stats/error/done events. Keep `src/lib/landing-agent.ts` event types aligned with `apps/server/src/mastra/route.ts`.
 - The server owns the project's `index.html` file — it is the single source of truth. There is **no `html` SSE event** and **no client PUT**: after each successful `edit` tool completes, the UI calls `GET /api/projects/:id` and pulls the updated HTML (see `use-landing-page.ts` `refreshHtml` on `edit` done). On editor mount it also pulls the current HTML once.
 - Projects are read via `src/lib/projects-api.ts` against `/api/projects*`. Full project reads include persisted `messages`; `use-landing-page.ts` restores them into the prompt panel as non-streaming turns on editor mount. The projects list stays metadata-first, but cards may fetch full projects to render sandboxed `srcDoc` iframe previews. Stored HTML uses root-relative project image URLs (`/api/projects/:id/images/<file>`); `expandProjectImageUrls` expands them to absolute before rendering editor or card preview iframes.
-- The editor preview renders the current project HTML directly with a sandboxed `srcDoc` iframe; the content and message history are pulled from the server (they are not generated or persisted in the browser). Do not reintroduce a full workspace snapshot, client-side message save path, or browser AI SDK tool loop without updating plans and DOX.
+- The editor preview renders the current project HTML directly with a sandboxed `srcDoc` iframe; the content and message history are pulled from the server (they are not generated or persisted in the browser). For `screenshot_request`, the client pulls the latest project HTML from the server, renders it in a temporary same-origin/no-script offscreen iframe, captures it with `@zumer/snapdom`, and posts the correlated response to `/api/screenshot-responses/:requestId`. Do not reintroduce a full workspace snapshot, client-side message save path, or browser AI SDK tool loop without updating plans and DOX.
 - The prompt panel composer owns model selection via a separate dropdown and persists model changes immediately via `PATCH /api/projects/:id { model }`; individual saved message turns still show the model used for that turn.
 - The prompt panel command menu owns All Projects navigation plus layout/theme commands; the Command/Control Option A shortcut still navigates to `/`. The panel persists only position/layout plus minimized/maximized state in browser localStorage under `landing.promptPanel.position.v1`.
 - Use `@workspace/ui/...` for reusable UI package imports and `#components`, `#hooks`, `#lib` for app-local aliases.
