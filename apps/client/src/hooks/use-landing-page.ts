@@ -197,6 +197,11 @@ export function useLandingPage({
                       ocrImages?: number
                     }
                     total: number
+                    vision?: {
+                      calls: number
+                      cost: number
+                      images: number
+                    }
                   }
                   durationMs: number
                   finishReason: string

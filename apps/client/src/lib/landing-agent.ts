@@ -20,6 +20,7 @@ export type CostBreakdown = {
   llm: number
   scrape: ScrapeCost
   total: number
+  vision?: VisionCost
 }
 
 export type ErrorEvent = { message: string }
@@ -138,6 +139,12 @@ export type ToolCallPart = {
 export type ToolCallState = 'done' | 'error' | 'running' | 'start'
 
 export type TurnPart = StatsPart | TextPart | ThinkingPart | ToolCallPart
+
+export type VisionCost = {
+  calls: number
+  cost: number
+  images: number
+}
 
 // ── Formatting utilities ──────────────────────────────────────────
 

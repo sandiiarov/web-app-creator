@@ -39,6 +39,14 @@ export interface ProjectInput {
   title?: string
 }
 
+export interface ProjectMessageAttachment {
+  analysisText?: string
+  id: string
+  mediaType: string
+  name: string
+  size: number
+}
+
 export type ProjectMessagePart =
   | ProjectMessageStatsPart
   | ProjectMessageTextPart
@@ -79,6 +87,7 @@ export interface ProjectMessageToolCallPart {
 }
 
 export interface ProjectMessageTurn {
+  attachments?: ProjectMessageAttachment[]
   error?: string
   htmlSwaps: number
   id: string

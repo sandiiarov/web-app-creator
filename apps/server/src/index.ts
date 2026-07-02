@@ -16,9 +16,24 @@ import {
   readProjectImage,
   updateProjectModel,
 } from './mastra/lib/project-store.ts'
-import { resolveModelId, streamLandingAgent } from './mastra/route.ts'
+import {
+  resolveModelId,
+  streamLandingAgent,
+  type AgentImageAttachmentInput,
+} from './mastra/route.ts'
+
+const ACCEPTED_ATTACHMENT_MEDIA_TYPES = new Set([
+  'image/gif',
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+])
+const MAX_ATTACHMENT_COUNT = 4
+const MAX_ATTACHMENT_SIZE = 8 * 1024 * 1024
+const MAX_ATTACHMENT_TOTAL_SIZE = 16 * 1024 * 1024
 
 type AgentRequestBody = {
+  attachments?: unknown
   model?: string
   projectId?: unknown
   prompt?: unknown
@@ -92,13 +107,37 @@ async function handleAgent(request: IncomingMessage, response: ServerResponse) {
     return
   }
 
+  const attachments = validateAgentAttachments(body.attachments)
+  if (typeof attachments === 'string') {
+    sendJson(response, 400, {
+      error: attachments,
+      ok: false,
+    })
+    return
+  }
+
   await streamLandingAgent({
+    attachments,
     modelId: resolveModelId(body.model),
     projectId: body.projectId,
     prompt: body.prompt,
     request,
     response,
   })
+}
+
+function isAcceptedAttachmentMediaType(value: string) {
+  return ACCEPTED_ATTACHMENT_MEDIA_TYPES.has(value)
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === 'object' && !Array.isArray(value)
+}
+
+function isValidImageDataUrl(dataUrl: string, mediaType: string) {
+  if (!dataUrl.startsWith(`data:${mediaType};base64,`)) return false
+  const payload = dataUrl.slice(dataUrl.indexOf(',') + 1)
+  return /^[A-Za-z0-9+/=\s]+$/.test(payload) && payload.trim().length > 0
 }
 
 async function readJson(request: IncomingMessage): Promise<AgentRequestBody> {
@@ -316,4 +355,74 @@ function setCorsHeaders(response: ServerResponse) {
   response.setHeader('access-control-allow-headers', 'content-type')
   response.setHeader('access-control-allow-methods', 'GET,POST,PATCH,OPTIONS')
   response.setHeader('access-control-allow-origin', config.clientOrigin)
+}
+
+function stringField(value: unknown, maxLength: number): string | undefined {
+  if (typeof value !== 'string') return undefined
+  const trimmed = value.trim()
+  if (!trimmed || trimmed.length > maxLength) return undefined
+  return trimmed
+}
+
+function validateAgentAttachment(
+  value: unknown,
+): AgentImageAttachmentInput | string {
+  if (!isRecord(value)) return 'expected an object'
+
+  const id = stringField(value.id, 100)
+  const mediaType = stringField(value.mediaType, 32)
+  const name = stringField(value.name, 200)
+  const dataUrl = typeof value.dataUrl === 'string' ? value.dataUrl.trim() : ''
+  const size = typeof value.size === 'number' ? value.size : undefined
+
+  if (!id) return 'expected non-empty id'
+  if (!name) return 'expected non-empty name'
+  if (!mediaType || !isAcceptedAttachmentMediaType(mediaType)) {
+    return 'expected PNG, JPEG, WEBP, or GIF mediaType'
+  }
+  if (
+    typeof size !== 'number' ||
+    !Number.isInteger(size) ||
+    size <= 0 ||
+    size > MAX_ATTACHMENT_SIZE
+  ) {
+    return 'expected size between 1 byte and 8 MiB'
+  }
+  if (!isValidImageDataUrl(dataUrl, mediaType)) {
+    return 'expected matching base64 dataUrl'
+  }
+
+  return {
+    dataUrl,
+    id,
+    mediaType,
+    name,
+    size,
+  }
+}
+
+function validateAgentAttachments(
+  value: unknown,
+): AgentImageAttachmentInput[] | string {
+  if (value === undefined) return []
+  if (!Array.isArray(value)) return 'Expected { attachments?: image[] }'
+  if (value.length > MAX_ATTACHMENT_COUNT) {
+    return `Attach up to ${MAX_ATTACHMENT_COUNT} images.`
+  }
+
+  const attachments: AgentImageAttachmentInput[] = []
+  let totalSize = 0
+  for (const [index, item] of value.entries()) {
+    const attachment = validateAgentAttachment(item)
+    if (typeof attachment === 'string') {
+      return `Invalid attachment ${index + 1}: ${attachment}.`
+    }
+    totalSize += attachment.size
+    if (totalSize > MAX_ATTACHMENT_TOTAL_SIZE) {
+      return 'Attached images must be 16 MiB or smaller in total.'
+    }
+    attachments.push(attachment)
+  }
+
+  return attachments
 }

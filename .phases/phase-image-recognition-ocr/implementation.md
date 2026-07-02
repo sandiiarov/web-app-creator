@@ -60,7 +60,7 @@ Add image attachment UI in the prompt composer, carry attachment inputs through 
 
 ### Todo
 - [x] Add client attachment types, composer attach button/chips, file validation, and send payload wiring.
-- [ ] Extend `/agent` request validation, project message attachment metadata, and route pre-run attachment OCR/tool events.
+- [x] Extend `/agent` request validation, project message attachment metadata, and route pre-run attachment OCR/tool events.
 - [ ] Add/adjust server tests for attachment persistence and pre-run OCR prompt/tool metadata.
 - [ ] Run focused client and server checks for the attachment slice.
 

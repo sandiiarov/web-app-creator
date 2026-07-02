@@ -10,18 +10,22 @@ import {
   imageGenCost,
   visionCost,
 } from './lib/cost.ts'
+import { ocrImageInputs, type ImageOcrResult } from './lib/image-ocr.ts'
 import {
   appendProjectMessageTurn,
   createProjectHtmlStore,
   getProject,
   setTitleIfUntitled,
   updateProjectModel,
+  type ProjectMessageAttachment,
   type ProjectMessageStatsPart,
   type ProjectMessageToolCallPart,
   type ProjectMessageTurn,
 } from './lib/project-store.ts'
 import { sendSse, startSse } from './lib/sse.ts'
 
+const ATTACHMENT_OCR_PROMPT =
+  'Analyze the attached image for landing-page generation. Extract all visible text exactly, then describe layout, hierarchy, colors, typography, UI components, imagery, brand cues, and any details the landing-page agent should use. If the image is a screenshot or mockup, call out sections, navigation, CTAs, spacing, and visual style.'
 const MAX_EDIT_FAILURES = 2
 const MAX_STEPS = 30
 const READ_BEFORE_RETRY_MESSAGE =
@@ -29,10 +33,22 @@ const READ_BEFORE_RETRY_MESSAGE =
 const REPEATED_EDIT_FAILURE_MESSAGE =
   'Edit failed twice in this turn. Stopping so the agent does not keep making blind edit attempts. Read/grep the current /index.html and try again.'
 
+export interface AgentImageAttachmentInput extends ProjectMessageAttachment {
+  dataUrl: string
+}
+
+interface AttachmentAnalysis {
+  contextBlock: string
+  cost: number
+  images: number
+  ok: boolean
+}
+
 type RecordedStatsPayload = Omit<ProjectMessageStatsPart, 'type'>
 type RecordedToolPayload = Omit<ProjectMessageToolCallPart, 'type'>
 
 interface StreamOptions {
+  attachments?: AgentImageAttachmentInput[]
   modelId: string
   projectId: string
   prompt: string
@@ -63,6 +79,7 @@ export function resolveModelId(model?: string): string {
  * terminal error/result states), stats, error, done.
  */
 export async function streamLandingAgent({
+  attachments = [],
   modelId,
   projectId,
   prompt,
@@ -81,7 +98,11 @@ export async function streamLandingAgent({
   await updateProjectModel(projectId, modelId)
   setTitleIfUntitled(projectId, prompt)
 
-  const recordedTurn = createRecordedTurn(prompt, modelId)
+  const recordedTurn = createRecordedTurn(
+    prompt,
+    modelId,
+    attachments.map(stripAttachmentData),
+  )
   const startedAt = Date.now()
   const store = createProjectHtmlStore(projectId)
   const baseUrl = `http://${request.headers.host ?? `localhost:${config.port}`}`
@@ -108,6 +129,10 @@ export async function streamLandingAgent({
   // Accumulate image-generation count/cost across generate_image calls.
   let imageCostUsd = 0
   let imageCount = 0
+  // Accumulate prompt-attachment/screenshot vision OCR usage.
+  let visionCalls = 0
+  let visionCostUsd = 0
+  let visionImages = 0
   // Accumulate bundled image-OCR usage inside scrape cost.
   let scrapeOcrCalls = 0
   let scrapeOcrCostUsd = 0
@@ -119,7 +144,23 @@ export async function streamLandingAgent({
   let terminalToolResult: string | undefined
 
   try {
-    const stream = await agent.stream(prompt, {
+    const attachmentAnalysis = await analyzePromptAttachments({
+      attachments,
+      nextToolSeq: () => ++toolCallSeq,
+      recordedTurn,
+      response,
+    })
+    if (attachmentAnalysis.images > 0) {
+      visionImages += attachmentAnalysis.images
+      visionCostUsd += attachmentAnalysis.cost
+      if (attachmentAnalysis.ok) visionCalls += 1
+    }
+
+    const agentPrompt = attachmentAnalysis.contextBlock
+      ? `${prompt}\n\n${attachmentAnalysis.contextBlock}`
+      : prompt
+
+    const stream = await agent.stream(agentPrompt, {
       abortSignal: controller.signal,
       maxSteps: MAX_STEPS,
       modelSettings: { maxOutputTokens: 16_384 },
@@ -388,7 +429,7 @@ export async function streamLandingAgent({
       })
       const firecrawlCostUsd = firecrawlCost(scrapeCredits)
       const scrapeCostUsd = firecrawlCostUsd + scrapeOcrCostUsd
-      const totalCost = llmCost + scrapeCostUsd + imageCostUsd
+      const totalCost = llmCost + scrapeCostUsd + imageCostUsd + visionCostUsd
 
       const statsPayload: RecordedStatsPayload = {
         cost: totalCost,
@@ -408,6 +449,11 @@ export async function streamLandingAgent({
             ocrImages: scrapeOcrImages,
           },
           total: totalCost,
+          vision: {
+            calls: visionCalls,
+            cost: visionCostUsd,
+            images: visionImages,
+          },
         },
         durationMs: Date.now() - startedAt,
         finishReason: (await stream.finishReason) ?? 'stop',
@@ -453,6 +499,105 @@ export async function streamLandingAgent({
   }
 }
 
+async function analyzePromptAttachments({
+  attachments,
+  nextToolSeq,
+  recordedTurn,
+  response,
+}: {
+  attachments: AgentImageAttachmentInput[]
+  nextToolSeq: () => number
+  recordedTurn: ProjectMessageTurn
+  response: ServerResponse
+}): Promise<AttachmentAnalysis> {
+  if (attachments.length === 0) {
+    return { contextBlock: '', cost: 0, images: 0, ok: true }
+  }
+
+  const id = `tool-${nextToolSeq()}-analyze_image`
+  const intent = 'Analyze attached image reference'
+  const detail = compactLines([
+    intent,
+    ...attachments.map((attachment) => attachment.name),
+  ])
+  const runningPayload: RecordedToolPayload = {
+    detail,
+    id,
+    intent,
+    state: 'running',
+    tool: 'analyze_image',
+  }
+  recordToolCall(recordedTurn, runningPayload)
+  sendSse(response, 'tool_call', runningPayload)
+
+  try {
+    const result = await ocrImageInputs(
+      attachments.map((attachment) => ({
+        dataUrl: attachment.dataUrl,
+        sourceLabel: attachment.name,
+      })),
+      ATTACHMENT_OCR_PROMPT,
+    )
+    const cost = visionCost(result.usage ?? {}, result.cost)
+    const images = result.imagesAnalyzed
+
+    if (!result.ok) {
+      const reason = result.reason ?? 'Image analysis failed.'
+      const errorPayload: RecordedToolPayload = {
+        detail,
+        id,
+        intent,
+        result: reason,
+        state: 'error',
+        tool: 'analyze_image',
+      }
+      recordToolCall(recordedTurn, errorPayload)
+      sendSse(response, 'tool_call', errorPayload)
+      return {
+        contextBlock: `Attached image analysis failed: ${reason}`,
+        cost,
+        images,
+        ok: false,
+      }
+    }
+
+    const donePayload: RecordedToolPayload = {
+      detail,
+      id,
+      intent,
+      result: `Analyzed ${images} attached image${images === 1 ? '' : 's'}`,
+      state: 'done',
+      tool: 'analyze_image',
+    }
+    recordToolCall(recordedTurn, donePayload)
+    sendSse(response, 'tool_call', donePayload)
+    return {
+      contextBlock: buildAttachmentContext(attachments, result),
+      cost,
+      images,
+      ok: true,
+    }
+  } catch (error) {
+    const reason = summarizeToolError(error)
+    const errorPayload: RecordedToolPayload = {
+      detail,
+      id,
+      intent,
+      result: reason,
+      state: 'error',
+      tool: 'analyze_image',
+    }
+    recordToolCall(recordedTurn, errorPayload)
+    sendSse(response, 'tool_call', errorPayload)
+    return {
+      contextBlock: `Attached image analysis failed: ${reason}`,
+      cost: 0,
+      images: 0,
+      ok: false,
+    }
+  }
+}
+
 function asToolArgs(value: unknown): ToolArgs {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
   return value as ToolArgs
@@ -462,6 +607,24 @@ function booleanValue(value: unknown): boolean | undefined {
   return typeof value === 'boolean' ? value : undefined
 }
 
+function buildAttachmentContext(
+  attachments: AgentImageAttachmentInput[],
+  result: ImageOcrResult,
+): string {
+  const imageList = attachments
+    .map(
+      (attachment, index) =>
+        `${index + 1}. ${attachment.name} (${attachment.mediaType}, ${attachment.size} bytes)`,
+    )
+    .join('\n')
+  return [
+    'Attached image OCR/visual transcript from OpenRouter `z-ai/glm-5v-turbo`:',
+    imageList,
+    '',
+    result.text || 'No text returned.',
+  ].join('\n')
+}
+
 function compactLines(lines: Array<null | string | undefined>): null | string {
   const compacted = lines
     .map((line) => line?.trim())
@@ -469,8 +632,13 @@ function compactLines(lines: Array<null | string | undefined>): null | string {
   return compacted.length > 0 ? compacted.join('\n') : null
 }
 
-function createRecordedTurn(prompt: string, model: string): ProjectMessageTurn {
+function createRecordedTurn(
+  prompt: string,
+  model: string,
+  attachments: ProjectMessageAttachment[] = [],
+): ProjectMessageTurn {
   return {
+    ...(attachments.length > 0 ? { attachments } : {}),
     htmlSwaps: 0,
     id: `turn-${randomUUID()}`,
     isStreaming: true,
@@ -613,6 +781,13 @@ function stringValue(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim().length > 0
     ? value.trim()
     : undefined
+}
+
+function stripAttachmentData({
+  dataUrl: _dataUrl,
+  ...metadata
+}: AgentImageAttachmentInput): ProjectMessageAttachment {
+  return metadata
 }
 
 function summarizeToolArgs(tool: string, args: ToolArgs): null | string {

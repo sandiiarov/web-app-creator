@@ -18,6 +18,7 @@ import {
   type ScrapeCost,
   type StatsPart,
   type TokenUsage,
+  type VisionCost,
 } from '../../lib/landing-agent'
 
 export function TurnMetadata({ stats }: { stats: StatsPart }) {
@@ -78,14 +79,16 @@ export function TurnMetadata({ stats }: { stats: StatsPart }) {
 }
 
 function CostBreakdownView({ breakdown }: { breakdown: CostBreakdown }) {
-  const { image, llm, scrape, total } = breakdown
+  const { image, llm, scrape, total, vision } = breakdown
   const showScrape = scrape.calls > 0 || scrape.credits > 0 || scrape.cost > 0
   const showImage = !!image && (image.count > 0 || image.cost > 0)
+  const showVision = !!vision && (vision.images > 0 || vision.cost > 0)
 
   return (
     <Section title="Cost breakdown">
       <ReceiptRow label="LLM" value={formatCost(llm)} />
       {showImage ? <ImageCostRow image={image!} /> : null}
+      {showVision ? <VisionCostRow vision={vision!} /> : null}
       {showScrape ? <ScrapeCostRow scrape={scrape} /> : null}
       <ReceiptRow emphasis label="Total" value={formatCost(total)} />
     </Section>
@@ -255,5 +258,24 @@ function TokenBreakdown({ usage }: { usage: TokenUsage }) {
         />
       ) : null}
     </Section>
+  )
+}
+
+function VisionCostRow({ vision }: { vision: VisionCost }) {
+  const details: string[] = []
+
+  if (vision.images > 0) {
+    details.push(`${vision.images} image${vision.images === 1 ? '' : 's'}`)
+  }
+  if (vision.calls > 0) {
+    details.push(`${vision.calls} call${vision.calls === 1 ? '' : 's'}`)
+  }
+
+  return (
+    <ReceiptRow
+      detail={details.length > 0 ? details.join(' · ') : undefined}
+      label="Vision OCR"
+      value={formatCost(vision.cost)}
+    />
   )
 }
