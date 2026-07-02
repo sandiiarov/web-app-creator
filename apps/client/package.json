@@ -22,6 +22,7 @@
   },
   "dependencies": {
     "@workspace/ui": "workspace:*",
+    "@zumer/snapdom": "catalog:",
     "bippy": "catalog:",
     "lucide-react": "catalog:",
     "react": "catalog:",

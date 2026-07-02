@@ -39,6 +39,9 @@ catalogs:
     '@typescript/native-preview':
       specifier: 7.0.0-dev.20260527.2
       version: 7.0.0-dev.20260527.2
+    '@zumer/snapdom':
+      specifier: ^2.12.9
+      version: 2.12.9
     bippy:
       specifier: ^0.5.41
       version: 0.5.41
@@ -128,6 +131,9 @@ importers:
       '@workspace/ui':
         specifier: workspace:*
         version: link:../../packages/ui
+      '@zumer/snapdom':
+        specifier: 'catalog:'
+        version: 2.12.9
       bippy:
         specifier: 'catalog:'
         version: 0.5.41(react@19.2.6)
@@ -2966,6 +2972,9 @@ packages:
 
   '@zeit/schemas@2.36.0':
     resolution: {integrity: sha512-7kjMwcChYEzMKjeex9ZFXkt1AyNov9R5HZtjBKVsmVpw7pa7ZtlCGvCBC2vnnXctaYN+aRI61HjIqeetZW5ROg==}
+
+  '@zumer/snapdom@2.12.9':
+    resolution: {integrity: sha512-Zufl1vEthT931kcZfmAaRSnucAGIRLGi9N6JI8ZsdyHww5hHHLk4t5LU1DxS5pNAPi1MptPHcGON1pkXEBf5iw==}
 
   abort-controller@3.0.0:
     resolution: {integrity: sha512-h8lQ8tacZYnR3vNQTgibj+tODHI5/+l06Au2Pcriv/Gmet0eaj4TwWH41sO9wnHDiQsEj19q0drzdWdeAHtweg==}
@@ -8427,6 +8436,8 @@ snapshots:
   '@workflow/serde@4.1.0-beta.2': {}
 
   '@zeit/schemas@2.36.0': {}
+
+  '@zumer/snapdom@2.12.9': {}
 
   abort-controller@3.0.0:
     dependencies:

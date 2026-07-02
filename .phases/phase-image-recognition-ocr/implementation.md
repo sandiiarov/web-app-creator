@@ -35,7 +35,7 @@ Commit **after** the todo is genuinely done, not as a marker for unfinished work
 Add the SnapDOM client dependency and extend the existing OpenRouter vision helper so both URL OCR and data-url OCR use the same `z-ai/glm-5v-turbo` path. This slice should be checkable without UI or agent route changes.
 
 ### Todo
-- [ ] Add `@zumer/snapdom` to the workspace catalog, client package, and lockfile.
+- [x] Add `@zumer/snapdom` to the workspace catalog, client package, and lockfile.
 - [ ] Extend `image-ocr.ts` to accept validated data-url image inputs while preserving existing `ocrImages(urls)` behavior.
 - [ ] Add focused server tests for image data-url normalization, unsupported media, missing API key, and OpenRouter payload shape.
 
