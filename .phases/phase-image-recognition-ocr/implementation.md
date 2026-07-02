@@ -37,13 +37,21 @@ Add the SnapDOM client dependency and extend the existing OpenRouter vision help
 ### Todo
 - [x] Add `@zumer/snapdom` to the workspace catalog, client package, and lockfile.
 - [x] Extend `image-ocr.ts` to accept validated data-url image inputs while preserving existing `ocrImages(urls)` behavior.
-- [ ] Add focused server tests for image data-url normalization, unsupported media, missing API key, and OpenRouter payload shape.
+- [x] Add focused server tests for image data-url normalization, unsupported media, missing API key, and OpenRouter payload shape.
 
 ### Results
-_(fill at end of the sub-phase — what was implemented, commands run, checks passed)_
+- Added `@zumer/snapdom` to the root catalog, client dependency list, and lockfile.
+- Extended `apps/server/src/mastra/lib/image-ocr.ts` with `ocrImageInputs()` for URL and data-url images while preserving `ocrImages(urls)` as a URL wrapper.
+- Added `apps/server/src/mastra/lib/image-ocr.test.ts` covering missing OpenRouter key behavior, unsupported data URL media types, data URL deduplication/OpenRouter payload shape, and URL fetch behavior.
+- Checks run:
+  - `pnpm --filter @workspace/client typecheck` — passed.
+  - `pnpm --filter @workspace/server exec oxfmt -c oxfmt.config.ts src/mastra/lib/image-ocr.ts src/mastra/lib/image-ocr.test.ts` — passed.
+  - `pnpm --filter @workspace/server exec oxlint src/mastra/lib/image-ocr.ts src/mastra/lib/image-ocr.test.ts` — passed.
+  - `pnpm --filter @workspace/server typecheck` — passed.
+  - `pnpm --filter @workspace/server exec vitest run --config vitest.config.ts src/mastra/lib/image-ocr.test.ts` — passed (4 tests).
 
 ### Gotchas
-_(fill at end of the sub-phase, if any)_
+- `image-ocr.ts` imports runtime config at module load, so tests dynamically import it after stubbing `BASETEN_API_KEY` and `OPENROUTER_API_KEY`.
 
 ## Phase 2: User image attachments end-to-end
 

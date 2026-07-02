@@ -40,6 +40,11 @@ export interface ImageOcrUrlInput {
   url: string
 }
 
+interface FailedImageRef {
+  error: string
+  sourceLabel: string
+}
+
 interface LoadedImageRef {
   dataUrl: string
   sourceLabel: string
@@ -119,10 +124,11 @@ export async function ocrImageInputs(
   const failedCount = loadedImages.length - imageRefs.length
 
   if (!imageRefs.length) {
+    const failureDetail = summarizeFailedImages(loadedImages)
     return {
       imagesAnalyzed: 0,
       ok: false,
-      reason: `No image inputs could be loaded for OCR (${failedCount} failed).`,
+      reason: `No image inputs could be loaded for OCR (${failedCount} failed${failureDetail ? `: ${failureDetail}` : ''}).`,
       text: '',
       usage: null,
     }
@@ -402,4 +408,14 @@ function sumDefined(...values: Array<number | undefined>): number | undefined {
   )
   if (!present.length) return undefined
   return present.reduce((sum, value) => sum + value, 0)
+}
+
+function summarizeFailedImages(
+  loadedImages: Array<FailedImageRef | LoadedImageRef>,
+): string {
+  return loadedImages
+    .filter((image): image is FailedImageRef => 'error' in image)
+    .slice(0, 3)
+    .map((image) => `${image.sourceLabel}: ${image.error}`)
+    .join('; ')
 }
