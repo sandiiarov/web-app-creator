@@ -45,12 +45,6 @@ export const KEYBOARD_SHORTCUTS = {
     keys: ['option', 'shift', 'r'],
     title: 'Option Shift R',
   },
-  modelPicker: {
-    display: 'Command Shift P',
-    hotkey: 'meta+shift+p,ctrl+shift+p',
-    keys: ['command', 'shift', 'p'],
-    title: 'Command or Control Shift P',
-  },
   panelCommand: {
     display: 'Command Shift P',
     hotkey: 'meta+shift+p,ctrl+shift+p',

@@ -12,20 +12,25 @@ import { type FormEvent, type KeyboardEvent } from 'react'
 
 import { KeyboardShortcut } from './keyboard-shortcut'
 import { KEYBOARD_SHORTCUTS } from './keyboard-shortcuts'
+import { ModelDropdown } from './model-dropdown'
 
 export function Composer({
   disabled,
   isStreaming,
+  model,
   onChange,
   onKeyDown,
+  onModelChange,
   onStop,
   onSubmit,
   prompt,
 }: {
   disabled: boolean
   isStreaming: boolean
+  model: string
   onChange: (value: string) => void
   onKeyDown: (event: KeyboardEvent<HTMLTextAreaElement>) => void
+  onModelChange: (model: string) => void
   onStop: () => void
   onSubmit: (event: FormEvent<HTMLFormElement>) => void
   prompt: string
@@ -50,7 +55,8 @@ export function Composer({
           rows={4}
           value={prompt}
         />
-        <div className="flex shrink-0 justify-end border-t border-border/60 p-2">
+        <div className="flex shrink-0 items-center justify-between gap-2 border-t border-border/60 p-2">
+          <ModelDropdown model={model} onModelChange={onModelChange} />
           <div>
             {isStreaming ? (
               <TooltipProvider>

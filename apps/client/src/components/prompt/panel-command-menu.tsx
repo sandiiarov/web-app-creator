@@ -22,40 +22,30 @@ import {
 import {
   AppWindow,
   Command as CommandIcon,
+  FolderOpen,
   Monitor,
   Moon,
   PanelLeft,
   PanelRight,
   Sun,
 } from 'lucide-react'
-import { type ComponentType } from 'react'
 
 import { useTheme } from '#components/theme-provider'
 
 import { KEYBOARD_SHORTCUTS } from '../../lib/keyboard-shortcuts'
-import { LANDING_MODEL_OPTIONS } from '../../lib/landing-agent'
-import { GlmIcon } from './glm-icon'
 import { KeyboardShortcut } from './keyboard-shortcut'
-import { KimiIcon } from './kimi-icon'
 import type { PanelLayout } from './panel-constants'
-
-const MODEL_ICONS: Record<string, ComponentType<{ className?: string }>> = {
-  'moonshotai/Kimi-K2.7-Code': KimiIcon,
-  'zai-org/GLM-5.2': GlmIcon,
-}
 
 export function PanelCommandMenu({
   layout,
-  model,
+  onAllProjects,
   onLayoutChange,
-  onModelChange,
   onOpenChange,
   open,
 }: {
   layout: PanelLayout
-  model: string
+  onAllProjects: () => void
   onLayoutChange: (layout: PanelLayout) => void
-  onModelChange: (model: string) => void
   onOpenChange: (open: boolean) => void
   open: boolean
 }) {
@@ -63,6 +53,7 @@ export function PanelCommandMenu({
 
   const runCommand = (command: () => void) => {
     command()
+    onOpenChange(false)
   }
 
   return (
@@ -95,22 +86,15 @@ export function PanelCommandMenu({
           <CommandInput autoFocus placeholder="Search panel commands..." />
           <CommandList>
             <CommandEmpty>No command found.</CommandEmpty>
-            <CommandGroup heading="Model">
-              {LANDING_MODEL_OPTIONS.map((option) => {
-                const Icon = MODEL_ICONS[option.id]
-
-                return (
-                  <CommandItem
-                    data-checked={model === option.id}
-                    key={option.id}
-                    onSelect={() => runCommand(() => onModelChange(option.id))}
-                    value={`model ${option.label}`}
-                  >
-                    {Icon ? <Icon className="size-4" /> : null}
-                    {option.label}
-                  </CommandItem>
-                )
-              })}
+            <CommandGroup heading="Navigate">
+              <CommandItem
+                onSelect={() => runCommand(onAllProjects)}
+                value="all projects project list home"
+              >
+                <FolderOpen />
+                All projects
+                <KeyboardShortcut shortcut={KEYBOARD_SHORTCUTS.allProjects} />
+              </CommandItem>
             </CommandGroup>
             <CommandSeparator />
             <CommandGroup heading="Panel">

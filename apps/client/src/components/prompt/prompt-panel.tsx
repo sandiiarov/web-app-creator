@@ -125,6 +125,10 @@ export function PromptPanel({
     [position],
   )
 
+  const handleAllProjects = useCallback(() => {
+    navigate('/')
+  }, [navigate])
+
   const handleCommandMenuHotkey = useCallback(() => {
     setCommandMenuOpen(true)
   }, [])
@@ -170,9 +174,9 @@ export function PromptPanel({
 
   useHotkeys(
     KEYBOARD_SHORTCUTS.allProjects.hotkey,
-    () => navigate('/'),
+    () => handleAllProjects(),
     { enableOnFormTags: true, preventDefault: true },
-    [navigate],
+    [handleAllProjects],
   )
   useHotkeys(
     KEYBOARD_SHORTCUTS.layoutLeft.hotkey,
@@ -260,13 +264,12 @@ export function PromptPanel({
           commandMenuOpen={commandMenuOpen}
           dragging={dragging}
           layout={layout}
-          model={model}
+          onAllProjects={handleAllProjects}
           onCommandMenuOpenChange={setCommandMenuOpen}
           onDragEnd={handleDragEnd}
           onDragMove={handleDragMove}
           onDragStart={handleDragStart}
           onLayoutChange={handleLayoutChange}
-          onModelChange={onModelChange}
           onToggleCollapsed={() => setCollapsed(false)}
           status={status}
         />
@@ -277,13 +280,12 @@ export function PromptPanel({
             commandMenuOpen={commandMenuOpen}
             dragging={dragging}
             layout={layout}
-            model={model}
+            onAllProjects={handleAllProjects}
             onCommandMenuOpenChange={setCommandMenuOpen}
             onDragEnd={handleDragEnd}
             onDragMove={handleDragMove}
             onDragStart={handleDragStart}
             onLayoutChange={handleLayoutChange}
-            onModelChange={onModelChange}
             onToggleCollapsed={() => setCollapsed(true)}
             status={status}
           />
@@ -309,8 +311,10 @@ export function PromptPanel({
               <Composer
                 disabled={isStreaming || prompt.trim().length === 0}
                 isStreaming={isStreaming}
+                model={model}
                 onChange={setPrompt}
                 onKeyDown={handleKeyDown}
+                onModelChange={onModelChange}
                 onStop={onStop}
                 onSubmit={handleSubmit}
                 prompt={prompt}
