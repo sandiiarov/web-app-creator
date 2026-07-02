@@ -58,6 +58,29 @@ describe('project message storage', () => {
     })
   })
 
+  it('persists attachment metadata without image data', async () => {
+    const project = await createProject()
+    createdProjectIds.push(project.id)
+    const turn: ProjectMessageTurn = {
+      ...messageTurn(project.id),
+      attachments: [
+        {
+          id: 'image-1',
+          mediaType: 'image/png',
+          name: 'wireframe.png',
+          size: 1234,
+        },
+      ],
+    }
+
+    await appendProjectMessageTurn(project.id, turn)
+
+    await expect(getProject(project.id)).resolves.toMatchObject({
+      id: project.id,
+      messages: [turn],
+    })
+  })
+
   it('persists the latest project model without rewriting message turns', async () => {
     const project = await createProject({ model: 'moonshotai/Kimi-K2.7-Code' })
     createdProjectIds.push(project.id)
