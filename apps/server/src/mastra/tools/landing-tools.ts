@@ -4,6 +4,12 @@ import { createGenerateImageTool } from './generate-image.ts'
 import { createGrepTool } from './grep.ts'
 import { createReadTool } from './read.ts'
 import { createScrapeTool } from './scrape.ts'
+import {
+  createScreenshotTool,
+  type RequestBrowserScreenshot,
+} from './screenshot.ts'
+
+export type { RequestBrowserScreenshot } from './screenshot.ts'
 
 type LandingTool =
   | ReturnType<typeof createEditTool>
@@ -11,9 +17,11 @@ type LandingTool =
   | ReturnType<typeof createGrepTool>
   | ReturnType<typeof createReadTool>
   | ReturnType<typeof createScrapeTool>
+  | ReturnType<typeof createScreenshotTool>
 
 interface LandingToolContext {
   baseUrl: string
+  requestScreenshot?: RequestBrowserScreenshot
   store: HtmlStore
 }
 
@@ -60,6 +68,11 @@ const LANDING_TOOL_DEFINITIONS = [
     ({ store }) => createEditTool(store),
   ),
   tool(
+    'screenshot',
+    'Use `screenshot` after substantial edits or when visual feedback is needed. It asks the browser to render the current `/index.html`, captures a screenshot, and returns OCR plus visual QA notes for layout, text, spacing, contrast, clipping, and responsive issues. It creates no files.',
+    ({ requestScreenshot }) => createScreenshotTool(requestScreenshot),
+  ),
+  tool(
     'generate_image',
     'Use `generate_image` whenever the landing page would benefit from net-new raster imagery or art-directed visual assets (hero art, editorial photos, product scenes, abstract brand visuals, textures, etc.). Prefer `scrape.images` for faithful source-site imagery; generate new imagery when scraped assets are missing, low quality, legally/visually unsuitable, or when a new concept strengthens the page. It returns a hosted URL such as `http://localhost:3001/images/img-1.jpg`; embed that URL directly in `<img src="...">`. Do not use placeholders or pasted image bytes.',
     ({ baseUrl }) => createGenerateImageTool(baseUrl),
@@ -79,11 +92,12 @@ export const LANDING_TOOL_LIST = LANDING_TOOL_DEFINITIONS.map(
 export function createLandingTools(
   store: HtmlStore,
   baseUrl: string,
+  requestScreenshot?: RequestBrowserScreenshot,
 ): Record<string, LandingTool> {
   return Object.fromEntries(
     LANDING_TOOL_DEFINITIONS.map(({ create, id }) => [
       id,
-      create({ baseUrl, store }),
+      create({ baseUrl, requestScreenshot, store }),
     ]),
   )
 }

@@ -4,6 +4,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 import { config } from '../config.ts'
 import { createLandingPageAgent } from './agents/landing-page-agent.ts'
 import { mastra } from './index.ts'
+import { createPendingBrowserScreenshot } from './lib/browser-screenshot.ts'
 import {
   estimateCost,
   firecrawlCost,
@@ -106,7 +107,25 @@ export async function streamLandingAgent({
   const startedAt = Date.now()
   const store = createProjectHtmlStore(projectId)
   const baseUrl = `http://${request.headers.host ?? `localhost:${config.port}`}`
-  const agent = createLandingPageAgent(store, mastra, baseUrl, modelId)
+  const agent = createLandingPageAgent(
+    store,
+    mastra,
+    baseUrl,
+    modelId,
+    async ({ height, intent, timeoutMs, width }) => {
+      const { promise, requestId } = createPendingBrowserScreenshot({
+        timeoutMs,
+      })
+      sendSse(response, 'screenshot_request', {
+        height,
+        intent,
+        projectId,
+        requestId,
+        width,
+      })
+      return await promise
+    },
+  )
   const controller = new AbortController()
 
   const onClose = () => controller.abort()
@@ -405,6 +424,34 @@ export async function streamLandingAgent({
             if (typeof result.imagesGenerated === 'number') {
               imageCount += result.imagesGenerated
               imageCostUsd += imageGenCost(result.imagesGenerated, result.cost)
+            }
+          }
+          // Accumulate screenshot OCR usage from successful screenshot calls.
+          if (chunk.payload.toolName === 'screenshot' && !isError) {
+            const result = chunk.payload.result as {
+              imageOcr?: {
+                cost?: number
+                imagesAnalyzed?: number
+                ok?: boolean
+                usage?: null | {
+                  cachedTokens?: number
+                  completionTokens?: number
+                  promptTokens?: number
+                }
+              }
+            }
+            const imageOcr = result.imageOcr
+            if (imageOcr?.ok && (imageOcr.imagesAnalyzed ?? 0) > 0) {
+              visionCalls += 1
+              visionImages += imageOcr.imagesAnalyzed ?? 0
+              visionCostUsd += visionCost(
+                {
+                  cachedTokens: imageOcr.usage?.cachedTokens,
+                  completionTokens: imageOcr.usage?.completionTokens,
+                  promptTokens: imageOcr.usage?.promptTokens,
+                },
+                imageOcr.cost,
+              )
             }
           }
           break
@@ -824,6 +871,14 @@ function summarizeToolArgs(tool: string, args: ToolArgs): null | string {
     }
     case 'scrape':
       return compactLines([intent, stringValue(args.url)])
+    case 'screenshot': {
+      const width = numberValue(args.width)
+      const height = numberValue(args.height)
+      return compactLines([
+        intent,
+        width || height ? `Viewport: ${width ?? 1440}×${height ?? 900}` : null,
+      ])
+    }
     case 'skill':
       return stringValue(args.name) ? `Skill: ${stringValue(args.name)}` : null
     case 'skill_read': {
@@ -931,6 +986,23 @@ function summarizeToolResult(
       ]
         .filter((part): part is string => !!part)
         .join(' · ')
+    }
+    case 'screenshot': {
+      if (booleanValue(data.ok) === false) {
+        return reason ?? 'Screenshot analysis failed.'
+      }
+      const imageOcr = asToolArgs(data.imageOcr)
+      const ocrImages = numberValue(imageOcr.imagesAnalyzed)
+      const width = numberValue(data.width)
+      const height = numberValue(data.height)
+      return compactLines([
+        width && height
+          ? `Captured ${width}×${height} screenshot`
+          : 'Captured screenshot',
+        ocrImages && ocrImages > 0
+          ? `OCR ${ocrImages} image${ocrImages === 1 ? '' : 's'}`
+          : null,
+      ])
     }
     case 'skill':
       return 'Loaded skill instructions'

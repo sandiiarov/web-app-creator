@@ -140,6 +140,138 @@ describe('streamLandingAgent attachments', () => {
   })
 })
 
+describe('streamLandingAgent screenshots', () => {
+  it('emits screenshot_request events with project correlation', async () => {
+    vi.stubEnv('BASETEN_API_KEY', 'test-baseten-key')
+
+    let capturedScreenshot: unknown
+    vi.doMock('./index.ts', () => ({ mastra: {} }))
+    vi.doMock('./lib/browser-screenshot.ts', () => ({
+      createPendingBrowserScreenshot: vi.fn<
+        () => {
+          promise: Promise<{
+            dataUrl: string
+            height: number
+            mediaType: 'image/jpeg'
+            width: number
+          }>
+          requestId: string
+        }
+      >(() => ({
+        promise: Promise.resolve({
+          dataUrl: 'data:image/jpeg;base64,/9j/4AAQSkZJRg==',
+          height: 600,
+          mediaType: 'image/jpeg',
+          width: 800,
+        }),
+        requestId: '00000000-0000-0000-0000-000000000001',
+      })),
+    }))
+    vi.doMock('./agents/landing-page-agent.ts', () => ({
+      createLandingPageAgent: (
+        _store: unknown,
+        _mastra: unknown,
+        _baseUrl: string,
+        _modelId: string,
+        requestScreenshot: (input: {
+          height: number
+          intent: string
+          timeoutMs: number
+          width: number
+        }) => Promise<unknown>,
+      ) => ({
+        stream: async () => {
+          capturedScreenshot = await requestScreenshot({
+            height: 600,
+            intent: 'inspect hero layout',
+            timeoutMs: 25_000,
+            width: 800,
+          })
+          return fakeAgentStream()
+        },
+      }),
+    }))
+
+    const { createProject } = await import('./lib/project-store.ts')
+    const project = await createProject()
+    createdProjectIds.push(project.id)
+    const { streamLandingAgent } = await import('./route.ts')
+    const response = new FakeResponse()
+
+    await streamLandingAgent({
+      modelId: 'zai-org/GLM-5.2',
+      projectId: project.id,
+      prompt: 'Check the page visually.',
+      request: fakeRequest(),
+      response: response as unknown as ServerResponse,
+    })
+
+    expect(capturedScreenshot).toMatchObject({ height: 600, width: 800 })
+    expect(parseSseEvents(response.body)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          data: {
+            height: 600,
+            intent: 'inspect hero layout',
+            projectId: project.id,
+            requestId: '00000000-0000-0000-0000-000000000001',
+            width: 800,
+          },
+          event: 'screenshot_request',
+        }),
+      ]),
+    )
+  })
+
+  it('summarizes screenshot tool results and adds vision cost', async () => {
+    vi.stubEnv('BASETEN_API_KEY', 'test-baseten-key')
+
+    vi.doMock('./index.ts', () => ({ mastra: {} }))
+    vi.doMock('./agents/landing-page-agent.ts', () => ({
+      createLandingPageAgent: () => ({
+        stream: async () => fakeAgentStream(screenshotToolStream()),
+      }),
+    }))
+
+    const { createProject } = await import('./lib/project-store.ts')
+    const project = await createProject()
+    createdProjectIds.push(project.id)
+    const { streamLandingAgent } = await import('./route.ts')
+    const response = new FakeResponse()
+
+    await streamLandingAgent({
+      modelId: 'zai-org/GLM-5.2',
+      projectId: project.id,
+      prompt: 'Review the rendered result.',
+      request: fakeRequest(),
+      response: response as unknown as ServerResponse,
+    })
+
+    const events = parseSseEvents(response.body)
+    expect(events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          data: expect.objectContaining({
+            result: expect.stringContaining('Captured 800×600 screenshot'),
+            state: 'done',
+            tool: 'screenshot',
+          }),
+          event: 'tool_call',
+        }),
+        expect.objectContaining({
+          data: expect.objectContaining({
+            cost: 0.006,
+            costBreakdown: expect.objectContaining({
+              vision: { calls: 1, cost: 0.006, images: 1 },
+            }),
+          }),
+          event: 'stats',
+        }),
+      ]),
+    )
+  })
+})
+
 class FakeResponse {
   readonly chunks: string[] = []
   headersSent = false
@@ -170,10 +302,12 @@ class FakeResponse {
 
 async function* emptyFullStream(): AsyncGenerator<never, void, unknown> {}
 
-function fakeAgentStream() {
+function fakeAgentStream(
+  fullStream: AsyncIterable<unknown> = emptyFullStream(),
+) {
   return {
     finishReason: Promise.resolve('stop'),
-    fullStream: emptyFullStream(),
+    fullStream,
     usage: Promise.resolve({
       cachedInputTokens: 0,
       inputTokens: 0,
@@ -210,4 +344,42 @@ function parseSseEvents(body: string): Array<{ data: unknown; event: string }> {
       }
       return { data, event }
     })
+}
+
+async function* screenshotToolStream() {
+  yield {
+    payload: {
+      args: { height: 600, intent: 'inspect rendered layout', width: 800 },
+      toolCallId: 'call-screenshot-1',
+      toolName: 'screenshot',
+    },
+    type: 'tool-call',
+  }
+  yield {
+    payload: {
+      args: { height: 600, intent: 'inspect rendered layout', width: 800 },
+      isError: false,
+      result: {
+        height: 600,
+        imageOcr: {
+          cost: 0.006,
+          imagesAnalyzed: 1,
+          ok: true,
+          text: 'Image 1\nHero headline visible. CTA is clipped.',
+          usage: {
+            completionTokens: 20,
+            promptTokens: 30,
+            totalTokens: 50,
+          },
+        },
+        mediaType: 'image/jpeg',
+        ok: true,
+        text: 'Image 1\nHero headline visible. CTA is clipped.',
+        width: 800,
+      },
+      toolCallId: 'call-screenshot-1',
+      toolName: 'screenshot',
+    },
+    type: 'tool-result',
+  }
 }

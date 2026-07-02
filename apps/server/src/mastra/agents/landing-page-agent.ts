@@ -7,6 +7,7 @@ import { createHtmlStore, type HtmlStore } from '../lib/html-store.ts'
 import { designSkill } from '../skills/design-skill.ts'
 import {
   createLandingTools,
+  type RequestBrowserScreenshot,
   LANDING_TOOL_COUNT,
   LANDING_TOOL_GUIDANCE,
   LANDING_TOOL_LIST,
@@ -38,6 +39,7 @@ export function createLandingPageAgent(
   mastra: Mastra,
   baseUrl: string,
   modelId: string = config.baseten.defaultModel,
+  requestScreenshot?: RequestBrowserScreenshot,
 ): AgentType {
   return new Agent({
     id: 'landing-page-agent',
@@ -46,7 +48,7 @@ export function createLandingPageAgent(
     model: basetenModel(modelId),
     name: 'Landing Page Agent',
     skills: [designSkill],
-    tools: createLandingTools(store, baseUrl),
+    tools: createLandingTools(store, baseUrl, requestScreenshot),
   })
 }
 
@@ -58,6 +60,7 @@ export function createLandingPageAgentConfig(
   store: HtmlStore,
   baseUrl: string,
   modelId: string = config.baseten.defaultModel,
+  requestScreenshot?: RequestBrowserScreenshot,
 ) {
   return {
     id: 'landing-page-agent',
@@ -65,7 +68,7 @@ export function createLandingPageAgentConfig(
     model: basetenModel(modelId),
     name: 'Landing Page Agent',
     skills: [designSkill],
-    tools: createLandingTools(store, baseUrl),
+    tools: createLandingTools(store, baseUrl, requestScreenshot),
   }
 }
 
