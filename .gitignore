@@ -21,6 +21,10 @@ dist-ssr
 # Docker Sandbox artifacts
 apps/server/sandbox/*.tar
 
+# Mastra generated build/studio output
+apps/server/.mastra/.build
+apps/server/.mastra/output
+
 # Mastra local stores (dev)
 mastra.db
 mastra.db-*

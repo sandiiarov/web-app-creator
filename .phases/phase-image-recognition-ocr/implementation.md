@@ -62,13 +62,23 @@ Add image attachment UI in the prompt composer, carry attachment inputs through 
 - [x] Add client attachment types, composer attach button/chips, file validation, and send payload wiring.
 - [x] Extend `/agent` request validation, project message attachment metadata, and route pre-run attachment OCR/tool events.
 - [x] Add/adjust server tests for attachment persistence and pre-run OCR prompt/tool metadata.
-- [ ] Run focused client and server checks for the attachment slice.
+- [x] Run focused client and server checks for the attachment slice.
 
 ### Results
-_(fill at end of the sub-phase — what was implemented, commands run, checks passed)_
+- Client prompt panel now supports image attachments with MIME/count/size validation, chips, removal, and `attachments` in the `/agent` payload.
+- Server `/agent` validates attachment metadata/data URLs, runs OpenRouter `z-ai/glm-5v-turbo` OCR before the Baseten agent stream, emits/persists synthetic `analyze_image` tool events, injects the OCR transcript into the agent prompt, and records attachment metadata without base64 image data.
+- Added server tests for attachment metadata persistence and route-level pre-run OCR/tool metadata.
+- Checks run:
+  - `pnpm --filter @workspace/client typecheck` — passed.
+  - `pnpm --filter @workspace/client lint` — passed.
+  - `pnpm --filter @workspace/client build` — passed.
+  - `pnpm --filter @workspace/server typecheck` — passed.
+  - `pnpm --filter @workspace/server lint` — initially failed because generated `apps/server/.mastra/output` was tracked/present; removed tracked disposable `.mastra/output` and `.mastra/.build`, added `.gitignore` rules for both, then reran — passed.
+  - `pnpm --filter @workspace/server test` — passed (6 files, 26 tests).
+  - `pnpm --filter @workspace/server build` — passed.
 
 ### Gotchas
-_(fill at end of the sub-phase, if any)_
+- `pnpm --filter @workspace/server lint` scans generated Mastra output if it is tracked/present; `.gitignore` now excludes `apps/server/.mastra/.build` and `apps/server/.mastra/output`.
 
 ## Phase 3: Screenshot request/response bridge and tool
 
