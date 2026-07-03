@@ -95,13 +95,22 @@ Files: `apps/server/src/mastra/lib/project-store.ts`, `apps/server/src/mastra/li
 Acceptance criteria: new projects write `html.json` and do not create `index.html`; `getProject()` renders `indexHtml` from `html.json`; legacy `index.html` is migrated when `html.json` is absent; sync write-through remains race-free; image URL normalization still persists project images.
 
 ### Todo
-- [ ] Persist project HTML through html.json only and verify migration tests.
+- [x] Persist project HTML through html.json only and verify migration tests.
 
 ### Results
-_(fill at end of the sub-phase — what was implemented, commands run, checks passed)_
+Updated `apps/server/src/mastra/lib/project-store.ts` so new projects write only `html.json`, `getProject()` renders `indexHtml` from `html.json`, and `createProjectHtmlStore()` reads/writes the anchored document synchronously. Legacy `index.html` is imported only when `html.json` is absent, then removed.
+
+Expanded `apps/server/src/mastra/lib/project-store.test.ts` to verify new project `html.json` creation, absence of `index.html`, legacy `index.html` migration/removal, and write-through store edits persisted to `html.json` only.
+
+Checks passed from repo root:
+
+- `pnpm --filter @workspace/server test -- project-store.test.ts html-store.test.ts html-anchor-document.test.ts`
+- `pnpm --filter @workspace/server typecheck`
+- `pnpm --filter @workspace/server lint`
+- `pnpm --filter @workspace/server format:check`
 
 ### Gotchas
-_(fill at end of the sub-phase, if any)_
+- `project.indexHtml` remains a rendered API field for client compatibility; it is no longer backed by a persisted `index.html` file.
 
 ## Phase 4: Add Anchored Read/Find Tools
 

@@ -1,12 +1,14 @@
-import { rm } from 'node:fs/promises'
+import { readFile, rm, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { afterEach, describe, expect, it } from 'vitest'
 
+import { applyAnchorEdits } from './html-anchor-document.ts'
 import {
   appendProjectMessageTurn,
   createProject,
+  createProjectHtmlStore,
   deleteProject,
   getProject,
   updateProjectModel,
@@ -32,6 +34,81 @@ describe('project message storage', () => {
       id: project.id,
       messages: [],
     })
+  })
+
+  it('stores new project HTML in html.json without creating index.html', async () => {
+    const project = await createProject()
+    createdProjectIds.push(project.id)
+    const projectDir = join(PROJECTS_DIR, project.id)
+
+    const htmlJson = JSON.parse(
+      await readFile(join(projectDir, 'html.json'), 'utf8'),
+    )
+
+    expect(htmlJson).toMatchObject({
+      finalNewline: true,
+      lineEnding: '\n',
+      version: 1,
+    })
+    expect(htmlJson.lines[0]).toEqual(['a1', '<!doctype html>'])
+    await expect(
+      readFile(join(projectDir, 'index.html'), 'utf8'),
+    ).rejects.toThrow('ENOENT')
+    await expect(getProject(project.id)).resolves.toMatchObject({
+      id: project.id,
+      indexHtml: project.indexHtml,
+    })
+  })
+
+  it('migrates legacy index.html into html.json and removes the legacy file', async () => {
+    const project = await createProject()
+    createdProjectIds.push(project.id)
+    const projectDir = join(PROJECTS_DIR, project.id)
+    const legacyHtml = '<main>\n  <h1>Legacy</h1>\n</main>\n'
+
+    await rm(join(projectDir, 'html.json'))
+    await writeFile(join(projectDir, 'index.html'), legacyHtml, 'utf8')
+
+    await expect(getProject(project.id)).resolves.toMatchObject({
+      id: project.id,
+      indexHtml: legacyHtml,
+    })
+    const htmlJson = JSON.parse(
+      await readFile(join(projectDir, 'html.json'), 'utf8'),
+    )
+    expect(htmlJson.lines).toEqual([
+      ['a1', '<main>'],
+      ['a2', '  <h1>Legacy</h1>'],
+      ['a3', '</main>'],
+    ])
+    await expect(
+      readFile(join(projectDir, 'index.html'), 'utf8'),
+    ).rejects.toThrow('ENOENT')
+  })
+
+  it('writes project store document edits to html.json only', async () => {
+    const project = await createProject()
+    createdProjectIds.push(project.id)
+    const projectDir = join(PROJECTS_DIR, project.id)
+    const store = createProjectHtmlStore(project.id)
+    const result = applyAnchorEdits(store.getDocument(), [
+      {
+        operation: 'replace',
+        range: ['a6'],
+        text: '    <title>Anchored</title>',
+      },
+    ])
+
+    store.setDocument(result.document)
+
+    const saved = await getProject(project.id)
+    expect(saved?.indexHtml).toContain('<title>Anchored</title>')
+    expect(await readFile(join(projectDir, 'html.json'), 'utf8')).toContain(
+      '<title>Anchored</title>',
+    )
+    await expect(
+      readFile(join(projectDir, 'index.html'), 'utf8'),
+    ).rejects.toThrow('ENOENT')
   })
 
   it('appends and reads project message turns', async () => {

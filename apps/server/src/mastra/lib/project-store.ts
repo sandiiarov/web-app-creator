@@ -3,16 +3,22 @@
  *
  * Each project lives at `<dataDir>/projects/<id>/` with:
  *   - `project.json`   metadata (id, title, model, timestamps, hasHtml)
- *   - `index.html`     the landing page the agent edits — THE source of truth
+ *   - `html.json`      anchored landing page document — the source of truth
  *   - `messages.json`  persisted chat/tool/stats turns for the project
  *   - `images/<file>`  generated image bytes copied out of the in-memory store
  *
- * The agent operates directly on the project's `index.html` via
- * `createProjectHtmlStore`. The UI never writes HTML; it only reads it back
- * (`getProject`) after each `edit` tool completes.
+ * The agent operates on the project's anchored `html.json` via
+ * `createProjectHtmlStore`. The UI never writes HTML; it only reads rendered
+ * HTML back (`getProject`) after each `edit` tool completes.
  */
 import { randomUUID } from 'node:crypto'
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs'
 import { mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -23,6 +29,7 @@ import {
   createHtmlDocumentFromString,
   type HtmlDocumentJsonV1,
   normalizeHtmlDocument,
+  parseHtmlDocumentJson,
   renderHtmlDocument,
 } from './html-anchor-document.ts'
 import { PLACEHOLDER_INDEX_HTML, type HtmlStore } from './html-store.ts'
@@ -32,6 +39,7 @@ const MODULE_DIR = dirname(fileURLToPath(import.meta.url))
 const DATA_DIR = join(MODULE_DIR, '..', '..', '..', '.data')
 const PROJECTS_DIR = join(DATA_DIR, 'projects')
 
+const HTML_JSON = 'html.json'
 const INDEX_HTML = 'index.html'
 const PROJECT_JSON = 'project.json'
 const MESSAGES_JSON = 'messages.json'
@@ -142,49 +150,51 @@ export async function createProject(
     updatedAt: now,
   }
 
+  const document = createHtmlDocumentFromString(PLACEHOLDER_INDEX_HTML)
+
   await ensureProjectDir(id)
   await writeMeta(id, meta)
-  await writeIndexHtml(id, PLACEHOLDER_INDEX_HTML)
+  await writeHtmlDocument(id, document)
   await writeMessages(id, [])
 
-  return { ...meta, indexHtml: PLACEHOLDER_INDEX_HTML, messages: [] }
+  return { ...meta, indexHtml: renderHtmlDocument(document), messages: [] }
 }
 
 /**
- * A write-through store bound to a project's `index.html`. The agent reads and
- * edits this file; every `set` persists to disk, copies any referenced
+ * A write-through store bound to a project's anchored `html.json`. The agent
+ * edits this document; every `set` persists to disk, copies any referenced
  * in-memory generated images into the project folder, and marks the project as
  * having content. Sync so the write is complete before Mastra emits the
  * `edit` tool-result (the UI fetches on edit-done — no race).
  */
 export function createProjectHtmlStore(projectId: string): HtmlStore {
-  let html = readIndexHtmlSync(projectId) ?? PLACEHOLDER_INDEX_HTML
-  let document = createHtmlDocumentFromString(html)
+  let document = readOrCreateHtmlDocumentSync(projectId)
 
   function persistRenderedDocument(nextDocument: HtmlDocumentJsonV1): number {
     document = cloneHtmlDocument(normalizeHtmlDocument(nextDocument))
-    html = persistProjectImagesSync(projectId, renderHtmlDocument(document))
-    document = createHtmlDocumentFromString(html)
-    writeIndexHtmlSync(projectId, html)
+    const rendered = renderHtmlDocument(document)
+    const normalizedHtml = persistProjectImagesSync(projectId, rendered)
+    if (normalizedHtml !== rendered) {
+      document = preserveAnchorsForRenderedHtml(document, normalizedHtml)
+    }
+    writeHtmlDocumentSync(projectId, document)
     markHasHtmlSync(projectId)
-    return Buffer.byteLength(html, 'utf8')
+    return Buffer.byteLength(renderHtmlDocument(document), 'utf8')
   }
 
   return {
     get() {
-      return html
+      return renderHtmlDocument(document)
     },
     getDocument() {
       return cloneHtmlDocument(document)
     },
     reset(seed) {
-      html = seed ?? PLACEHOLDER_INDEX_HTML
-      document = createHtmlDocumentFromString(html)
-      writeIndexHtmlSync(projectId, html)
+      document = createHtmlDocumentFromString(seed ?? PLACEHOLDER_INDEX_HTML)
+      writeHtmlDocumentSync(projectId, document)
     },
     set(next) {
-      document = createHtmlDocumentFromString(next)
-      return persistRenderedDocument(document)
+      return persistRenderedDocument(createHtmlDocumentFromString(next))
     },
     setDocument(next) {
       return persistRenderedDocument(next)
@@ -197,13 +207,13 @@ export async function deleteProject(id: string): Promise<void> {
   await rm(projectDir(id), { force: true, recursive: true })
 }
 
-/** Full project (metadata + index.html + messages), or null if missing. */
+/** Full project (metadata + rendered indexHtml + messages), or null if missing. */
 export async function getProject(id: string): Promise<null | Project> {
   const meta = await readMeta(id)
   if (!meta) return null
-  const indexHtml = await readIndexHtml(id)
+  const document = await readOrCreateHtmlDocument(id)
   const messages = await readMessages(id)
-  return { ...meta, indexHtml, messages }
+  return { ...meta, indexHtml: renderHtmlDocument(document), messages }
 }
 
 /** List all projects (metadata only), newest first. Drafts (no HTML) hidden. */
@@ -415,6 +425,29 @@ function persistProjectImagesSync(projectId: string, html: string): string {
   return working
 }
 
+function preserveAnchorsForRenderedHtml(
+  document: HtmlDocumentJsonV1,
+  html: string,
+): HtmlDocumentJsonV1 {
+  const next = createHtmlDocumentFromString(html)
+  if (
+    document.finalNewline !== next.finalNewline ||
+    document.lineEnding !== next.lineEnding ||
+    document.lines.length !== next.lines.length
+  ) {
+    return next
+  }
+
+  return normalizeHtmlDocument({
+    ...document,
+    checksum: 'sha256:',
+    lines: next.lines.map(([, text], index) => [
+      document.lines[index]![0],
+      text,
+    ]),
+  })
+}
+
 function projectDir(id: string) {
   return join(PROJECTS_DIR, id)
 }
@@ -433,11 +466,27 @@ async function readDirSafe(dir: string): Promise<string[]> {
   }
 }
 
-async function readIndexHtml(id: string): Promise<string> {
+async function readHtmlDocument(
+  id: string,
+): Promise<HtmlDocumentJsonV1 | null> {
+  const filePath = join(projectDir(id), HTML_JSON)
+  if (!existsSync(filePath)) return null
+  const raw = await readFile(filePath, 'utf8')
+  return parseHtmlDocumentJson(JSON.parse(raw))
+}
+
+function readHtmlDocumentSync(id: string): HtmlDocumentJsonV1 | null {
+  const filePath = join(projectDir(id), HTML_JSON)
+  if (!existsSync(filePath)) return null
+  const raw = readFileSync(filePath, 'utf8')
+  return parseHtmlDocumentJson(JSON.parse(raw))
+}
+
+async function readIndexHtml(id: string): Promise<null | string> {
   try {
     return await readFile(join(projectDir(id), INDEX_HTML), 'utf8')
   } catch {
-    return ''
+    return null
   }
 }
 
@@ -479,6 +528,42 @@ function readMetaSync(id: string): null | ProjectMeta {
   }
 }
 
+async function readOrCreateHtmlDocument(
+  id: string,
+): Promise<HtmlDocumentJsonV1> {
+  const existing = await readHtmlDocument(id)
+  if (existing) return existing
+
+  const legacyHtml = await readIndexHtml(id)
+  const document = createHtmlDocumentFromString(
+    legacyHtml ?? PLACEHOLDER_INDEX_HTML,
+  )
+  await writeHtmlDocument(id, document)
+  await removeIndexHtml(id)
+  return document
+}
+
+function readOrCreateHtmlDocumentSync(id: string): HtmlDocumentJsonV1 {
+  const existing = readHtmlDocumentSync(id)
+  if (existing) return existing
+
+  const legacyHtml = readIndexHtmlSync(id)
+  const document = createHtmlDocumentFromString(
+    legacyHtml ?? PLACEHOLDER_INDEX_HTML,
+  )
+  writeHtmlDocumentSync(id, document)
+  removeIndexHtmlSync(id)
+  return document
+}
+
+async function removeIndexHtml(id: string) {
+  await rm(join(projectDir(id), INDEX_HTML), { force: true })
+}
+
+function removeIndexHtmlSync(id: string) {
+  rmSync(join(projectDir(id), INDEX_HTML), { force: true })
+}
+
 function stripOrigin(url: string): string {
   return url.replace(/^https?:\/\/[^/]+/i, '')
 }
@@ -488,14 +573,22 @@ function truncateTitle(value: string): string {
   return trimmed.length > 60 ? `${trimmed.slice(0, 60)}…` : trimmed
 }
 
-async function writeIndexHtml(id: string, html: string) {
+async function writeHtmlDocument(id: string, document: HtmlDocumentJsonV1) {
   await ensureProjectDir(id)
-  await writeFile(join(projectDir(id), INDEX_HTML), html, 'utf8')
+  await writeFile(
+    join(projectDir(id), HTML_JSON),
+    `${JSON.stringify(normalizeHtmlDocument(document), null, 2)}\n`,
+    'utf8',
+  )
 }
 
-function writeIndexHtmlSync(id: string, html: string) {
+function writeHtmlDocumentSync(id: string, document: HtmlDocumentJsonV1) {
   mkdirSync(projectDir(id), { recursive: true })
-  writeFileSync(join(projectDir(id), INDEX_HTML), html, 'utf8')
+  writeFileSync(
+    join(projectDir(id), HTML_JSON),
+    `${JSON.stringify(normalizeHtmlDocument(document), null, 2)}\n`,
+    'utf8',
+  )
 }
 
 async function writeMessages(id: string, messages: ProjectMessageTurn[]) {
