@@ -4,23 +4,24 @@ import { z } from 'zod'
 import type { BrowserScreenshotResult } from '../lib/browser-screenshot.ts'
 import { ocrImageInputs } from '../lib/image-ocr.ts'
 
-const DEFAULT_SCREENSHOT_HEIGHT = 900
-const DEFAULT_SCREENSHOT_WIDTH = 1440
 const SCREENSHOT_TIMEOUT_MS = 25_000
+const SCREENSHOT_VIEWPORT_SIZE_VALUES = ['mobile', 'tablet', 'desktop'] as const
 
 const SCREENSHOT_OCR_PROMPT =
-  'Analyze this rendered landing-page screenshot. Extract visible text, then describe layout, hierarchy, spacing, colors, typography, imagery, component states, responsive issues, visual bugs, and concrete improvement opportunities. Treat this as browser-rendered QA feedback for editing /index.html.'
+  'Analyze this rendered landing-page element screenshot. Extract visible text, then describe layout, hierarchy, spacing, colors, typography, imagery, component states, responsive issues, visual bugs, and concrete improvement opportunities. Treat this as browser-rendered QA feedback for editing /index.html.'
 
 export interface BrowserScreenshotRequestInput {
-  height: number
-  intent: string
+  selector: string
   timeoutMs: number
-  width: number
+  viewportSize: ScreenshotViewportSize
 }
 
 export type RequestBrowserScreenshot = (
   input: BrowserScreenshotRequestInput,
 ) => Promise<BrowserScreenshotResult>
+
+export type ScreenshotViewportSize =
+  (typeof SCREENSHOT_VIEWPORT_SIZE_VALUES)[number]
 
 const ImageOcrSchema = z.object({
   cost: z.number().optional(),
@@ -43,11 +44,11 @@ export function createScreenshotTool(
 ) {
   return createTool({
     description:
-      'Request a browser-rendered screenshot of the current /index.html, then OCR/analyze it with vision. Use after substantial edits or when you need visual feedback about layout, text, spacing, contrast, clipping, or responsive issues. Always pass an intent describing what you are checking. Returns a screenshot OCR/visual transcript; it does not create files.',
-    execute: async ({ height, intent, width }) => {
+      'Request a browser-rendered screenshot of one element in the current /index.html, then OCR/analyze it with vision. Accepts exactly two arguments: a CSS element selector and viewportSize (mobile, tablet, or desktop). Use after substantial edits or when you need visual feedback about layout, text, spacing, contrast, clipping, or responsive issues. Returns a padded element screenshot OCR/visual transcript; it does not create files.',
+    execute: async ({ selector, viewportSize }) => {
       if (!requestScreenshot) {
         return {
-          height: height ?? DEFAULT_SCREENSHOT_HEIGHT,
+          height: null,
           imageOcr: {
             imagesAnalyzed: 0,
             ok: false,
@@ -59,27 +60,25 @@ export function createScreenshotTool(
           mediaType: null,
           ok: false,
           reason: 'Browser screenshot capture is unavailable in this runtime.',
+          selector,
           text: '',
-          width: width ?? DEFAULT_SCREENSHOT_WIDTH,
+          viewportSize,
+          width: null,
         }
       }
-
-      const requestedHeight = height ?? DEFAULT_SCREENSHOT_HEIGHT
-      const requestedWidth = width ?? DEFAULT_SCREENSHOT_WIDTH
 
       let screenshot: BrowserScreenshotResult
       try {
         screenshot = await requestScreenshot({
-          height: requestedHeight,
-          intent,
+          selector,
           timeoutMs: SCREENSHOT_TIMEOUT_MS,
-          width: requestedWidth,
+          viewportSize,
         })
       } catch (error) {
         const reason =
           error instanceof Error ? error.message : 'Screenshot capture failed.'
         return {
-          height: requestedHeight,
+          height: null,
           imageOcr: {
             imagesAnalyzed: 0,
             ok: false,
@@ -90,8 +89,10 @@ export function createScreenshotTool(
           mediaType: null,
           ok: false,
           reason,
+          selector,
           text: '',
-          width: requestedWidth,
+          viewportSize,
+          width: null,
         }
       }
 
@@ -99,10 +100,10 @@ export function createScreenshotTool(
         [
           {
             dataUrl: screenshot.dataUrl,
-            sourceLabel: `browser screenshot ${screenshot.width}×${screenshot.height}`,
+            sourceLabel: `browser screenshot ${screenshot.width}×${screenshot.height} of ${selector} at ${viewportSize} viewport`,
           },
         ],
-        SCREENSHOT_OCR_PROMPT,
+        `${SCREENSHOT_OCR_PROMPT}\nTarget selector: ${selector}\nViewport size: ${viewportSize}`,
       )
 
       return {
@@ -111,40 +112,40 @@ export function createScreenshotTool(
         mediaType: screenshot.mediaType,
         ok: imageOcr.ok,
         reason: imageOcr.reason,
+        selector,
         text: imageOcr.text,
+        viewportSize,
         width: screenshot.width,
       }
     },
     id: 'screenshot',
-    inputSchema: z.object({
-      height: z
-        .number()
-        .int()
-        .min(240)
-        .max(4096)
-        .optional()
-        .describe('Viewport height in CSS pixels (default 900).'),
-      intent: z
-        .string()
-        .describe(
-          'Short reason for the screenshot (shown to the user), e.g. "check hero composition after edits"',
-        ),
-      width: z
-        .number()
-        .int()
-        .min(320)
-        .max(4096)
-        .optional()
-        .describe('Viewport width in CSS pixels (default 1440).'),
-    }),
+    inputSchema: z
+      .object({
+        selector: z
+          .string()
+          .min(1)
+          .max(300)
+          .describe(
+            'CSS selector for the element to capture, e.g. "body", "main", "#hero", ".pricing-card", or "button[type=submit]".',
+          ),
+        viewportSize: z
+          .enum(SCREENSHOT_VIEWPORT_SIZE_VALUES)
+          .describe(
+            'Responsive viewport size to render before capture: mobile, tablet, or desktop.',
+          ),
+      })
+      .strict(),
     outputSchema: z.object({
-      height: z.number(),
+      height: z.number().nullable(),
       imageOcr: ImageOcrSchema,
       mediaType: z.nullable(z.enum(['image/jpeg', 'image/png', 'image/webp'])),
       ok: z.boolean(),
       reason: z.string().optional(),
+      selector: z.string(),
       text: z.string(),
-      width: z.number(),
+      viewportSize: z.enum(SCREENSHOT_VIEWPORT_SIZE_VALUES),
+      width: z.number().nullable(),
     }),
+    strict: true,
   })
 }

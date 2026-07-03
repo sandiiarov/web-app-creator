@@ -20,30 +20,13 @@ import {
   type LandingTurn,
   type RetryPart,
   type ThinkingPart,
-  type ToolCallPart,
   type TurnPart,
 } from '../../lib/landing-agent'
 import { StreamdownContent } from './streamdown-content'
 import { TurnMetadata } from './turn-metadata'
-import { TurnSteps } from './turn-steps'
+import { TurnToolBlock } from './turn-steps'
 
 export function TurnMessage({ turn }: { turn: LandingTurn }) {
-  // Group consecutive tool_call parts into single TurnSteps blocks so the
-  // bordered container appears once per cluster, not once per call.
-  const groups: Array<ToolCallPart[] | TurnPart> = []
-  for (const part of turn.parts) {
-    const last = groups[groups.length - 1]
-    if (part.type === 'tool_call') {
-      if (Array.isArray(last)) {
-        last.push(part)
-      } else {
-        groups.push([part])
-      }
-    } else {
-      groups.push(part)
-    }
-  }
-
   return (
     <div className="flex flex-col gap-2">
       <Message align="end">
@@ -56,11 +39,11 @@ export function TurnMessage({ turn }: { turn: LandingTurn }) {
         </MessageContent>
       </Message>
 
-      {groups.map((group, index) => (
-        <GroupView
-          group={group}
+      {turn.parts.map((part, index) => (
+        <PartView
           isStreaming={turn.isStreaming}
           key={`${turn.id}-${index}`}
+          part={part}
         />
       ))}
 
@@ -97,19 +80,6 @@ function formatAttachmentSize(size: number) {
   return `${(kib / 1024).toFixed(1)} MB`
 }
 
-function GroupView({
-  group,
-  isStreaming,
-}: {
-  group: ToolCallPart[] | TurnPart
-  isStreaming: boolean
-}) {
-  if (Array.isArray(group)) {
-    return <TurnSteps steps={group} />
-  }
-  return <PartView isStreaming={isStreaming} part={group} />
-}
-
 function PartView({
   isStreaming,
   part,
@@ -143,6 +113,9 @@ function PartView({
     case 'thinking': {
       if (!part.text.trim()) return null
       return <ThinkingBlock isStreaming={isStreaming} thinking={part} />
+    }
+    case 'tool_call': {
+      return <TurnToolBlock step={part} />
     }
     default:
       return null

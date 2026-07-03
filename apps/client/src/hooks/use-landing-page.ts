@@ -135,9 +135,9 @@ export function useLandingPage({
         }
         const project = await getProject(event.projectId)
         const screenshot = await captureProjectScreenshot({
-          height: event.height,
           html: expandProjectImageUrls(project.indexHtml),
-          width: event.width,
+          selector: event.selector,
+          viewportSize: event.viewportSize,
         })
         await postScreenshotResponse(event.requestId, screenshot)
       } catch (error) {

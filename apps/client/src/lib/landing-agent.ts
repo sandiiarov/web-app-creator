@@ -99,12 +99,17 @@ export type ScrapeCost = {
 
 export type ScreenshotMediaType = 'image/jpeg' | 'image/png' | 'image/webp'
 
+export const SCREENSHOT_VIEWPORT_SIZES = [
+  'mobile',
+  'tablet',
+  'desktop',
+] as const
+
 export type ScreenshotRequestEvent = {
-  height: number
-  intent: string
   projectId: string
   requestId: string
-  width: number
+  selector: string
+  viewportSize: ScreenshotViewportSize
 }
 
 export type ScreenshotResponseInput =
@@ -115,6 +120,8 @@ export type ScreenshotResponseInput =
       width: number
     }
   | { error: string }
+
+export type ScreenshotViewportSize = (typeof SCREENSHOT_VIEWPORT_SIZES)[number]
 
 export type StatsEvent = {
   cost: number

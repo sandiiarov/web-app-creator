@@ -133,16 +133,15 @@ export async function streamLandingAgent({
     mastra,
     baseUrl,
     modelId,
-    async ({ height, intent, timeoutMs, width }) => {
+    async ({ selector, timeoutMs, viewportSize }) => {
       const { promise, requestId } = createPendingBrowserScreenshot({
         timeoutMs,
       })
       sendSse(response, 'screenshot_request', {
-        height,
-        intent,
         projectId,
         requestId,
-        width,
+        selector,
+        viewportSize,
       })
       return await promise
     },
@@ -821,6 +820,19 @@ function createRecordedTurn(
   }
 }
 
+function defaultToolIntent(tool: string, args: ToolArgs): string | undefined {
+  if (tool !== 'screenshot') return undefined
+
+  const selector = stringValue(args.selector)
+  const viewportSize = stringValue(args.viewportSize)
+  if (selector && viewportSize) {
+    return `Capture ${selector} at ${viewportSize} viewport`
+  }
+  if (selector) return `Capture ${selector}`
+  if (viewportSize) return `Capture screenshot at ${viewportSize} viewport`
+  return 'Capture screenshot'
+}
+
 function finalizeRecordedTurn(
   turn: ProjectMessageTurn,
   terminalToolResult?: string,
@@ -950,7 +962,7 @@ function startToolCallDisplay(
     completedProviderIds.delete(providerId)
   }
 
-  const intent = stringValue(args.intent)
+  const intent = stringValue(args.intent) ?? defaultToolIntent(tool, args)
   if (intent) display.intent = intent
 
   const detail = summarizeToolArgs(tool, args)
@@ -1013,11 +1025,12 @@ function summarizeToolArgs(tool: string, args: ToolArgs): null | string {
     case 'scrape':
       return compactLines([intent, stringValue(args.url)])
     case 'screenshot': {
-      const width = numberValue(args.width)
-      const height = numberValue(args.height)
+      const selector = stringValue(args.selector)
+      const viewportSize = stringValue(args.viewportSize)
       return compactLines([
         intent,
-        width || height ? `Viewport: ${width ?? 1440}×${height ?? 900}` : null,
+        selector ? `Selector: ${selector}` : null,
+        viewportSize ? `Viewport: ${viewportSize}` : null,
       ])
     }
     case 'skill':
@@ -1134,12 +1147,16 @@ function summarizeToolResult(
       }
       const imageOcr = asToolArgs(data.imageOcr)
       const ocrImages = numberValue(imageOcr.imagesAnalyzed)
+      const selector = stringValue(data.selector)
+      const viewportSize = stringValue(data.viewportSize)
       const width = numberValue(data.width)
       const height = numberValue(data.height)
       return compactLines([
         width && height
           ? `Captured ${width}×${height} screenshot`
           : 'Captured screenshot',
+        selector ? `Selector: ${selector}` : null,
+        viewportSize ? `Viewport: ${viewportSize}` : null,
         ocrImages && ocrImages > 0
           ? `OCR ${ocrImages} image${ocrImages === 1 ? '' : 's'}`
           : null,

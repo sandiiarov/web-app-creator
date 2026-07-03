@@ -518,6 +518,7 @@ describe('streamLandingAgent screenshots', () => {
     vi.stubEnv('BASETEN_API_KEY', 'test-baseten-key')
 
     let capturedScreenshot: unknown
+    let capturedScreenshotRequest: unknown
     vi.doMock('./index.ts', () => ({ mastra: {} }))
     vi.doMock('./lib/browser-screenshot.ts', () => ({
       createPendingBrowserScreenshot: vi.fn<
@@ -547,19 +548,19 @@ describe('streamLandingAgent screenshots', () => {
         _baseUrl: string,
         _modelId: string,
         requestScreenshot: (input: {
-          height: number
-          intent: string
+          selector: string
           timeoutMs: number
-          width: number
+          viewportSize: 'desktop' | 'mobile' | 'tablet'
         }) => Promise<unknown>,
       ) => ({
         stream: async () => {
-          capturedScreenshot = await requestScreenshot({
-            height: 600,
-            intent: 'inspect hero layout',
+          const input = {
+            selector: '#hero .cta',
             timeoutMs: 25_000,
-            width: 800,
-          })
+            viewportSize: 'mobile' as const,
+          }
+          capturedScreenshotRequest = input
+          capturedScreenshot = await requestScreenshot(input)
           return fakeAgentStream()
         },
       }),
@@ -579,16 +580,19 @@ describe('streamLandingAgent screenshots', () => {
       response: response as unknown as ServerResponse,
     })
 
+    expect(capturedScreenshotRequest).toMatchObject({
+      selector: '#hero .cta',
+      viewportSize: 'mobile',
+    })
     expect(capturedScreenshot).toMatchObject({ height: 600, width: 800 })
     expect(parseSseEvents(response.body)).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           data: {
-            height: 600,
-            intent: 'inspect hero layout',
             projectId: project.id,
             requestId: '00000000-0000-0000-0000-000000000001',
-            width: 800,
+            selector: '#hero .cta',
+            viewportSize: 'mobile',
           },
           event: 'screenshot_request',
         }),
@@ -779,7 +783,7 @@ async function* rawCostStream() {
 async function* screenshotToolStream() {
   yield {
     payload: {
-      args: { height: 600, intent: 'inspect rendered layout', width: 800 },
+      args: { selector: '#hero', viewportSize: 'tablet' },
       toolCallId: 'call-screenshot-1',
       toolName: 'screenshot',
     },
@@ -787,7 +791,7 @@ async function* screenshotToolStream() {
   }
   yield {
     payload: {
-      args: { height: 600, intent: 'inspect rendered layout', width: 800 },
+      args: { selector: '#hero', viewportSize: 'tablet' },
       isError: false,
       result: {
         height: 600,
@@ -804,7 +808,9 @@ async function* screenshotToolStream() {
         },
         mediaType: 'image/jpeg',
         ok: true,
+        selector: '#hero',
         text: 'Image 1\nHero headline visible. CTA is clipped.',
+        viewportSize: 'tablet',
         width: 800,
       },
       toolCallId: 'call-screenshot-1',
