@@ -1,16 +1,29 @@
+import {
+  cloneHtmlDocument,
+  createHtmlDocumentFromString,
+  type HtmlDocumentJsonV1,
+  normalizeHtmlDocument,
+  renderHtmlDocument,
+} from './html-anchor-document.ts'
+
 /**
- * Single-string in-memory workspace for `/index.html`.
+ * Anchored in-memory workspace for the project HTML document.
  *
- * The landing-page agent operates exclusively on this string. Tools mutate it
- * via closures handed in at agent-construction time (one store per request).
+ * The landing-page agent can render the document as HTML for preview/SSE
+ * compatibility, while read/find/edit tools can mutate stable line anchors
+ * without reparsing raw text on every call.
  */
 export interface HtmlStore {
-  /** Current contents of `/index.html`. */
+  /** Current rendered contents of the project HTML document. */
   get(): string
+  /** Current anchored document. Returned as a defensive clone. */
+  getDocument(): HtmlDocumentJsonV1
   /** Reset to a seed (or the default placeholder). */
   reset(seed?: string): void
-  /** Replace contents; returns the new bytes count. */
+  /** Replace contents from rendered HTML; returns the new bytes count. */
   set(html: string): number
+  /** Replace contents from an anchored document; returns rendered bytes. */
+  setDocument(document: HtmlDocumentJsonV1): number
 }
 
 export const PLACEHOLDER_INDEX_HTML = `<!doctype html>
@@ -29,18 +42,25 @@ export const PLACEHOLDER_INDEX_HTML = `<!doctype html>
 `
 
 export function createHtmlStore(initial?: string): HtmlStore {
-  let html = initial ?? PLACEHOLDER_INDEX_HTML
+  let document = createHtmlDocumentFromString(initial ?? PLACEHOLDER_INDEX_HTML)
 
   return {
     get() {
-      return html
+      return renderHtmlDocument(document)
+    },
+    getDocument() {
+      return cloneHtmlDocument(document)
     },
     reset(seed) {
-      html = seed ?? PLACEHOLDER_INDEX_HTML
+      document = createHtmlDocumentFromString(seed ?? PLACEHOLDER_INDEX_HTML)
     },
     set(next) {
-      html = next
-      return Buffer.byteLength(next, 'utf8')
+      document = createHtmlDocumentFromString(next)
+      return Buffer.byteLength(renderHtmlDocument(document), 'utf8')
+    },
+    setDocument(next) {
+      document = cloneHtmlDocument(normalizeHtmlDocument(next))
+      return Buffer.byteLength(renderHtmlDocument(document), 'utf8')
     },
   }
 }

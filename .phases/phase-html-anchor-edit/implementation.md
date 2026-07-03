@@ -66,13 +66,24 @@ Files: `apps/server/src/mastra/lib/html-store.ts` and relevant existing tests.
 Acceptance criteria: `createHtmlStore()` exposes document get/set methods, `get()` renders current document HTML, `set()` replaces the whole document, and existing store consumers still compile.
 
 ### Todo
-- [ ] Convert in-memory store to anchored document storage and verify focused tests.
+- [x] Convert in-memory store to anchored document storage and verify focused tests.
 
 ### Results
-_(fill at end of the sub-phase — what was implemented, commands run, checks passed)_
+Converted `apps/server/src/mastra/lib/html-store.ts` so `createHtmlStore()` stores an anchored document internally while keeping `get()`, `set()`, and `reset()` string-compatible. Added `getDocument()` and `setDocument()` to the `HtmlStore` contract with defensive cloning.
+
+Added `apps/server/src/mastra/lib/html-store.test.ts` covering rendered HTML compatibility, defensive document cloning, document-based edits, reset, and whole-document string replacement.
+
+Updated `createProjectHtmlStore()` to satisfy the expanded `HtmlStore` interface for compile compatibility; full `html.json` persistence remains Phase 3.
+
+Checks passed from repo root:
+
+- `pnpm --filter @workspace/server test -- html-store.test.ts edit.test.ts html-anchor-document.test.ts`
+- `pnpm --filter @workspace/server typecheck`
+- `pnpm --filter @workspace/server lint`
+- `pnpm --filter @workspace/server format:check`
 
 ### Gotchas
-_(fill at end of the sub-phase, if any)_
+- The file-backed project store still persists through legacy `index.html` in this phase; Phase 3 replaces that with `html.json` only.
 
 ## Phase 3: Migrate Project Storage to html.json
 

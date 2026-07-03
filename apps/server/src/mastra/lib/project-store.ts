@@ -18,6 +18,13 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { calculateLlmCost } from './cost.ts'
+import {
+  cloneHtmlDocument,
+  createHtmlDocumentFromString,
+  type HtmlDocumentJsonV1,
+  normalizeHtmlDocument,
+  renderHtmlDocument,
+} from './html-anchor-document.ts'
 import { PLACEHOLDER_INDEX_HTML, type HtmlStore } from './html-store.ts'
 import { getImage } from './image-store.ts'
 
@@ -152,21 +159,35 @@ export async function createProject(
  */
 export function createProjectHtmlStore(projectId: string): HtmlStore {
   let html = readIndexHtmlSync(projectId) ?? PLACEHOLDER_INDEX_HTML
+  let document = createHtmlDocumentFromString(html)
+
+  function persistRenderedDocument(nextDocument: HtmlDocumentJsonV1): number {
+    document = cloneHtmlDocument(normalizeHtmlDocument(nextDocument))
+    html = persistProjectImagesSync(projectId, renderHtmlDocument(document))
+    document = createHtmlDocumentFromString(html)
+    writeIndexHtmlSync(projectId, html)
+    markHasHtmlSync(projectId)
+    return Buffer.byteLength(html, 'utf8')
+  }
 
   return {
     get() {
       return html
     },
+    getDocument() {
+      return cloneHtmlDocument(document)
+    },
     reset(seed) {
       html = seed ?? PLACEHOLDER_INDEX_HTML
+      document = createHtmlDocumentFromString(html)
       writeIndexHtmlSync(projectId, html)
     },
     set(next) {
-      const normalized = persistProjectImagesSync(projectId, next)
-      writeIndexHtmlSync(projectId, normalized)
-      markHasHtmlSync(projectId)
-      html = normalized
-      return Buffer.byteLength(normalized, 'utf8')
+      document = createHtmlDocumentFromString(next)
+      return persistRenderedDocument(document)
+    },
+    setDocument(next) {
+      return persistRenderedDocument(next)
     },
   }
 }
