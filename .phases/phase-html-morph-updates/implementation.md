@@ -1,6 +1,6 @@
 # Implementation — html-morph-updates
 
-Status: In Progress
+Status: Complete
 Prerequisite: plan.md `Status: Complete`
 
 > **Purpose:** execute the plan one slice at a time. Small increments, commit each todo, run checks after each sub-phase.
@@ -115,13 +115,26 @@ Update durable contracts after behavior changes and run focused verification bef
 
 ### Todo
 - [x] Update client/server/Mastra DOX for `html_update` and morph preview behavior.
-- [ ] Run focused client/server checks and record results in this file.
+- [x] Run focused client/server checks and record results in this file.
 
 ### Results
 - Updated `apps/client/AGENTS.md` for `html_update`, live Idiomorph preview morphing, and continued server-owned HTML/no client PUT behavior.
 - Updated `apps/server/AGENTS.md` for the `html_update` SSE payload and canonical project REST read path.
 - Updated `apps/server/src/mastra/AGENTS.md` for route-level `html_update` emission from the write-through store and non-persistence of HTML payloads in message turns.
 - Stale contract search: `grep` for old no-HTML/pull-after-edit wording in `**/AGENTS.md` found no matches.
+- Focused verification initially found `perfectionist(sort-modules)` errors in `apps/client/src/types/idiomorph.d.ts`; reordered declarations and reran checks.
+- Checks run:
+  - `pnpm --filter @workspace/client format:check` — passed.
+  - `pnpm --filter @workspace/client lint` — passed with existing `react-refresh(only-export-components)` warning in `src/main.tsx` and Node `DEP0205` warning.
+  - `pnpm --filter @workspace/client test` — passed (2 files, 9 tests).
+  - `pnpm --filter @workspace/client typecheck` — passed.
+  - `pnpm --filter @workspace/client build` — passed with existing Node `DEP0205` and Vite chunk-size warnings.
+  - `pnpm --filter @workspace/server format:check` — passed.
+  - `pnpm --filter @workspace/server lint` — passed.
+  - `pnpm --filter @workspace/server test` — passed (11 files, 61 tests).
+  - `pnpm --filter @workspace/server typecheck` — passed.
+  - `pnpm --filter @workspace/server build` — passed.
+  - `git diff --check` — passed.
 
 ### Gotchas
-_(fill at end of the sub-phase, if any)_
+- Existing client lint/build warnings remain: React Refresh warning in `src/main.tsx`, Node `DEP0205`, and Vite chunk-size warning.

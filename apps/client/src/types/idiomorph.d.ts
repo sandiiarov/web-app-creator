@@ -1,6 +1,14 @@
 declare module 'idiomorph' {
-  export type IdiomorphHeadStyle = 'append' | 'merge' | 'morph' | 'none'
-  export type IdiomorphMorphStyle = 'innerHTML' | 'outerHTML'
+  export const Idiomorph: IdiomorphApi
+
+  export interface IdiomorphApi {
+    defaults: IdiomorphOptions
+    morph: (
+      existingNode: Element,
+      newContent: Document | Element | HTMLCollection | Node[] | string,
+      options?: IdiomorphOptions,
+    ) => void
+  }
 
   export interface IdiomorphCallbacks {
     afterNodeAdded?: (node: Node) => void
@@ -33,6 +41,10 @@ declare module 'idiomorph' {
     style?: IdiomorphHeadStyle
   }
 
+  export type IdiomorphHeadStyle = 'append' | 'merge' | 'morph' | 'none'
+
+  export type IdiomorphMorphStyle = 'innerHTML' | 'outerHTML'
+
   export interface IdiomorphOptions {
     callbacks?: IdiomorphCallbacks
     head?: IdiomorphHeadOptions
@@ -41,15 +53,4 @@ declare module 'idiomorph' {
     morphStyle?: IdiomorphMorphStyle
     restoreFocus?: boolean
   }
-
-  export interface IdiomorphApi {
-    defaults: IdiomorphOptions
-    morph: (
-      existingNode: Element,
-      newContent: Document | Element | HTMLCollection | Node[] | string,
-      options?: IdiomorphOptions,
-    ) => void
-  }
-
-  export const Idiomorph: IdiomorphApi
 }
