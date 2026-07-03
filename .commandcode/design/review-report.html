@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8" />
+	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+	<title>Prompt Diagnostic Blocks - Design Review Report</title>
+	<script src="https://cdn.tailwindcss.com"></script>
+	<style>
+		body { font-family: Inter, ui-sans-serif, system-ui, sans-serif; }
+		.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+		.report-section { border: 1px solid #222226; background: #0a0a0b; position: relative; }
+		.corner-box { position: absolute; width: 20px; height: 20px; border: 1px solid #222226; background: #000; }
+	</style>
+</head>
+<body class="bg-black text-[#fafafa]">
+	<main class="mx-auto w-full max-w-6xl px-5 py-8 md:px-10 md:py-12">
+		<header class="report-section mb-8 p-6 md:p-8">
+			<div class="corner-box left-0 top-0 -translate-x-1/2 -translate-y-1/2"></div>
+			<div class="corner-box right-0 top-0 translate-x-1/2 -translate-y-1/2"></div>
+			<div class="flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
+				<div>
+					<div class="mono mb-2 text-xs tracking-widest text-[#666]">// DESIGN REVIEW</div>
+					<h1 class="text-4xl font-bold tracking-tight md:text-6xl">Prompt Diagnostic Blocks</h1>
+				</div>
+				<div class="mono text-left text-xs text-[#666] md:text-right">
+					<div>COMMANDCODE REPORT</div>
+					<div class="text-[#444]">2026-07-03</div>
+				</div>
+			</div>
+		</header>
+
+		<section class="report-section mb-8 p-6 md:p-8">
+			<div class="corner-box left-0 top-0 -translate-x-1/2 -translate-y-1/2"></div>
+			<div class="corner-box right-0 top-0 translate-x-1/2 -translate-y-1/2"></div>
+			<div class="grid gap-8 md:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]">
+				<div>
+					<div class="mono mb-2 text-xs tracking-widest text-[#666]">// OVERALL</div>
+					<div class="text-6xl font-bold tracking-tight md:text-7xl">35</div>
+					<div class="mt-1 text-lg text-[#666]">/ 50</div>
+					<div class="mt-4 inline-flex border border-[#fbbf24]/30 bg-[#fbbf24]/10 px-3 py-1 text-sm text-[#fbbf24]">FOCUSED SIMPLIFICATION NEEDED</div>
+				</div>
+				<div>
+					<div class="mono mb-3 text-xs tracking-widest text-[#666]">// TL;DR</div>
+					<p class="text-sm leading-6 text-[#a0a0a0]">The block shape is working: icon-first, intent-first, square, compact, and inspectable. The problem is the right-side status cluster. The checkmark chip is louder than the disclosure chevron, so the row reads like a completed task card rather than a collapsible diagnostic block.</p>
+					<p class="mt-4 text-sm leading-6 text-[#fbbf24]">Use color-first state treatment: amber/yellow loading, neutral done, red error. Keep the right edge reserved for a single disclosure chevron.</p>
+				</div>
+			</div>
+		</section>
+
+		<section class="report-section mb-8 p-6 md:p-8">
+			<div class="mono mb-6 text-xs tracking-widest text-[#666]">// HEURISTIC SCORES</div>
+			<div class="overflow-x-auto">
+				<table class="w-full min-w-[720px] border-collapse text-sm">
+					<thead>
+						<tr class="border-b border-[#222226] text-left mono text-xs text-[#666]">
+							<th class="py-3 pr-4 font-normal">#</th>
+							<th class="py-3 pr-4 font-normal">HEURISTIC</th>
+							<th class="py-3 pr-4 font-normal">SCORE</th>
+							<th class="py-3 font-normal">KEY FINDING</th>
+						</tr>
+					</thead>
+					<tbody>
+						<tr class="border-b border-[#1a1a1e]">
+							<td class="py-4 pr-4 text-[#555]">1</td>
+							<td class="py-4 pr-4 text-[#fafafa]">First impression</td>
+							<td class="py-4 pr-4 text-[#fbbf24]">7/10</td>
+							<td class="py-4 text-[#a0a0a0]">Intent-first block feels product-appropriate, but the check chip pulls attention away from the content.</td>
+						</tr>
+						<tr class="border-b border-[#1a1a1e]">
+							<td class="py-4 pr-4 text-[#555]">2</td>
+							<td class="py-4 pr-4 text-[#fafafa]">Hierarchy</td>
+							<td class="py-4 pr-4 text-[#fbbf24]">7/10</td>
+							<td class="py-4 text-[#a0a0a0]">Intent is correctly primary; status has too much control-like weight.</td>
+						</tr>
+						<tr class="border-b border-[#1a1a1e]">
+							<td class="py-4 pr-4 text-[#555]">3</td>
+							<td class="py-4 pr-4 text-[#fafafa]">Color voice</td>
+							<td class="py-4 pr-4 text-[#fbbf24]">6/10</td>
+							<td class="py-4 text-[#a0a0a0]">State colors should do more work; extra icon furniture is doing too much explaining.</td>
+						</tr>
+						<tr class="border-b border-[#1a1a1e]">
+							<td class="py-4 pr-4 text-[#555]">4</td>
+							<td class="py-4 pr-4 text-[#fafafa]">Type voice</td>
+							<td class="py-4 pr-4 text-[#34d399]">8/10</td>
+							<td class="py-4 text-[#a0a0a0]">Header and expanded labels are clear in the screenshot.</td>
+						</tr>
+						<tr>
+							<td class="py-4 pr-4 text-[#555]">5</td>
+							<td class="py-4 pr-4 text-[#fafafa]">Interaction feel</td>
+							<td class="py-4 pr-4 text-[#fbbf24]">7/10</td>
+							<td class="py-4 text-[#a0a0a0]">User-controlled collapse is right; status and disclosure still compete in the same corner.</td>
+						</tr>
+					</tbody>
+				</table>
+			</div>
+		</section>
+
+		<section class="report-section mb-8 p-6 md:p-8">
+			<div class="mono mb-6 text-xs tracking-widest text-[#666]">// COGNITIVE LOAD / RISK</div>
+			<div class="grid gap-6 md:grid-cols-2">
+				<div>
+					<div class="mb-3 text-xl font-semibold">Moderate micro-interaction clutter</div>
+					<ul class="space-y-3 text-sm text-[#a0a0a0]">
+						<li><span class="mono mr-2 text-[#34d399]">PASS</span>The diagnostic block is inspectable and intent-first.</li>
+						<li><span class="mono mr-2 text-[#fbbf24]">WATCH</span>The status chip looks like the main control.</li>
+						<li><span class="mono mr-2 text-[#ef4444]">FAIL</span>Disclosure is visually weaker than completion status.</li>
+					</ul>
+				</div>
+				<div>
+					<div class="mono mb-3 text-xs tracking-widest text-[#666]">// NEXT MODES</div>
+					<div class="flex flex-wrap gap-2">
+						<span class="border border-[#333] px-3 py-1 text-sm text-[#a0a0a0]">/interaction</span>
+						<span class="border border-[#333] px-3 py-1 text-sm text-[#a0a0a0]">/finish</span>
+						<span class="border border-[#333] px-3 py-1 text-sm text-[#a0a0a0]">/motion</span>
+					</div>
+				</div>
+			</div>
+		</section>
+
+		<section class="report-section mb-8 p-6 md:p-8">
+			<div class="mono mb-6 text-xs tracking-widest text-[#666]">// WHAT'S WORKING</div>
+			<div class="grid gap-4 md:grid-cols-3">
+				<article class="border border-[#1f1f24] p-4">
+					<h2 class="mb-2 text-sm font-semibold">Intent-first scan</h2>
+					<p class="text-sm leading-6 text-[#a0a0a0]">The header leads with the reason for the tool call instead of the tool name.</p>
+				</article>
+				<article class="border border-[#1f1f24] p-4">
+					<h2 class="mb-2 text-sm font-semibold">Inspectable detail</h2>
+					<p class="text-sm leading-6 text-[#a0a0a0]">Expanded content cleanly separates intent and result, preserving diagnostic value.</p>
+				</article>
+				<article class="border border-[#1f1f24] p-4">
+					<h2 class="mb-2 text-sm font-semibold">Sharp surface</h2>
+					<p class="text-sm leading-6 text-[#a0a0a0]">The square border language fits the prompt panel and avoids decorative noise.</p>
+				</article>
+			</div>
+		</section>
+
+		<section class="report-section mb-8 p-6 md:p-8">
+			<div class="mono mb-6 text-xs tracking-widest text-[#666]">// PRIORITY ISSUES</div>
+			<div class="space-y-5">
+				<article class="border border-[#2a1d22] bg-[#110b0d] p-5">
+					<div class="mono mb-2 text-xs text-[#f43f5e]">P1</div>
+					<h2 class="mb-2 text-lg font-semibold">Status chip occupies the disclosure corner</h2>
+					<p class="mb-4 text-sm leading-6 text-[#a0a0a0]">The checkmark appears in a bordered square and has more visual weight than the adjacent chevron. It reads as the primary control even though expansion is the important interaction.</p>
+					<div class="border-l border-[#fbbf24] pl-4 text-sm leading-6 text-[#fbbf24]">FIX: Remove the standalone status chip. Keep the right edge for one chevron. Move state meaning into border/background/icon color.</div>
+				</article>
+				<article class="border border-[#2a1d22] bg-[#110b0d] p-5">
+					<div class="mono mb-2 text-xs text-[#f43f5e]">P1</div>
+					<h2 class="mb-2 text-lg font-semibold">Done state is too loud</h2>
+					<p class="mb-4 text-sm leading-6 text-[#a0a0a0]">Completed diagnostic rows are not the main moment. A checkmark on every completed row creates checklist noise in long agent runs.</p>
+					<div class="border-l border-[#fbbf24] pl-4 text-sm leading-6 text-[#fbbf24]">FIX: Let done be neutral: normal border, normal background, tool icon, intent, chevron.</div>
+				</article>
+				<article class="border border-[#241f15] bg-[#100d07] p-5">
+					<div class="mono mb-2 text-xs text-[#fbbf24]">P2</div>
+					<h2 class="mb-2 text-lg font-semibold">Loading state should avoid right-edge churn</h2>
+					<p class="mb-4 text-sm leading-6 text-[#a0a0a0]">Fast LLM responses already make diagnostic rows appear quickly. A heavy spinner/status chip would make the row feel busier than necessary.</p>
+					<div class="border-l border-[#fbbf24] pl-4 text-sm leading-6 text-[#fbbf24]">FIX: Prefer amber/yellow border, faint background, and icon tint. If a spinner remains, do not put it where disclosure belongs.</div>
+				</article>
+			</div>
+		</section>
+
+		<footer class="mono py-8 text-center text-xs tracking-widest text-[#444]">
+			Generated with CommandCode - 2026-07-03
+		</footer>
+	</main>
+</body>
+</html>

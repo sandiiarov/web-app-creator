@@ -3,137 +3,113 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@workspace/ui/components/collapsible'
-import {
-  Marker,
-  MarkerContent,
-  MarkerIcon,
-} from '@workspace/ui/components/marker'
+import { MarkerIcon } from '@workspace/ui/components/marker'
 import { Separator } from '@workspace/ui/components/separator'
 import { cn } from '@workspace/ui/lib/utils'
 import type { LucideIcon } from 'lucide-react'
 import {
-  BookOpen,
   Camera,
-  Check,
   ChevronRight,
-  CircleAlert,
   FileText,
   Globe,
   Image,
-  LoaderCircle,
   Pencil,
   Search,
-  Sparkles,
   Wrench,
 } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 
 import type { ToolCallPart, ToolCallState } from '../../lib/landing-agent'
 
 const TOOL_ICONS: Record<string, LucideIcon> = {
   analyze_image: Image,
   edit: Pencil,
-  generate_image: Sparkles,
+  find: Search,
+  generate_image: Image,
   grep: Search,
   read: FileText,
   scrape: Globe,
   screenshot: Camera,
   skill: Wrench,
-  skill_read: BookOpen,
-  skill_search: Search,
+  skill_read: Wrench,
+  skill_search: Wrench,
+}
+
+const TOOL_LABELS: Record<string, string> = {
+  analyze_image: 'Analyze image',
+  edit: 'Edit',
+  find: 'Find',
+  generate_image: 'Generate image',
+  grep: 'Grep',
+  read: 'Read',
+  scrape: 'Scrape',
+  screenshot: 'Screenshot',
+  skill: 'Skill',
+  skill_read: 'Skill',
+  skill_search: 'Skill search',
 }
 
 export function TurnToolBlock({ step }: { step: ToolCallPart }) {
-  const isActive = step.state === 'running' || step.state === 'start'
-  const isError = step.state === 'error'
-  const [open, setOpen] = useState(isActive)
-  const { args, intent } = splitToolDisplay(step)
-  const result = normalizeText(step.result)
-  const hasMoreDetails = Boolean(args || result || isActive)
+  const [open, setOpen] = useState(false)
+  const args = argsFromDetail(step)
   const Icon = TOOL_ICONS[step.tool] ?? Wrench
-
-  useEffect(() => {
-    setOpen(isActive)
-  }, [isActive])
+  const intent = displayIntent(step)
+  const isActive = isActiveState(step.state)
+  const isError = step.state === 'error'
+  const label = toolLabel(step.tool)
+  const result = normalizeText(step.result)
+  const resultBody = result ?? resultFallback(step.state)
 
   return (
     <Collapsible
-      className={cn(
-        'overflow-hidden rounded-none border bg-background/50',
-        isError
-          ? 'border-destructive/45 bg-destructive/10 dark:bg-destructive/15'
-          : isActive
-            ? 'border-primary/35 bg-primary/5'
-            : 'border-border/60',
-      )}
+      className={toolShellClassName(step.state)}
       onOpenChange={setOpen}
       open={open}
     >
       <CollapsibleTrigger asChild>
-        <Marker
-          asChild
-          className={cn(
-            'min-h-9 px-2 py-1.5 text-[11px] transition-colors hover:bg-muted/30 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:outline-none',
-          )}
+        <button
+          aria-label={`${open ? 'Hide' : 'Show'} ${label} details: ${intent}`}
+          className={toolTriggerClassName}
+          type="button"
         >
-          <button
-            aria-label={`${open ? 'Hide' : 'Show'} tool details: ${intent}`}
-            type="button"
-          >
-            <MarkerIcon
-              className={cn(
-                'text-muted-foreground transition-colors',
-                isActive && 'text-primary',
-                isError && 'text-destructive',
-              )}
-            >
-              <Icon />
-            </MarkerIcon>
-            <MarkerContent className="flex min-w-0 flex-1 items-center gap-2">
-              <span
-                className={cn(
-                  'truncate font-medium text-foreground',
-                  isError && 'text-destructive',
-                )}
-              >
-                {intent}
-              </span>
-              <span className="sr-only">{stateLabel(step.state)}</span>
-            </MarkerContent>
+          <ToolIcon Icon={Icon} state={step.state} />
+          <span className="min-w-0 flex-1">
             <span
-              aria-hidden="true"
               className={cn(
-                'ml-auto inline-flex size-3.5 shrink-0 items-center justify-center text-muted-foreground transition-colors',
-                isActive && 'text-primary',
+                'block text-left text-xs leading-tight font-semibold text-foreground',
                 isError && 'text-destructive',
               )}
             >
-              <StateIcon open={open} state={step.state} />
+              {label}
             </span>
-          </button>
-        </Marker>
+            <span
+              className={cn(
+                'mt-1 text-left text-xs leading-snug wrap-break-word whitespace-pre-wrap text-muted-foreground',
+                isError && 'text-destructive/85',
+              )}
+            >
+              {intent}
+            </span>
+            <span className="sr-only">{stateLabel(step.state)}</span>
+          </span>
+          <DisclosureIcon open={open} state={step.state} />
+        </button>
       </CollapsibleTrigger>
       <CollapsibleContent>
         <Separator className={cn(isError && 'bg-destructive/30')} />
-        <div className="flex flex-col gap-2 p-2">
-          <ToolSection label="Intent">{intent}</ToolSection>
-          {hasMoreDetails ? (
-            <Separator
-              className={cn('opacity-60', isError && 'bg-destructive/25')}
-            />
-          ) : null}
+        <div className="flex flex-col gap-2 p-2.5">
           {args ? <ToolSection label="Args">{args}</ToolSection> : null}
-          {args && (result || isActive) ? (
+          {args ? (
             <Separator
               className={cn('opacity-60', isError && 'bg-destructive/25')}
             />
           ) : null}
-          {result ? (
+          {resultBody ? (
             <ToolSection
               label={isError ? 'Error' : 'Result'}
-              tone={isError ? 'error' : 'default'}
+              tone={isError ? 'error' : result ? 'default' : 'muted'}
             >
-              {result}
+              {resultBody}
             </ToolSection>
           ) : isActive ? (
             <ToolSection label="Result" tone="muted">
@@ -146,57 +122,120 @@ export function TurnToolBlock({ step }: { step: ToolCallPart }) {
   )
 }
 
-function normalizeText(text: null | string | undefined) {
-  const trimmed = text?.trim()
-  return trimmed && trimmed.length > 0 ? trimmed : null
-}
-
-function splitToolDisplay(step: ToolCallPart): {
-  args: null | string
-  intent: string
-} {
-  const intent = normalizeText(step.intent)
+function argsFromDetail(step: ToolCallPart) {
   const detail = normalizeText(step.detail)
+  if (!detail) return null
 
-  if (!detail) {
-    return { args: null, intent: intent ?? 'Working on the page' }
-  }
-
+  const explicitIntent = normalizeText(step.intent)
   const lines = detail
     .split('\n')
     .map((line) => line.trim())
     .filter(Boolean)
 
-  if (intent) {
-    const args = lines[0] === intent ? lines.slice(1).join('\n') : detail
-    return { args: args || null, intent }
+  if (explicitIntent) {
+    return lines[0] === explicitIntent
+      ? lines.slice(1).join('\n') || null
+      : detail
   }
+
+  if (step.tool.startsWith('skill')) return detail
 
   const [firstLine, ...remainingLines] = lines
-  return {
-    args: remainingLines.join('\n') || null,
-    intent: firstLine ?? 'Working on the page',
-  }
+  if (firstLine && /^[A-Za-z][A-Za-z ]+:/.test(firstLine)) return detail
+
+  return remainingLines.join('\n') || null
 }
 
-function StateIcon({ open, state }: { open: boolean; state: ToolCallState }) {
-  if (state === 'running' || state === 'start') {
-    return <LoaderCircle className="size-3.5 animate-spin" />
+function detailValue(detail: null | string | undefined, label: string) {
+  const prefix = `${label}:`
+  return (
+    detail
+      ?.split('\n')
+      .map((line) => line.trim())
+      .find((line) => line.startsWith(prefix))
+      ?.slice(prefix.length)
+      .trim() || null
+  )
+}
+
+function DisclosureIcon({
+  open,
+  state,
+}: {
+  open: boolean
+  state: ToolCallState
+}) {
+  return (
+    <span
+      aria-hidden="true"
+      className={cn(
+        'mt-0.5 ml-auto inline-flex shrink-0 items-center text-muted-foreground transition-colors',
+        isActiveState(state) && 'text-amber-700 dark:text-amber-300',
+        state === 'error' && 'text-destructive',
+      )}
+    >
+      <ChevronRight
+        className={cn('size-3.5 transition-transform', open && 'rotate-90')}
+      />
+    </span>
+  )
+}
+
+function displayIntent(step: ToolCallPart) {
+  const explicitIntent = normalizeText(step.intent)
+  if (explicitIntent) return explicitIntent
+
+  const detail = normalizeText(step.detail)
+  const skillName = detailValue(detail, 'Skill')
+  const reference = detailValue(detail, 'Reference')
+  const query = detailValue(detail, 'Query')
+  const skills = detailValue(detail, 'Skills')
+
+  if (step.tool === 'skill_read') {
+    return (
+      [skillName, reference].filter(Boolean).join(' · ') ||
+      'Read skill reference'
+    )
   }
 
-  if (state === 'error') {
-    return <CircleAlert className="size-3.5" />
+  if (step.tool === 'skill_search') {
+    return [query, skills].filter(Boolean).join(' · ') || 'Search skills'
   }
 
-  if (open) {
-    return <ChevronRight className="size-3.5 rotate-90 transition-transform" />
+  if (step.tool === 'skill') {
+    return skillName ?? detail ?? 'Load skill'
   }
 
-  if (state === 'done') {
-    return <Check className="size-3.5" />
-  }
+  const firstLine = detail
+    ?.split('\n')
+    .map((line) => line.trim())
+    .find(Boolean)
+  if (firstLine && !/^[A-Za-z][A-Za-z ]+:/.test(firstLine)) return firstLine
 
-  return <ChevronRight className="size-3.5 transition-transform" />
+  return `${toolLabel(step.tool)} tool call`
+}
+
+function humanizeToolName(tool: string) {
+  return tool
+    .split(/[_-]+/g)
+    .filter(Boolean)
+    .map((word) => `${word.slice(0, 1).toUpperCase()}${word.slice(1)}`)
+    .join(' ')
+}
+
+function isActiveState(state: ToolCallState) {
+  return state === 'running' || state === 'start'
+}
+
+function normalizeText(text: null | string | undefined) {
+  const trimmed = text?.trim()
+  return trimmed && trimmed.length > 0 ? trimmed : null
+}
+
+function resultFallback(state: ToolCallState) {
+  if (isActiveState(state)) return 'Waiting for result…'
+  if (state === 'error') return 'Tool failed without details.'
+  return 'No result returned.'
 }
 
 function stateLabel(state: ToolCallState) {
@@ -210,6 +249,44 @@ function stateLabel(state: ToolCallState) {
     case 'start':
       return 'Starting'
   }
+}
+
+function ToolBodyText({
+  children,
+  tone = 'default',
+}: {
+  children: string
+  tone?: 'default' | 'error' | 'muted'
+}) {
+  return (
+    <span
+      className={cn(
+        'text-xs leading-relaxed wrap-break-word whitespace-pre-wrap text-muted-foreground',
+        tone === 'default' && 'text-foreground/85',
+        tone === 'error' && 'text-destructive',
+      )}
+    >
+      {children}
+    </span>
+  )
+}
+
+function ToolIcon({ Icon, state }: { Icon: LucideIcon; state: ToolCallState }) {
+  return (
+    <MarkerIcon
+      className={cn(
+        'mt-0.5 text-muted-foreground transition-colors',
+        isActiveState(state) && 'text-amber-700 dark:text-amber-300',
+        state === 'error' && 'text-destructive',
+      )}
+    >
+      <Icon />
+    </MarkerIcon>
+  )
+}
+
+function toolLabel(tool: string) {
+  return TOOL_LABELS[tool] ?? humanizeToolName(tool)
 }
 
 function ToolSection({
@@ -226,15 +303,25 @@ function ToolSection({
       <span className="text-[10px] leading-none font-medium tracking-[0.12em] text-muted-foreground/70 uppercase">
         {label}
       </span>
-      <span
-        className={cn(
-          'text-[11px] leading-relaxed wrap-break-word whitespace-pre-wrap text-muted-foreground',
-          tone === 'default' && 'text-foreground/85',
-          tone === 'error' && 'text-destructive',
-        )}
-      >
-        {children}
-      </span>
+      <ToolBodyText tone={tone}>{children}</ToolBodyText>
     </div>
   )
 }
+
+function toolShellClassName(state: ToolCallState) {
+  return cn(
+    'overflow-hidden rounded-none border bg-background/50',
+    state === 'error'
+      ? 'border-destructive/45 bg-destructive/10 dark:bg-destructive/15'
+      : isActiveState(state)
+        ? 'border-amber-500/45 bg-amber-500/10'
+        : state === 'done'
+          ? 'border-border/70 bg-muted/10'
+          : 'border-border/60',
+  )
+}
+
+const toolTriggerClassName = cn(
+  'group/diagnostic flex min-h-10 w-full items-start gap-2 px-2.5 py-2 text-left text-[11px] text-muted-foreground transition-colors',
+  'hover:bg-muted/30 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:outline-none',
+)

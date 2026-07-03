@@ -10,8 +10,9 @@ import {
   MarkerIcon,
 } from '@workspace/ui/components/marker'
 import { Message, MessageContent } from '@workspace/ui/components/message'
+import { Separator } from '@workspace/ui/components/separator'
 import { cn } from '@workspace/ui/lib/utils'
-import { ChevronRight, LoaderCircle } from 'lucide-react'
+import { Brain, ChevronRight } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
 import {
@@ -41,7 +42,7 @@ export function TurnMessage({ turn }: { turn: LandingTurn }) {
 
       {turn.parts.map((part, index) => (
         <PartView
-          isStreaming={turn.isStreaming}
+          isStreaming={turn.isStreaming && index === turn.parts.length - 1}
           key={`${turn.id}-${index}`}
           part={part}
         />
@@ -122,12 +123,6 @@ function PartView({
   }
 }
 
-function previewThinking(text: string) {
-  const compact = text.trim().replace(/\s+/g, ' ')
-  if (!compact) return 'Working through the next step'
-  return compact.length > 96 ? `${compact.slice(0, 96)}…` : compact
-}
-
 function RetryNotice({
   isStreaming,
   retry,
@@ -196,54 +191,72 @@ function ThinkingBlock({
   isStreaming: boolean
   thinking: ThinkingPart
 }) {
-  const [open, setOpen] = useState(isStreaming)
-  const preview = previewThinking(thinking.text)
-
-  useEffect(() => {
-    setOpen(isStreaming)
-  }, [isStreaming])
+  const [open, setOpen] = useState(false)
 
   return (
     <Collapsible
-      className="overflow-hidden border border-border/55 bg-muted/10"
+      className={cn(
+        'overflow-hidden rounded-none border bg-background/50',
+        isStreaming
+          ? 'border-amber-500/45 bg-amber-500/10'
+          : 'border-border/70 bg-muted/10',
+      )}
       onOpenChange={setOpen}
       open={open}
     >
       <CollapsibleTrigger asChild>
         <Marker
           asChild
-          className="min-h-9 px-2 py-1.5 text-[11px] transition-colors hover:bg-muted/30 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:outline-none"
+          className="min-h-10 px-2 py-1.5 text-[11px] transition-colors hover:bg-muted/30 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:outline-none"
         >
-          <button type="button">
+          <button
+            aria-label={`${open ? 'Hide' : 'Show'} thinking details`}
+            type="button"
+          >
             <MarkerIcon
               className={cn(
                 'text-muted-foreground transition-colors',
-                isStreaming && 'text-primary',
+                isStreaming && 'text-amber-700 dark:text-amber-300',
               )}
             >
-              {isStreaming ? (
-                <LoaderCircle className="animate-spin" />
-              ) : (
-                <ChevronRight
-                  className={cn('transition-transform', open && 'rotate-90')}
-                />
-              )}
+              <Brain />
             </MarkerIcon>
-            <MarkerContent className="flex min-w-0 flex-1 items-baseline gap-2">
-              <span className="shrink-0 font-medium text-foreground">
+            <MarkerContent className="flex min-w-0 flex-1 items-center gap-2">
+              <span className="text-left text-xs leading-snug font-medium text-foreground">
                 Thinking
               </span>
-              <span className="truncate text-muted-foreground/80">
-                {preview}
+              <span className="sr-only">
+                {isStreaming ? 'Thinking in progress' : 'Thinking complete'}
               </span>
             </MarkerContent>
+            <span
+              aria-hidden="true"
+              className={cn(
+                'ml-auto inline-flex shrink-0 items-center text-muted-foreground transition-colors',
+                isStreaming && 'text-amber-700 dark:text-amber-300',
+              )}
+            >
+              <ChevronRight
+                className={cn(
+                  'size-3.5 transition-transform',
+                  open && 'rotate-90',
+                )}
+              />
+            </span>
           </button>
         </Marker>
       </CollapsibleTrigger>
-      <CollapsibleContent className="border-t border-border/40 px-2 py-1.5">
-        <StreamdownContent isStreaming={isStreaming} variant="thinking">
-          {thinking.text.trim()}
-        </StreamdownContent>
+      <CollapsibleContent>
+        <Separator />
+        <div className="p-2">
+          <StreamdownContent
+            className="text-xs"
+            isStreaming={isStreaming}
+            variant="thinking"
+          >
+            {thinking.text.trim()}
+          </StreamdownContent>
+        </div>
       </CollapsibleContent>
     </Collapsible>
   )
