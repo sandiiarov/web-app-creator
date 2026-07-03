@@ -122,13 +122,24 @@ Files: `apps/server/src/mastra/tools/read.ts`, `apps/server/src/mastra/tools/fin
 Acceptance criteria: public tools include `read`, `find`, and `edit`; `read`/`find` return compact `anchor|text`; route summaries and retry gating recognize `find`; full `html_update` behavior remains unchanged.
 
 ### Todo
-- [ ] Integrate anchored read/find tools and verify focused tests.
+- [x] Integrate anchored read/find tools and verify focused tests.
 
 ### Results
-_(fill at end of the sub-phase — what was implemented, commands run, checks passed)_
+Updated `apps/server/src/mastra/tools/read.ts` to return compact anchored `anchor|text` output from the store document, with anchor ranges, offset/limit, checksum, and truncation metadata.
+
+Added `apps/server/src/mastra/tools/find.ts` and tests for literal search, regex search, invalid regex handling, and contextual compact anchored output.
+
+Updated `apps/server/src/mastra/tools/landing-tools.ts`, `apps/server/src/mastra/agents/landing-page-agent.ts`, and `apps/server/src/mastra/route.ts` so the public tool registry exposes `find` instead of `grep`, retry gating accepts `read`/`find`, and route summaries display `find` calls/results.
+
+Checks passed from repo root:
+
+- `pnpm --filter @workspace/server test -- read.test.ts find.test.ts route.test.ts`
+- `pnpm --filter @workspace/server typecheck`
+- `pnpm --filter @workspace/server lint`
+- `pnpm --filter @workspace/server format:check`
 
 ### Gotchas
-_(fill at end of the sub-phase, if any)_
+- `grep` source files remain in the tree for now but are no longer registered as public landing tools.
 
 ## Phase 5: Switch Edit Tool to Anchor Ranges
 

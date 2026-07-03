@@ -37,8 +37,8 @@ const ATTACHMENT_OCR_PROMPT =
 const MAX_EDIT_FAILURES = 10
 const MAX_STEPS = 30
 const READ_BEFORE_RETRY_MESSAGE =
-  'Edit failed because oldText did not match the current project HTML. Read or grep /index.html before retrying; do not guess whitespace.'
-const REPEATED_EDIT_FAILURE_MESSAGE = `Edit failed ${MAX_EDIT_FAILURES} times in this turn. Stopping so the agent does not keep making blind edit attempts. Read/grep the current /index.html and try again.`
+  'Edit failed because the requested range or content did not match the current project HTML. Read or find current anchors before retrying; do not guess.'
+const REPEATED_EDIT_FAILURE_MESSAGE = `Edit failed ${MAX_EDIT_FAILURES} times in this turn. Stopping so the agent does not keep making blind edit attempts. Read/find the current project HTML and try again.`
 
 export interface AgentImageAttachmentInput extends ProjectMessageAttachment {
   dataUrl: string
@@ -395,7 +395,7 @@ export async function streamLandingAgent({
           completedCallIds.add(chunk.payload.toolCallId)
           if (
             (chunk.payload.toolName === 'read' ||
-              chunk.payload.toolName === 'grep') &&
+              chunk.payload.toolName === 'find') &&
             !isError
           ) {
             editRequiresInspection = false
@@ -996,6 +996,11 @@ function summarizeToolArgs(tool: string, args: ToolArgs): null | string {
   switch (tool) {
     case 'edit':
       return intent ?? null
+    case 'find':
+      return compactLines([
+        intent,
+        stringValue(args.text) ? `Text: ${stringValue(args.text)}` : null,
+      ])
     case 'generate_image': {
       const prompt = stringValue(args.prompt)
       const aspectRatio = stringValue(args.aspectRatio)
@@ -1096,6 +1101,14 @@ function summarizeToolResult(
         ? `Changed ${changedLines} line${changedLines === 1 ? '' : 's'}`
         : null
     }
+    case 'find':
+    case 'grep': {
+      const matchCount = numberValue(data.matchCount)
+      const truncated = booleanValue(data.truncatedLines)
+      return typeof matchCount === 'number'
+        ? `${matchCount} match${matchCount === 1 ? '' : 'es'}${truncated ? ' · truncated' : ''}`
+        : null
+    }
     case 'generate_image': {
       const count = numberValue(data.imagesGenerated)
       const url = stringValue(data.url)
@@ -1107,13 +1120,6 @@ function summarizeToolResult(
           : 'Generated image',
         url,
       ])
-    }
-    case 'grep': {
-      const matchCount = numberValue(data.matchCount)
-      const truncated = booleanValue(data.truncatedLines)
-      return typeof matchCount === 'number'
-        ? `${matchCount} match${matchCount === 1 ? '' : 'es'}${truncated ? ' · truncated' : ''}`
-        : null
     }
     case 'read': {
       const lines = numberValue(data.lines)

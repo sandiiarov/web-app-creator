@@ -1,7 +1,7 @@
 import type { HtmlStore } from '../lib/html-store.ts'
 import { createEditTool } from './edit.ts'
+import { createFindTool } from './find.ts'
 import { createGenerateImageTool } from './generate-image.ts'
-import { createGrepTool } from './grep.ts'
 import { createReadTool } from './read.ts'
 import { createScrapeTool } from './scrape.ts'
 import {
@@ -13,8 +13,8 @@ export type { RequestBrowserScreenshot } from './screenshot.ts'
 
 type LandingTool =
   | ReturnType<typeof createEditTool>
+  | ReturnType<typeof createFindTool>
   | ReturnType<typeof createGenerateImageTool>
-  | ReturnType<typeof createGrepTool>
   | ReturnType<typeof createReadTool>
   | ReturnType<typeof createScrapeTool>
   | ReturnType<typeof createScreenshotTool>
@@ -54,17 +54,17 @@ const LANDING_TOOL_DEFINITIONS = [
   ),
   tool(
     'read',
-    'Use `read` to inspect the current `/index.html` before making exact edits. Copy `rawText` into `edit.edits[].oldText`; `numberedText` is only for navigation.',
+    'Use `read` to inspect the current project HTML as compact `anchor|text` lines. Use the anchors in `edit` ranges; do not copy raw HTML snippets.',
     ({ store }) => createReadTool(store),
   ),
   tool(
-    'grep',
-    'Use `grep` to locate exact text or CSS before editing. Use `rawMatches` or follow up with `read`; do not copy line-numbered output into edits.',
-    ({ store }) => createGrepTool(store),
+    'find',
+    'Use `find` to locate text or CSS anchors before editing. Literal search is the default; set `regex=true` only when needed. It returns compact `anchor|text` lines with optional context.',
+    ({ store }) => createFindTool(store),
   ),
   tool(
     'edit',
-    'Use `edit` to change `/index.html` with `edits: [{ oldText, newText }]`. Combine related non-overlapping replacements in one call; each oldText is matched against the original document and should be exact, unique, and as small as possible. The matcher can tolerate leading indentation differences, but still use read/grep first for exact anchors. After every successful edit the project document is written and the preview updates automatically. The edit result is a concise diff/patch, not the full file; use read/grep again before follow-up edits.',
+    'Use `edit` to change the project HTML. Combine related non-overlapping changes in one call. Use `read` or `find` first to get anchors, then target the smallest safe ranges. After every successful edit the project document is written and the preview updates automatically. The edit result is concise metadata, not the full file; use `read` or `find` again before follow-up edits.',
     ({ store }) => createEditTool(store),
   ),
   tool(

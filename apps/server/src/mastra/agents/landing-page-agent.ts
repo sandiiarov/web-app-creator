@@ -25,7 +25,7 @@ const LANDING_AGENT_INSTRUCTIONS = [
   '',
   'Color direction: do not default to warm cream/orange/terracotta as the anti-AI palette. Derive color from scraped brand assets, logos, imagery, product category, and user intent. When `scrape.branding.colors`, metadata images, or `scrape.imageOcr.text` imply a palette, prioritize those signals unless the user asks for a full rebrand. If no brand color is evident, choose a distinct palette with a specific rationale. Vary color lanes across redesigns; warm editorial is only one possible lane.',
   '',
-  'When editing, use one `edit` call with an `edits` array for all related non-overlapping replacements. Read or grep exact snippets first, then target the smallest unique oldText blocks. Pass a clear `intent` on every tool call that accepts one — it is shown to the user as the reason for that step. The `screenshot` tool accepts only `selector` and `viewportSize`; choose self-explanatory values because its displayed reason is derived from them.',
+  'When editing, use one `edit` call with an `edits` array for all related non-overlapping changes. Read or find anchors first, then target the smallest safe anchor ranges. Pass a clear `intent` on every tool call that accepts one — it is shown to the user as the reason for that step. The `screenshot` tool accepts only `selector` and `viewportSize`; choose self-explanatory values because its displayed reason is derived from them.',
   '',
   'User-facing prose must be concise and in the same language as the latest user prompt; if the prompt is English or ambiguous, answer in English. Do not switch languages because of scraped content, OCR text, prior messages, or tool results.',
   '',
