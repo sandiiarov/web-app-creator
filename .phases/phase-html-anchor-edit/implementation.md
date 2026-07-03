@@ -1,6 +1,6 @@
 # Implementation — html-anchor-edit
 
-Status: In Progress
+Status: Complete
 Prerequisite: plan.md `Status: Complete`
 
 > **Purpose:** execute the plan one slice at a time. Small increments, commit each todo, run checks after each sub-phase.
@@ -178,10 +178,19 @@ Files: `apps/server/AGENTS.md`, `apps/server/src/mastra/AGENTS.md`, `.phases/pha
 Acceptance criteria: docs no longer describe `index.html` as the editable source of truth, tool contracts mention anchored read/find/edit behavior, and focused server test/typecheck/lint results are recorded.
 
 ### Todo
-- [ ] Update server DOX contracts and run focused server verification.
+- [x] Update server DOX contracts and run focused server verification.
 
 ### Results
-_(fill at end of the sub-phase — what was implemented, commands run, checks passed)_
+Updated `apps/server/AGENTS.md` and `apps/server/src/mastra/AGENTS.md` to document `html.json` as the only ongoing project HTML source of truth, legacy `index.html` as import-only, public `read`/`find` compact anchors, anchor-range `edit`, and read/find retry gating.
+
+Updated live prompt/tool guidance in `apps/server/src/mastra/agents/landing-page-agent.ts`, `apps/server/src/mastra/skills/design-skill.ts`, and `apps/server/src/mastra/tools/screenshot.ts`/`landing-tools.ts` to avoid stale `/index.html`, `grep`, and oldText guidance. Updated `design-skill.test.ts` accordingly.
+
+Focused server checks passed from repo root:
+
+- `pnpm --filter @workspace/server format:check`
+- `pnpm --filter @workspace/server lint`
+- `pnpm --filter @workspace/server typecheck`
+- `pnpm --filter @workspace/server test`
 
 ### Gotchas
-_(fill at end of the sub-phase, if any)_
+- Legacy `grep` and text-replacement edit helpers remain in source for old helper tests/internal compatibility, but the landing tool registry no longer exposes `grep` and the public edit tool no longer accepts `oldText`/`newText`.

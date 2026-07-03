@@ -69,7 +69,8 @@ describe('design skill browser runtime prompt', () => {
   })
 
   it('keeps every instruction anchored to the browser document', () => {
-    expect(promptPayload).toContain('/index.html')
+    expect(promptPayload).toContain('project HTML')
+    expect(promptPayload).not.toContain('/index.html')
     expect(promptPayload).not.toMatch(/create\s+(?:a\s+)?(?:new\s+)?file/iu)
     expect(promptPayload).not.toMatch(/write\s+(?:a\s+)?(?:new\s+)?file/iu)
   })

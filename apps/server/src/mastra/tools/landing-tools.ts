@@ -69,7 +69,7 @@ const LANDING_TOOL_DEFINITIONS = [
   ),
   tool(
     'screenshot',
-    'Use `screenshot` after substantial edits or when visual feedback is needed. It asks the browser to render the current `/index.html` at `viewportSize` (`mobile`, `tablet`, or `desktop`), captures the element matching `selector` with 8px padding around it, and returns OCR plus visual QA notes for layout, text, spacing, contrast, clipping, and responsive issues. The tool accepts only `selector` and `viewportSize`, and creates no files.',
+    'Use `screenshot` after substantial edits or when visual feedback is needed. It asks the browser to render the current project HTML at `viewportSize` (`mobile`, `tablet`, or `desktop`), captures the element matching `selector` with 8px padding around it, and returns OCR plus visual QA notes for layout, text, spacing, contrast, clipping, and responsive issues. The tool accepts only `selector` and `viewportSize`, and creates no files.',
     ({ requestScreenshot }) => createScreenshotTool(requestScreenshot),
   ),
   tool(

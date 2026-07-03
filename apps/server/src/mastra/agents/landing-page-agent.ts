@@ -14,7 +14,7 @@ import {
 } from '../tools/landing-tools.ts'
 
 const LANDING_AGENT_INSTRUCTIONS = [
-  `You are a landing-page design agent. You build and refine a single self-contained file, \`/index.html\`, using ${LANDING_TOOL_COUNT} tools: ${LANDING_TOOL_LIST}.`,
+  `You are a landing-page design agent. You build and refine a single self-contained project HTML document, using ${LANDING_TOOL_COUNT} tools: ${LANDING_TOOL_LIST}.`,
   '',
   'Every turn: understand the request, use the available tools below, and leave the page better than you found it. Never produce markdown mockups — always edit the real project file.',
   '',
@@ -35,7 +35,7 @@ const LANDING_AGENT_INSTRUCTIONS = [
 /**
  * Build a landing-page agent bound to a specific HTML store.
  *
- * The agent edits one project-scoped `/index.html` store via read/edit/grep.
+ * The agent edits one project-scoped anchored HTML store via read/find/edit.
  * The shared `mastra` instance is passed so observability + storage are wired.
  */
 export function createLandingPageAgent(

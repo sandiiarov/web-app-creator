@@ -8,7 +8,7 @@ const SCREENSHOT_TIMEOUT_MS = 25_000
 const SCREENSHOT_VIEWPORT_SIZE_VALUES = ['mobile', 'tablet', 'desktop'] as const
 
 const SCREENSHOT_OCR_PROMPT =
-  'Analyze this rendered landing-page element screenshot. Extract visible text, then describe layout, hierarchy, spacing, colors, typography, imagery, component states, responsive issues, visual bugs, and concrete improvement opportunities. Treat this as browser-rendered QA feedback for editing /index.html.'
+  'Analyze this rendered landing-page element screenshot. Extract visible text, then describe layout, hierarchy, spacing, colors, typography, imagery, component states, responsive issues, visual bugs, and concrete improvement opportunities. Treat this as browser-rendered QA feedback for editing the project HTML document.'
 
 export interface BrowserScreenshotRequestInput {
   selector: string
@@ -44,7 +44,7 @@ export function createScreenshotTool(
 ) {
   return createTool({
     description:
-      'Request a browser-rendered screenshot of one element in the current /index.html, then OCR/analyze it with vision. Accepts exactly two arguments: a CSS element selector and viewportSize (mobile, tablet, or desktop). Use after substantial edits or when you need visual feedback about layout, text, spacing, contrast, clipping, or responsive issues. Returns a padded element screenshot OCR/visual transcript; it does not create files.',
+      'Request a browser-rendered screenshot of one element in the current project HTML document, then OCR/analyze it with vision. Accepts exactly two arguments: a CSS element selector and viewportSize (mobile, tablet, or desktop). Use after substantial edits or when you need visual feedback about layout, text, spacing, contrast, clipping, or responsive issues. Returns a padded element screenshot OCR/visual transcript; it does not create files.',
     execute: async ({ selector, viewportSize }) => {
       if (!requestScreenshot) {
         return {

@@ -8,9 +8,9 @@ Buttons make decisions visible. Each action needs a clear verb, accessible name,
   'color.md': `# Color
 Choose color from the requested product, audience, proof, brand evidence, imagery, and emotional arc. Define semantic roles in CSS variables: canvas, surface, text, muted text, border, primary action, focus, selection, success, warning, error, and disabled. Check contrast and grayscale hierarchy. Avoid generic blue-purple tech gradients, AI-rainbow palettes, and category-default colors unless the brief gives a real reason.`,
   'create.md': `# Create
-Build the generated landing page inside the existing /index.html document. Replace the placeholder with semantic HTML, responsive CSS, accessible landmarks, real copy, a clear first viewport, and a proof object specific to the user's domain. Start from structure, then spacing, then surface, then responsive behavior, then meaningful interaction and motion.`,
+Build the generated landing page inside the existing project HTML document. Replace the placeholder with semantic HTML, responsive CSS, accessible landmarks, real copy, a clear first viewport, and a proof object specific to the user's domain. Start from structure, then spacing, then surface, then responsive behavior, then meaningful interaction and motion.`,
   'finish.md': `# Finish
-Finish means the page is ready to view without apology. Tighten rough spacing, remove placeholders, fix weak CTAs, align tokens, verify image alt text, check mobile layout, preserve focus states, and make the page title and metadata fit the current project. Completion claims should match visible changes in /index.html.`,
+Finish means the page is ready to view without apology. Tighten rough spacing, remove placeholders, fix weak CTAs, align tokens, verify image alt text, check mobile layout, preserve focus states, and make the page title and metadata fit the current project. Completion claims should match visible changes in the project HTML.`,
   'interaction.md': `# Interaction
 Interaction covers hover, focus, active, loading, empty, error, success, disabled, selected, and overflow states where the page includes them. Focus must be visible. Touch targets must be usable. Keyboard order should follow visual order. Motion and state changes should explain what happened rather than decorate the page.`,
   'layout.md': `# Layout
@@ -44,16 +44,16 @@ export { DESIGN_REFERENCES }
 
 export const designSkill = createSkill({
   description:
-    'Design guidance for a browser-rendered landing page whose only editable document is /index.html: layout, color, typography, motion, interaction, responsive behavior, voice, and refinement.',
+    'Design guidance for a browser-rendered landing page whose only editable surface is the project HTML document: layout, color, typography, motion, interaction, responsive behavior, voice, and refinement.',
   instructions: [
     '# Browser landing-page design',
     '',
-    'The work surface is the project-scoped `/index.html` rendered in the browser preview. Every design decision becomes markup, CSS, or inline script inside that document.',
+    'The work surface is the project-scoped HTML document rendered in the browser preview. Every design decision becomes markup, CSS, or inline script inside that document.',
     '',
     '## Turn shape',
     '1. Extract the prompt invariants: exact name, category, audience, user pressure, job, domain artifact, proof, constraints, and visual drift to avoid.',
-    '2. Read the current `/index.html` with `grep` or `read` before exact edits. Use `skill_read` for the compact reference that matches the design problem.',
-    '3. Apply related changes with one batched `edit` call when practical. Keep replacements small, unique, and based on text present in `/index.html`.',
+    '2. Read the current project HTML with `read` or `find` before edits. Use `skill_read` for the compact reference that matches the design problem.',
+    '3. Apply related changes with one batched `edit` call when practical. Use anchor ranges from `read`/`find`, keep ranges small, and avoid stale anchors.',
     '4. Re-check the changed region and continue until the browser page is more specific, accessible, responsive, and visually intentional.',
     '',
     '## Default design bar',
@@ -75,7 +75,7 @@ export const designSkill = createSkill({
     '- Copy built from vague claims such as powerful, seamless, transform, unlock, or leverage.',
     '',
     '## Completion check',
-    'Before finishing, inspect the relevant `/index.html` region. Confirm the page has real copy, accessible contrast, visible focus, responsive structure, consistent tokens, sharp corners, purposeful motion, and a proof object tied to the current prompt.',
+    'Before finishing, inspect the relevant project HTML region. Confirm the page has real copy, accessible contrast, visible focus, responsive structure, consistent tokens, sharp corners, purposeful motion, and a proof object tied to the current prompt.',
   ].join('\n'),
   name: 'design',
   references: DESIGN_REFERENCES,
