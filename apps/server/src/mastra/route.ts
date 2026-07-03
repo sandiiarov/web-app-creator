@@ -1,4 +1,5 @@
-import { randomUUID } from 'node:crypto'
+import { Buffer } from 'node:buffer'
+import { createHash, randomUUID } from 'node:crypto'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 
 import { config } from '../config.ts'
@@ -52,6 +53,15 @@ interface AttachmentAnalysis {
   cost: number
   images: number
   ok: boolean
+}
+
+interface HtmlUpdatePayload {
+  bytes: number
+  hash: string
+  html: string
+  previousHash: string
+  projectId: string
+  sequence: number
 }
 
 type RecordedStatsPayload = Omit<ProjectMessageStatsPart, 'type'>
@@ -115,6 +125,8 @@ export async function streamLandingAgent({
   )
   const startedAt = Date.now()
   const store = createProjectHtmlStore(projectId)
+  let lastHtmlUpdate = store.get()
+  let htmlUpdateSequence = 0
   const baseUrl = `http://${request.headers.host ?? `localhost:${config.port}`}`
   const agent = createLandingPageAgent(
     store,
@@ -403,11 +415,23 @@ export async function streamLandingAgent({
             } else {
               editRequiresInspection = false
               recordedTurn.htmlSwaps += 1
+              const nextHtml = store.get()
+              if (nextHtml !== lastHtmlUpdate) {
+                htmlUpdateSequence += 1
+                const htmlUpdate = createHtmlUpdatePayload({
+                  html: nextHtml,
+                  previousHtml: lastHtmlUpdate,
+                  projectId,
+                  sequence: htmlUpdateSequence,
+                })
+                sendSse(response, 'html_update', htmlUpdate)
+                lastHtmlUpdate = nextHtml
+              }
             }
           }
           // The agent's `edit` tool writes the project file directly (the file
-          // is the source of truth). The UI pulls the updated HTML on edit-done,
-          // so we do not push an `html` event here.
+          // is the source of truth). The UI morphs `html_update` events after
+          // successful changed edits instead of pulling HTML on every edit-done.
           // Accumulate Firecrawl + bundled image-OCR usage from successful scrape calls.
           if (chunk.payload.toolName === 'scrape' && !isError) {
             const result = chunk.payload.result as {
@@ -760,6 +784,27 @@ function compactLines(lines: Array<null | string | undefined>): null | string {
   return compacted.length > 0 ? compacted.join('\n') : null
 }
 
+function createHtmlUpdatePayload({
+  html,
+  previousHtml,
+  projectId,
+  sequence,
+}: {
+  html: string
+  previousHtml: string
+  projectId: string
+  sequence: number
+}): HtmlUpdatePayload {
+  return {
+    bytes: Buffer.byteLength(html, 'utf8'),
+    hash: hashHtml(html),
+    html,
+    previousHash: hashHtml(previousHtml),
+    projectId,
+    sequence,
+  }
+}
+
 function createRecordedTurn(
   prompt: string,
   model: string,
@@ -804,6 +849,10 @@ function getToolCallDisplay(
       args,
     )
   )
+}
+
+function hashHtml(html: string): string {
+  return createHash('sha256').update(html).digest('hex')
 }
 
 function numberValue(value: unknown): number | undefined {

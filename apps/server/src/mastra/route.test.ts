@@ -314,6 +314,133 @@ describe('streamLandingAgent retries', () => {
   })
 })
 
+describe('streamLandingAgent html updates', () => {
+  it('emits html_update after a successful changed edit', async () => {
+    vi.stubEnv('BASETEN_API_KEY', 'test-baseten-key')
+
+    const nextHtml =
+      '<!doctype html><html><head><title>Updated</title></head><body><main><h1>Updated hero</h1></main></body></html>'
+    vi.doMock('./index.ts', () => ({ mastra: {} }))
+    vi.doMock('./agents/landing-page-agent.ts', () => ({
+      createLandingPageAgent: (store: { set: (html: string) => void }) => ({
+        stream: async () =>
+          fakeAgentStream(
+            editToolStream({ mutate: () => store.set(nextHtml) }),
+          ),
+      }),
+    }))
+
+    const { createProject, getProject } = await import('./lib/project-store.ts')
+    const project = await createProject()
+    createdProjectIds.push(project.id)
+    const { streamLandingAgent } = await import('./route.ts')
+    const response = new FakeResponse()
+
+    await streamLandingAgent({
+      modelId: 'zai-org/GLM-5.2',
+      projectId: project.id,
+      prompt: 'Update the hero.',
+      request: fakeRequest(),
+      response: response as unknown as ServerResponse,
+    })
+
+    const events = parseSseEvents(response.body)
+    const editDoneIndex = events.findIndex(
+      ({ data, event }) =>
+        event === 'tool_call' &&
+        isRecord(data) &&
+        data.tool === 'edit' &&
+        data.state === 'done',
+    )
+    const htmlUpdateIndex = events.findIndex(
+      ({ event }) => event === 'html_update',
+    )
+
+    expect(editDoneIndex).toBeGreaterThanOrEqual(0)
+    expect(htmlUpdateIndex).toBeGreaterThan(editDoneIndex)
+    const htmlUpdateEvent = events[htmlUpdateIndex]
+    if (!htmlUpdateEvent) throw new Error('Expected html_update event.')
+    expect(htmlUpdateEvent).toEqual({
+      data: {
+        bytes: nextHtml.length,
+        hash: expect.stringMatching(/^[a-f0-9]{64}$/),
+        html: nextHtml,
+        previousHash: expect.stringMatching(/^[a-f0-9]{64}$/),
+        projectId: project.id,
+        sequence: 1,
+      },
+      event: 'html_update',
+    })
+    const htmlUpdateData = htmlUpdateEvent.data as {
+      hash: string
+      previousHash: string
+    }
+    expect(htmlUpdateData.hash).not.toBe(htmlUpdateData.previousHash)
+
+    await expect(getProject(project.id)).resolves.toMatchObject({
+      indexHtml: nextHtml,
+    })
+  })
+
+  it('does not emit html_update for failed edits', async () => {
+    vi.stubEnv('BASETEN_API_KEY', 'test-baseten-key')
+
+    vi.doMock('./index.ts', () => ({ mastra: {} }))
+    vi.doMock('./agents/landing-page-agent.ts', () => ({
+      createLandingPageAgent: () => ({
+        stream: async () =>
+          fakeAgentStream(
+            editToolStream({ callId: 'call-edit-failed', isError: true }),
+          ),
+      }),
+    }))
+
+    const { createProject } = await import('./lib/project-store.ts')
+    const project = await createProject()
+    createdProjectIds.push(project.id)
+    const { streamLandingAgent } = await import('./route.ts')
+    const response = new FakeResponse()
+
+    await streamLandingAgent({
+      modelId: 'zai-org/GLM-5.2',
+      projectId: project.id,
+      prompt: 'Try an edit.',
+      request: fakeRequest(),
+      response: response as unknown as ServerResponse,
+    })
+
+    expect(htmlUpdateEvents(response.body)).toEqual([])
+  })
+
+  it('does not emit html_update when successful edits leave HTML unchanged', async () => {
+    vi.stubEnv('BASETEN_API_KEY', 'test-baseten-key')
+
+    vi.doMock('./index.ts', () => ({ mastra: {} }))
+    vi.doMock('./agents/landing-page-agent.ts', () => ({
+      createLandingPageAgent: () => ({
+        stream: async () =>
+          fakeAgentStream(editToolStream({ callId: 'call-edit-unchanged' })),
+      }),
+    }))
+
+    const { createProject } = await import('./lib/project-store.ts')
+    const project = await createProject()
+    createdProjectIds.push(project.id)
+    const { streamLandingAgent } = await import('./route.ts')
+    const response = new FakeResponse()
+
+    await streamLandingAgent({
+      modelId: 'zai-org/GLM-5.2',
+      projectId: project.id,
+      prompt: 'Try an edit.',
+      request: fakeRequest(),
+      response: response as unknown as ServerResponse,
+    })
+
+    expect(htmlUpdateEvents(response.body)).toEqual([])
+  })
+})
+
 describe('streamLandingAgent history', () => {
   it('sends persisted project messages before the current prompt', async () => {
     vi.stubEnv('BASETEN_API_KEY', 'test-baseten-key')
@@ -546,6 +673,38 @@ class FakeResponse {
   }
 }
 
+async function* editToolStream({
+  callId = 'call-edit-1',
+  isError = false,
+  mutate,
+}: {
+  callId?: string
+  isError?: boolean
+  mutate?: () => void
+}) {
+  yield {
+    payload: {
+      args: { intent: 'Update hero copy' },
+      toolCallId: callId,
+      toolName: 'edit',
+    },
+    type: 'tool-call',
+  }
+  mutate?.()
+  yield {
+    payload: {
+      args: { intent: 'Update hero copy' },
+      isError,
+      result: isError
+        ? { reason: 'oldText did not match' }
+        : { changedLines: 2 },
+      toolCallId: callId,
+      toolName: 'edit',
+    },
+    type: 'tool-result',
+  }
+}
+
 async function* emptyFullStream(): AsyncGenerator<never, void, unknown> {}
 
 function fakeAgentStream(
@@ -568,6 +727,14 @@ function fakeRequest(): IncomingMessage {
   const request = new EventEmitter() as IncomingMessage
   request.headers = { host: 'localhost:3001' }
   return request
+}
+
+function htmlUpdateEvents(body: string) {
+  return parseSseEvents(body).filter(({ event }) => event === 'html_update')
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null
 }
 
 function jsonResponse(body: unknown): Response {
