@@ -77,7 +77,7 @@ Add Idiomorph to the client and make the preview iframe morph routine HTML prop 
 
 ### Todo
 - [x] Add Idiomorph to the catalog, client package, lockfile, and local type declarations.
-- [ ] Add preview morph helpers and string-only tests for base preservation and script-change reload detection.
+- [x] Add preview morph helpers and string-only tests for base preservation and script-change reload detection.
 - [ ] Update `LandingPreview` to keep stable `srcDoc` state and apply routine updates with Idiomorph.
 
 ### Results
@@ -86,6 +86,14 @@ Add Idiomorph to the client and make the preview iframe morph routine HTML prop 
 - Checks run:
   - `pnpm install --lockfile-only` — passed.
   - `pnpm install` — passed.
+  - `pnpm --filter @workspace/client typecheck` — passed.
+- Added `apps/client/src/lib/preview-morph.ts` with `preparePreviewMorphHtml`, `morphPreviewDocument`, and script-signature reload helpers.
+- Extended `landing-preview.test.ts` with base-tag preservation and script-change detection tests.
+- Additional checks run:
+  - `pnpm --filter @workspace/client exec oxfmt -c oxfmt.config.ts src/lib/preview-morph.ts src/components/landing-preview.test.ts` — fixed formatting.
+  - `pnpm --filter @workspace/client exec oxfmt -c oxfmt.config.ts --check src/lib/preview-morph.ts src/components/landing-preview.test.ts` — passed.
+  - `pnpm --filter @workspace/client exec oxlint src/lib/preview-morph.ts src/components/landing-preview.test.ts` — passed.
+  - `pnpm --filter @workspace/client test` — passed (2 files, 9 tests).
   - `pnpm --filter @workspace/client typecheck` — passed.
 
 ### Gotchas
