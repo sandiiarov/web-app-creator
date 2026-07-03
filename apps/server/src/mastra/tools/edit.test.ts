@@ -1,9 +1,20 @@
 import { describe, expect, it } from 'vitest'
+import { z } from 'zod'
 
 import { createHtmlStore } from '../lib/html-store.ts'
 import { createEditTool } from './edit.ts'
 
 describe('createEditTool', () => {
+  it('emits Baseten-compatible JSON schema for empty anchor ranges', () => {
+    const tool = createEditTool(createHtmlStore())
+    const schemaText = JSON.stringify(
+      z.toJSONSchema(tool.inputSchema as z.ZodType),
+    )
+
+    expect(schemaText).toContain('"maxItems":2')
+    expect(schemaText).not.toContain('"items":[]')
+  })
+
   it('applies anchor-range edits and returns metadata without full HTML', async () => {
     const store = createHtmlStore('<main>\n  <h1>Hello</h1>\n</main>\n')
     const tool = createEditTool(store)
@@ -77,6 +88,27 @@ describe('createEditTool', () => {
       ['a6', '  <a href="#cta">Start</a>'],
       ['a4', '</main>'],
     ])
+  })
+
+  it('supports whole-document replacement with range []', async () => {
+    const store = createHtmlStore('<main>Old</main>\n')
+    const tool = createEditTool(store)
+
+    await tool.execute?.(
+      {
+        edits: [
+          {
+            operation: 'replace',
+            range: [],
+            text: '<!doctype html>\n<html></html>',
+          },
+        ],
+        intent: 'Replace full document',
+      },
+      undefined as never,
+    )
+
+    expect(store.get()).toBe('<!doctype html>\n<html></html>')
   })
 
   it('rejects stale anchors without mutating the store', async () => {

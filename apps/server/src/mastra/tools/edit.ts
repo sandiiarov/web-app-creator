@@ -1,14 +1,19 @@
 import { createTool } from '@mastra/core/tools'
 import { z } from 'zod'
 
-import { applyAnchorEdits } from '../lib/html-anchor-document.ts'
+import {
+  applyAnchorEdits,
+  type AnchorRange,
+  type ApplyAnchorEdit,
+} from '../lib/html-anchor-document.ts'
 import type { HtmlStore } from '../lib/html-store.ts'
 
-const anchorRangeSchema = z.union([
-  z.tuple([]),
-  z.tuple([z.string(), z.string()]),
-  z.tuple([z.string()]),
-])
+const anchorRangeSchema = z
+  .array(z.string())
+  .max(2)
+  .describe(
+    'Anchor range: [], [anchor], or [startAnchor, endAnchor]. Ranges are inclusive.',
+  )
 
 const anchorEditSchema = z.object({
   operation: z
@@ -49,7 +54,7 @@ export function createEditTool(store: HtmlStore) {
     description:
       'Edit the project HTML using anchor ranges from read/find. Use edits: [{ operation, range, text }]. Supported operations: replace, delete, insert_before, insert_after. Ranges are [], [anchor], or [startAnchor, endAnchor] and are inclusive; [] means whole document for replace, document start for insert_before, and document end for insert_after. Combine related non-overlapping changes in one call. The preview updates automatically after a successful edit. The result is concise metadata, not the full file. Always pass an intent describing the change.',
     execute: async ({ edits }) => {
-      const result = applyAnchorEdits(store.getDocument(), edits)
+      const result = applyAnchorEdits(store.getDocument(), toAnchorEdits(edits))
       const bytes = store.setDocument(result.document)
       const storedDocument = store.getDocument()
       return {
@@ -78,4 +83,13 @@ export function createEditTool(store: HtmlStore) {
       operations: z.number(),
     }),
   })
+}
+
+function toAnchorEdits(edits: z.infer<typeof editInputSchema>['edits']) {
+  return edits.map(
+    (edit): ApplyAnchorEdit => ({
+      ...edit,
+      range: edit.range as AnchorRange,
+    }),
+  )
 }

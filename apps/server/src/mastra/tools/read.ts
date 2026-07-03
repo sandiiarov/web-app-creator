@@ -1,14 +1,16 @@
 import { createTool } from '@mastra/core/tools'
 import { z } from 'zod'
 
-import { readHtmlDocumentLines } from '../lib/html-anchor-document.ts'
+import {
+  readHtmlDocumentLines,
+  type AnchorRange,
+} from '../lib/html-anchor-document.ts'
 import type { HtmlStore } from '../lib/html-store.ts'
 
-const anchorRangeSchema = z.union([
-  z.tuple([]),
-  z.tuple([z.string(), z.string()]),
-  z.tuple([z.string()]),
-])
+const anchorRangeSchema = z
+  .array(z.string())
+  .max(2)
+  .describe('Anchor range to read: [], [anchor], or [startAnchor, endAnchor].')
 
 /**
  * Read lines of the project HTML as compact anchored text (`anchor|text`).
@@ -24,7 +26,7 @@ export function createReadTool(store: HtmlStore) {
       const result = readHtmlDocumentLines(store.getDocument(), {
         limit,
         offset,
-        range,
+        range: range as AnchorRange | undefined,
       })
       return { ...result, ok: true as const }
     },

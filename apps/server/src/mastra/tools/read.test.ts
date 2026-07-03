@@ -1,9 +1,20 @@
 import { describe, expect, it } from 'vitest'
+import { z } from 'zod'
 
 import { createHtmlStore } from '../lib/html-store.ts'
 import { createReadTool } from './read.ts'
 
 describe('createReadTool', () => {
+  it('emits Baseten-compatible JSON schema for empty anchor ranges', () => {
+    const tool = createReadTool(createHtmlStore())
+    const schemaText = JSON.stringify(
+      z.toJSONSchema(tool.inputSchema as z.ZodType),
+    )
+
+    expect(schemaText).toContain('"maxItems":2')
+    expect(schemaText).not.toContain('"items":[]')
+  })
+
   it('returns compact anchored text for offsets and ranges', async () => {
     const store = createHtmlStore(
       '<main>\n  <h1>Hello</h1>\n  <p>World</p>\n</main>\n',
