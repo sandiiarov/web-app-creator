@@ -25,7 +25,6 @@
     "@workspace/ui": "workspace:*",
     "@zumer/snapdom": "catalog:",
     "bippy": "catalog:",
-    "idiomorph": "catalog:",
     "lucide-react": "catalog:",
     "react": "catalog:",
     "react-dom": "catalog:",

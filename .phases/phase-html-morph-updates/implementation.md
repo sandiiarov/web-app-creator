@@ -138,3 +138,35 @@ Update durable contracts after behavior changes and run focused verification bef
 
 ### Gotchas
 - Existing client lint/build warnings remain: React Refresh warning in `src/main.tsx`, Node `DEP0205`, and Vite chunk-size warning.
+
+## Phase 5: Prevent live iframe reloads during morph updates
+
+### Description
+A browser E2E mock reproduced that the first `html_update` still replaced iframe `srcDoc` for a markup-only edit. Fix the client preview so existing iframe documents wait/morph instead of falling back to `setSrcDoc` while loading, and handle script changes by re-running scripts after a morph rather than forcing a full frame refresh.
+
+### Todo
+- [x] Patch preview morph/reload logic and tests so routine updates do not replace `srcDoc`.
+- [x] Run browser E2E against mocked `html_update` and focused client checks.
+
+### Results
+- Reproduced the user's report with a real Vite client + mock SSE server: after a markup-only `html_update`, the old implementation produced `loads: 1`, `sameDoc: false`, and `srcdocHasMorphed: true`, proving it replaced the iframe `srcDoc`.
+- Root cause: the direct Idiomorph call ran in the parent React app realm against iframe DOM nodes. A direct browser probe threw `TypeError: newContent is not iterable` from Idiomorph's `normalizeParent`, consistent with cross-realm `instanceof Node` checks failing for same-origin iframe nodes. `LandingPreview` caught that error and fell back to `setSrcDoc(...)`.
+- Replaced the direct Idiomorph integration with a small same-document DOM morph helper in `apps/client/src/lib/preview-morph.ts` that parses target HTML using the iframe document, matches same-tag/id siblings, syncs attributes, morphs children/text nodes, and avoids cross-realm `instanceof` checks.
+- Updated `LandingPreview` so existing iframe documents wait for readiness and morph in place instead of reloading while `doc.readyState === 'loading'`.
+- Script-changing updates now morph in place and rerun scripts inside the existing iframe document; the old script-change full-refresh guard was removed.
+- Removed the now-unused `idiomorph` client dependency, catalog entry, lockfile entries, and local type declaration.
+- Browser E2E after the fix, markup-only update: `h1: "Morphed hero"`, `loads: 0`, `sameDoc: true`, `sentinel: "keep"`, `srcdocHasInitial: true`, `srcdocHasMorphed: false`.
+- Browser E2E after the fix, script-changing update: `h1: "Script changed hero"`, `boots: 2`, `scriptVersion: 2`, `loads: 0`, `sameDoc: true`, `sentinel: "keep-script"`, `srcdocHasScriptChanged: false`.
+- Focused checks run:
+  - `pnpm --filter @workspace/client exec oxfmt -c oxfmt.config.ts src/components/landing-preview.tsx src/lib/preview-morph.ts src/components/landing-preview.test.ts` — passed.
+  - `pnpm --filter @workspace/client exec oxlint src/components/landing-preview.tsx src/lib/preview-morph.ts src/components/landing-preview.test.ts` — passed after helper-order cleanup.
+  - `pnpm --filter @workspace/client test` — passed (2 files, 9 tests).
+  - `pnpm --filter @workspace/client typecheck` — passed after replacing `Node.replaceWith` with `parentNode.replaceChild`.
+  - `pnpm --filter @workspace/client format:check` — passed.
+  - `pnpm --filter @workspace/client lint` — passed with existing `react-refresh(only-export-components)` and Node `DEP0205` warnings.
+  - `pnpm --filter @workspace/client build` — passed with existing Node `DEP0205` and Vite chunk-size warnings.
+  - `git diff --check` — passed.
+
+### Gotchas
+- Browser E2E is required for this behavior; unit/type/build checks missed the iframe reload because the failure came from browser iframe realms and the fallback path still rendered correctly.
+- Direct DOM morph libraries can be unsafe across iframe realms if they use parent-window `instanceof Node`/`Element` checks against iframe nodes.

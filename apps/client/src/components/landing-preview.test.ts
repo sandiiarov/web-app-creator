@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   getScriptSignature,
   preparePreviewMorphHtml,
-  shouldReloadForScriptChange,
+  shouldRerunScriptsAfterMorph,
 } from '../lib/preview-morph'
 import { preparePreviewSrcDoc } from '../lib/preview-srcdoc'
 
@@ -46,7 +46,7 @@ describe('preview morph helpers', () => {
       '<html><body><main>Hello</main><script type="module">window.count = 2</script></body></html>'
 
     expect(getScriptSignature(before)).toContain('window.count = 1')
-    expect(shouldReloadForScriptChange(before, afterMarkupOnly)).toBe(false)
-    expect(shouldReloadForScriptChange(before, afterScript)).toBe(true)
+    expect(shouldRerunScriptsAfterMorph(before, afterMarkupOnly)).toBe(false)
+    expect(shouldRerunScriptsAfterMorph(before, afterScript)).toBe(true)
   })
 })

@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import {
   morphPreviewDocument,
   preparePreviewMorphHtml,
-  shouldReloadForScriptChange,
+  shouldRerunScriptsAfterMorph,
 } from '../lib/preview-morph'
 
 export type LandingPreviewProps = {
@@ -28,28 +28,54 @@ export function LandingPreview({ html }: LandingPreviewProps) {
       setSrcDoc(preparePreviewMorphHtml(html))
     }
 
-    const previousHtml = lastAppliedHtmlRef.current
-    if (!previousHtml) {
+    if (!lastAppliedHtmlRef.current) {
       reloadPreview()
       return
     }
-    if (previousHtml === html) return
+    if (lastAppliedHtmlRef.current === html) return
 
-    const doc = iframeRef.current?.contentDocument
-    if (
-      !doc?.documentElement ||
-      doc.readyState === 'loading' ||
-      shouldReloadForScriptChange(previousHtml, html)
-    ) {
+    function morphCurrentPreview() {
+      const previousHtml = lastAppliedHtmlRef.current
+      if (!previousHtml || previousHtml === html) return true
+
+      const doc = iframeRef.current?.contentDocument
+      if (!doc?.documentElement || doc.readyState === 'loading') return false
+
+      try {
+        morphPreviewDocument(doc, html, {
+          rerunScripts: shouldRerunScriptsAfterMorph(previousHtml, html),
+        })
+        lastAppliedHtmlRef.current = html
+        return true
+      } catch {
+        reloadPreview()
+        return true
+      }
+    }
+
+    if (morphCurrentPreview()) return
+
+    const iframe = iframeRef.current
+    if (!iframe) {
       reloadPreview()
       return
     }
 
-    try {
-      morphPreviewDocument(doc, html)
-      lastAppliedHtmlRef.current = html
-    } catch {
-      reloadPreview()
+    let cancelled = false
+    const tryMorphAfterReady = () => {
+      if (cancelled || lastAppliedHtmlRef.current === html) return
+      const doc = iframe.contentDocument
+      if (!doc?.documentElement || doc.readyState === 'loading') return
+      morphCurrentPreview()
+    }
+
+    iframe.addEventListener('load', tryMorphAfterReady, { once: true })
+    const frameId = window.requestAnimationFrame(tryMorphAfterReady)
+
+    return () => {
+      cancelled = true
+      window.cancelAnimationFrame(frameId)
+      iframe.removeEventListener('load', tryMorphAfterReady)
     }
   }, [html])
 
