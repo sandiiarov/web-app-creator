@@ -64,7 +64,7 @@ const LANDING_TOOL_DEFINITIONS = [
   ),
   tool(
     'edit',
-    'Use `edit` to change `/index.html` with `edits: [{ oldText, newText }]`. Combine related non-overlapping replacements in one call; each oldText is matched against the original document and must be exact, unique, and as small as possible. After every successful edit the project document is written and the preview updates automatically.',
+    'Use `edit` to change `/index.html` with `edits: [{ oldText, newText }]`. Combine related non-overlapping replacements in one call; each oldText is matched against the original document and should be exact, unique, and as small as possible. The matcher can tolerate leading indentation differences, but still use read/grep first for exact anchors. After every successful edit the project document is written and the preview updates automatically. The edit result is a concise diff/patch, not the full file; use read/grep again before follow-up edits.',
     ({ store }) => createEditTool(store),
   ),
   tool(

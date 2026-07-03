@@ -1,8 +1,8 @@
 /**
  * Fuzzy text matching + safe edit application for `/index.html`.
- * Operates purely on strings. Semantics: exact match
- * first, then a normalized fuzzy pass; edits must be unique and non-overlapping;
- * a no-op replacement is an error.
+ * Operates purely on strings. Semantics: exact match first, then a normalized
+ * fuzzy pass, then an indentation-insensitive fallback; edits must be unique
+ * and non-overlapping; a no-op replacement is an error.
  */
 
 export interface AppliedEditsResult {
@@ -23,6 +23,13 @@ export interface FuzzyMatchResult {
   usedFuzzyMatch: boolean
 }
 
+interface DiffLine {
+  newLine?: number
+  oldLine?: number
+  text: string
+  type: 'add' | 'context' | 'remove'
+}
+
 interface LineSpan {
   end: number
   start: number
@@ -33,6 +40,13 @@ interface MatchedEdit {
   matchIndex: number
   matchLength: number
   newText: string
+}
+
+type MatchMode = 'exact' | 'fuzzy' | 'indent'
+
+interface MatchModeResult {
+  found: boolean
+  mode: MatchMode
 }
 
 interface TextReplacement {
@@ -87,31 +101,44 @@ export function applyEditsToNormalizedContent(
   }
 
   const initialMatches = normalizedEdits.map((edit) =>
-    fuzzyFindText(normalizedContent, edit.oldText),
+    findBestMatchMode(normalizedContent, edit.oldText),
   )
-  const usedFuzzyMatch = initialMatches.some((match) => match.usedFuzzyMatch)
-  const replacementBaseContent = usedFuzzyMatch
-    ? normalizeForFuzzyMatch(normalizedContent)
-    : normalizedContent
+  const matchMode = chooseMatchMode(initialMatches)
+  const replacementBaseContent = normalizeForMatchMode(
+    normalizedContent,
+    matchMode,
+  )
 
   const matchedEdits: MatchedEdit[] = []
   for (let i = 0; i < normalizedEdits.length; i++) {
     const edit = normalizedEdits[i]!
-    const matchResult = fuzzyFindText(replacementBaseContent, edit.oldText)
-    if (!matchResult.found) {
+    const oldTextForMode = normalizeTextForMatchMode(edit.oldText, matchMode)
+    if (oldTextForMode.length === 0) {
+      throw getEmptyOldTextError(i, normalizedEdits.length)
+    }
+    const matchIndex = replacementBaseContent.indexOf(oldTextForMode)
+    if (matchIndex === -1) {
       throw getNotFoundError(i, normalizedEdits.length)
     }
 
-    const occurrences = countOccurrences(replacementBaseContent, edit.oldText)
+    const occurrences = countOccurrences(replacementBaseContent, oldTextForMode)
     if (occurrences > 1) {
       throw getDuplicateError(i, normalizedEdits.length, occurrences)
     }
 
     matchedEdits.push({
       editIndex: i,
-      matchIndex: matchResult.index,
-      matchLength: matchResult.matchLength,
-      newText: edit.newText,
+      matchIndex,
+      matchLength: oldTextForMode.length,
+      newText:
+        matchMode === 'indent'
+          ? reindentReplacementForIndentMatch(
+              edit.newText,
+              normalizedContent,
+              replacementBaseContent,
+              matchIndex,
+            )
+          : edit.newText,
     })
   }
 
@@ -127,13 +154,14 @@ export function applyEditsToNormalizedContent(
   }
 
   const baseContent = normalizedContent
-  const newContent = usedFuzzyMatch
-    ? applyReplacementsPreservingUnchangedLines(
-        normalizedContent,
-        replacementBaseContent,
-        matchedEdits,
-      )
-    : applyReplacements(replacementBaseContent, matchedEdits)
+  const newContent =
+    matchMode === 'exact'
+      ? applyReplacements(replacementBaseContent, matchedEdits)
+      : applyReplacementsPreservingUnchangedLines(
+          normalizedContent,
+          replacementBaseContent,
+          matchedEdits,
+        )
 
   if (baseContent === newContent) {
     throw getNoChangeError(normalizedEdits.length)
@@ -202,6 +230,70 @@ export function fuzzyFindText(
     matchLength: fuzzyOldText.length,
     usedFuzzyMatch: true,
   }
+}
+
+/** Generate a display-oriented line diff with line numbers and context. */
+export function generateDiffString(
+  oldContent: string,
+  newContent: string,
+  contextLines = 4,
+): { diff: string; firstChangedLine: number | undefined } {
+  const lines = buildLineDiff(oldContent, newContent)
+  const hunks = createDiffHunks(lines, contextLines)
+  const firstChange = lines.find((line) => line.type !== 'context')
+  const firstChangedLine =
+    firstChange?.type === 'add'
+      ? firstChange.newLine
+      : firstChange?.type === 'remove'
+        ? firstChange.newLine
+        : undefined
+  const width = getLineNumberWidth(oldContent, newContent)
+  const output: string[] = []
+
+  for (let i = 0; i < hunks.length; i++) {
+    if (i > 0) output.push(` ${''.padStart(width)} ...`)
+    for (const line of lines.slice(hunks[i]!.start, hunks[i]!.end)) {
+      const prefix =
+        line.type === 'add' ? '+' : line.type === 'remove' ? '-' : ' '
+      const lineNumber = line.type === 'add' ? line.newLine : line.oldLine
+      output.push(
+        `${prefix}${String(lineNumber ?? '').padStart(width)} ${line.text}`,
+      )
+    }
+  }
+
+  return { diff: output.join('\n'), firstChangedLine }
+}
+
+/** Generate a compact unified patch for display/debugging. */
+export function generateUnifiedPatch(
+  path: string,
+  oldContent: string,
+  newContent: string,
+  contextLines = 4,
+): string {
+  const lines = buildLineDiff(oldContent, newContent)
+  const hunks = createDiffHunks(lines, contextLines)
+  if (!hunks.length) return ''
+
+  const output = [`--- ${path}`, `+++ ${path}`]
+  for (const hunk of hunks) {
+    const hunkLines = lines.slice(hunk.start, hunk.end)
+    const oldStart = firstLineNumber(hunkLines, 'oldLine') ?? 1
+    const newStart = firstLineNumber(hunkLines, 'newLine') ?? 1
+    const oldCount = hunkLines.filter((line) => line.type !== 'add').length
+    const newCount = hunkLines.filter((line) => line.type !== 'remove').length
+    output.push(
+      `@@ -${formatPatchRange(oldStart, oldCount)} +${formatPatchRange(newStart, newCount)} @@`,
+    )
+    for (const line of hunkLines) {
+      const prefix =
+        line.type === 'add' ? '+' : line.type === 'remove' ? '-' : ' '
+      output.push(`${prefix}${line.text}`)
+    }
+  }
+
+  return output.join('\n')
 }
 
 /**
@@ -309,10 +401,184 @@ function applyReplacementsPreservingUnchangedLines(
   return result
 }
 
+function buildLineDiff(oldContent: string, newContent: string): DiffLine[] {
+  const oldLines = splitContentLines(oldContent)
+  const newLines = splitContentLines(newContent)
+  const columns = newLines.length + 1
+  const matrixCells = (oldLines.length + 1) * columns
+  if (matrixCells > 4_000_000) {
+    return buildSimpleLineDiff(oldLines, newLines)
+  }
+
+  const lcs = new Uint32Array(matrixCells)
+  for (let i = oldLines.length - 1; i >= 0; i--) {
+    const row = i * columns
+    const nextRow = (i + 1) * columns
+    for (let j = newLines.length - 1; j >= 0; j--) {
+      lcs[row + j] =
+        oldLines[i] === newLines[j]
+          ? lcs[nextRow + j + 1]! + 1
+          : Math.max(lcs[nextRow + j]!, lcs[row + j + 1]!)
+    }
+  }
+
+  const diff: DiffLine[] = []
+  let i = 0
+  let j = 0
+  let oldLine = 1
+  let newLine = 1
+  while (i < oldLines.length && j < newLines.length) {
+    if (oldLines[i] === newLines[j]) {
+      diff.push({ newLine, oldLine, text: oldLines[i]!, type: 'context' })
+      i++
+      j++
+      oldLine++
+      newLine++
+    } else if (lcs[(i + 1) * columns + j]! >= lcs[i * columns + j + 1]!) {
+      diff.push({ newLine, oldLine, text: oldLines[i]!, type: 'remove' })
+      i++
+      oldLine++
+    } else {
+      diff.push({ newLine, oldLine, text: newLines[j]!, type: 'add' })
+      j++
+      newLine++
+    }
+  }
+
+  while (i < oldLines.length) {
+    diff.push({ newLine, oldLine, text: oldLines[i]!, type: 'remove' })
+    i++
+    oldLine++
+  }
+  while (j < newLines.length) {
+    diff.push({ newLine, oldLine, text: newLines[j]!, type: 'add' })
+    j++
+    newLine++
+  }
+
+  return diff
+}
+
+function buildSimpleLineDiff(
+  oldLines: string[],
+  newLines: string[],
+): DiffLine[] {
+  let prefix = 0
+  while (
+    prefix < oldLines.length &&
+    prefix < newLines.length &&
+    oldLines[prefix] === newLines[prefix]
+  ) {
+    prefix++
+  }
+
+  let suffix = 0
+  while (
+    suffix < oldLines.length - prefix &&
+    suffix < newLines.length - prefix &&
+    oldLines[oldLines.length - suffix - 1] ===
+      newLines[newLines.length - suffix - 1]
+  ) {
+    suffix++
+  }
+
+  const diff: DiffLine[] = []
+  let oldLine = 1
+  let newLine = 1
+  for (let i = 0; i < prefix; i++) {
+    diff.push({ newLine, oldLine, text: oldLines[i]!, type: 'context' })
+    oldLine++
+    newLine++
+  }
+  for (let i = prefix; i < oldLines.length - suffix; i++) {
+    diff.push({ newLine, oldLine, text: oldLines[i]!, type: 'remove' })
+    oldLine++
+  }
+  for (let i = prefix; i < newLines.length - suffix; i++) {
+    diff.push({ newLine, oldLine, text: newLines[i]!, type: 'add' })
+    newLine++
+  }
+  for (let i = oldLines.length - suffix; i < oldLines.length; i++) {
+    diff.push({ newLine, oldLine, text: oldLines[i]!, type: 'context' })
+    oldLine++
+    newLine++
+  }
+  return diff
+}
+
+function chooseMatchMode(matches: MatchModeResult[]): MatchMode {
+  const firstMiss = matches.find((match) => !match.found)
+  if (firstMiss) return firstMiss.mode
+  if (matches.some((match) => match.mode === 'indent')) return 'indent'
+  if (matches.some((match) => match.mode === 'fuzzy')) return 'fuzzy'
+  return 'exact'
+}
+
+function commonLeadingIndent(lines: string[]): string {
+  if (!lines.length) return ''
+  let common = /^[\t ]*/.exec(lines[0]!)?.[0] ?? ''
+  for (const line of lines.slice(1)) {
+    const indent = /^[\t ]*/.exec(line)?.[0] ?? ''
+    while (common && !indent.startsWith(common)) {
+      common = common.slice(0, -1)
+    }
+  }
+  return common
+}
+
 function countOccurrences(content: string, oldText: string): number {
+  return content.split(oldText).length - 1
+}
+
+function createDiffHunks(
+  lines: DiffLine[],
+  contextLines: number,
+): Array<{ end: number; start: number }> {
+  const changedIndexes = lines
+    .map((line, index) => (line.type === 'context' ? -1 : index))
+    .filter((index) => index >= 0)
+  const hunks: Array<{ end: number; start: number }> = []
+  for (const index of changedIndexes) {
+    const start = Math.max(0, index - contextLines)
+    const end = Math.min(lines.length, index + contextLines + 1)
+    const current = hunks[hunks.length - 1]
+    if (current && start <= current.end) {
+      current.end = Math.max(current.end, end)
+    } else {
+      hunks.push({ end, start })
+    }
+  }
+  return hunks
+}
+
+function findBestMatchMode(content: string, oldText: string): MatchModeResult {
+  if (content.includes(oldText)) return { found: true, mode: 'exact' }
+
   const fuzzyContent = normalizeForFuzzyMatch(content)
   const fuzzyOldText = normalizeForFuzzyMatch(oldText)
-  return fuzzyContent.split(fuzzyOldText).length - 1
+  if (fuzzyContent.includes(fuzzyOldText)) {
+    return { found: true, mode: 'fuzzy' }
+  }
+
+  const indentContent = normalizeForIndentInsensitiveMatch(content)
+  const indentOldText = normalizeForIndentInsensitiveMatch(oldText)
+  return { found: indentContent.includes(indentOldText), mode: 'indent' }
+}
+
+function findLineIndex(lines: LineSpan[], offset: number): number {
+  return lines.findIndex((line) => offset >= line.start && offset < line.end)
+}
+
+function firstLineNumber(
+  lines: DiffLine[],
+  key: 'newLine' | 'oldLine',
+): number | undefined {
+  return lines.find((line) => typeof line[key] === 'number')?.[key]
+}
+
+function formatPatchRange(start: number, count: number): string {
+  if (count === 0) return `${Math.max(0, start - 1)},0`
+  return count === 1 ? String(start) : `${start},${count}`
 }
 
 function getDuplicateError(
@@ -333,6 +599,15 @@ function getEmptyOldTextError(editIndex: number, totalEdits: number): Error {
   return totalEdits === 1
     ? new Error('oldText must not be empty.')
     : new Error(`edits[${editIndex}].oldText must not be empty.`)
+}
+
+function getLineNumberWidth(oldContent: string, newContent: string): number {
+  return String(
+    Math.max(
+      splitContentLines(oldContent).length,
+      splitContentLines(newContent).length,
+    ),
+  ).length
 }
 
 function getLineSpans(content: string): LineSpan[] {
@@ -390,6 +665,66 @@ function getReplacementLineRange(
   }
 
   return { endLine: endLine + 1, startLine }
+}
+
+function normalizeForIndentInsensitiveMatch(text: string): string {
+  return normalizeForFuzzyMatch(text)
+    .split('\n')
+    .map((line) => line.replace(/^[\t ]+/, ''))
+    .join('\n')
+}
+
+function normalizeForMatchMode(text: string, mode: MatchMode): string {
+  if (mode === 'indent') return normalizeForIndentInsensitiveMatch(text)
+  if (mode === 'fuzzy') return normalizeForFuzzyMatch(text)
+  return text
+}
+
+function normalizeTextForMatchMode(text: string, mode: MatchMode): string {
+  return normalizeForMatchMode(text, mode)
+}
+
+function reindentBlock(text: string, baseIndent: string): string {
+  if (!baseIndent && !text.match(/^\s/m)) return text
+
+  const lines = text.split('\n')
+  const nonEmptyLines = lines.filter((line) => line.trim().length > 0)
+  const commonIndent = commonLeadingIndent(nonEmptyLines)
+  return lines
+    .map((line) => {
+      if (line.trim().length === 0) return line
+      const withoutCommon =
+        commonIndent && line.startsWith(commonIndent)
+          ? line.slice(commonIndent.length)
+          : line
+      return baseIndent + withoutCommon
+    })
+    .join('\n')
+}
+
+function reindentReplacementForIndentMatch(
+  newText: string,
+  originalContent: string,
+  baseContent: string,
+  matchIndex: number,
+): string {
+  const baseLines = getLineSpans(baseContent)
+  const lineIndex = findLineIndex(baseLines, matchIndex)
+  if (lineIndex === -1) return newText
+
+  const lineStart = baseLines[lineIndex]!.start
+  const beforeMatch = baseContent.slice(lineStart, matchIndex)
+  if (beforeMatch.trim().length > 0) return newText
+
+  const originalLine = splitLinesWithEndings(originalContent)[lineIndex] ?? ''
+  const baseIndent = /^[\t ]*/.exec(originalLine)?.[0] ?? ''
+  return reindentBlock(newText, baseIndent)
+}
+
+function splitContentLines(content: string): string[] {
+  const lines = content.split('\n')
+  if (lines.length > 1 && lines[lines.length - 1] === '') lines.pop()
+  return lines
 }
 
 function splitLinesWithEndings(content: string): string[] {

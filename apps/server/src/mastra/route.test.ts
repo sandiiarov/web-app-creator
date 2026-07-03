@@ -24,7 +24,6 @@ afterEach(async () => {
 describe('streamLandingAgent attachments', () => {
   it('analyzes attachments before the agent run and persists tool metadata', async () => {
     vi.stubEnv('BASETEN_API_KEY', 'test-baseten-key')
-    vi.stubEnv('OPENROUTER_API_KEY', 'test-openrouter-key')
 
     let capturedMessages: Array<{ content: string; role: string }> = []
     vi.doMock('./index.ts', () => ({ mastra: {} }))
@@ -152,6 +151,169 @@ describe('streamLandingAgent attachments', () => {
   })
 })
 
+describe('streamLandingAgent cost accounting', () => {
+  it('uses provider-reported LLM cost from raw stream chunks', async () => {
+    vi.stubEnv('BASETEN_API_KEY', 'test-baseten-key')
+
+    let capturedOptions: Record<string, unknown> | undefined
+    vi.doMock('./index.ts', () => ({ mastra: {} }))
+    vi.doMock('./agents/landing-page-agent.ts', () => ({
+      createLandingPageAgent: () => ({
+        stream: async (
+          _messages: unknown,
+          options: Record<string, unknown>,
+        ) => {
+          capturedOptions = options
+          return fakeAgentStream(rawCostStream(), {
+            cachedInputTokens: 0,
+            inputTokens: 23,
+            outputTokens: 8,
+            totalTokens: 31,
+          })
+        },
+      }),
+    }))
+
+    const { createProject } = await import('./lib/project-store.ts')
+    const project = await createProject()
+    createdProjectIds.push(project.id)
+    const { streamLandingAgent } = await import('./route.ts')
+    const response = new FakeResponse()
+
+    await streamLandingAgent({
+      modelId: 'zai-org/GLM-5.2',
+      projectId: project.id,
+      prompt: 'Test provider cost.',
+      request: fakeRequest(),
+      response: response as unknown as ServerResponse,
+    })
+
+    expect(capturedOptions).toMatchObject({
+      includeRawChunks: true,
+      maxProcessorRetries: 2,
+      modelSettings: { maxOutputTokens: 16_384, maxRetries: 0 },
+    })
+    const errorProcessors = capturedOptions?.errorProcessors as
+      | Array<{ id: string }>
+      | undefined
+    expect(errorProcessors?.[0]?.id).toBe('landing-agent-retry-processor')
+    expect(parseSseEvents(response.body)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          data: expect.objectContaining({
+            cost: 0.0123,
+            costBreakdown: expect.objectContaining({ llm: 0.0123 }),
+          }),
+          event: 'stats',
+        }),
+      ]),
+    )
+  })
+
+  it('calculates LLM cost from tokens when provider cost is absent', async () => {
+    vi.stubEnv('BASETEN_API_KEY', 'test-baseten-key')
+
+    vi.doMock('./index.ts', () => ({ mastra: {} }))
+    vi.doMock('./agents/landing-page-agent.ts', () => ({
+      createLandingPageAgent: () => ({
+        stream: async () =>
+          fakeAgentStream(emptyFullStream(), {
+            cachedInputTokens: 3360,
+            inputTokens: 4981,
+            outputTokens: 67,
+            totalTokens: 5048,
+          }),
+      }),
+    }))
+
+    const { createProject } = await import('./lib/project-store.ts')
+    const project = await createProject()
+    createdProjectIds.push(project.id)
+    const { streamLandingAgent } = await import('./route.ts')
+    const response = new FakeResponse()
+
+    await streamLandingAgent({
+      modelId: 'zai-org/GLM-5.2',
+      projectId: project.id,
+      prompt: 'Test calculated cost.',
+      request: fakeRequest(),
+      response: response as unknown as ServerResponse,
+    })
+
+    expect(parseSseEvents(response.body)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          data: expect.objectContaining({
+            cost: expect.closeTo(0.0034378, 8),
+            costBreakdown: expect.objectContaining({
+              llm: expect.closeTo(0.0034378, 8),
+            }),
+          }),
+          event: 'stats',
+        }),
+      ]),
+    )
+  })
+})
+
+describe('streamLandingAgent retries', () => {
+  it('emits retry events with issue, attempt, max attempts, and delay', async () => {
+    vi.stubEnv('BASETEN_API_KEY', 'test-baseten-key')
+    vi.stubEnv('AGENT_RETRY_BASE_DELAY_MS', '0')
+    vi.stubEnv('AGENT_RETRY_MAX_DELAY_MS', '0')
+
+    vi.doMock('./index.ts', () => ({ mastra: {} }))
+    vi.doMock('./agents/landing-page-agent.ts', () => ({
+      createLandingPageAgent: () => ({
+        stream: async (
+          _messages: unknown,
+          options: Record<string, unknown>,
+        ) => {
+          const [processor] = options.errorProcessors as Array<{
+            processAPIError: (args: unknown) => Promise<unknown>
+          }>
+          await processor?.processAPIError({
+            error: Object.assign(new Error('socket hang up'), {
+              code: 'ECONNRESET',
+            }),
+            retryCount: 0,
+          })
+          return fakeAgentStream()
+        },
+      }),
+    }))
+
+    const { createProject } = await import('./lib/project-store.ts')
+    const project = await createProject()
+    createdProjectIds.push(project.id)
+    const { streamLandingAgent } = await import('./route.ts')
+    const response = new FakeResponse()
+
+    await streamLandingAgent({
+      modelId: 'zai-org/GLM-5.2',
+      projectId: project.id,
+      prompt: 'Test visible retry.',
+      request: fakeRequest(),
+      response: response as unknown as ServerResponse,
+    })
+
+    expect(parseSseEvents(response.body)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          data: {
+            attempt: 1,
+            delayMs: 0,
+            issue: 'ECONNRESET',
+            maxAttempts: 2,
+            reason: 'Transient network issue',
+          },
+          event: 'retry',
+        }),
+      ]),
+    )
+  })
+})
+
 describe('streamLandingAgent history', () => {
   it('sends persisted project messages before the current prompt', async () => {
     vi.stubEnv('BASETEN_API_KEY', 'test-baseten-key')
@@ -218,7 +380,9 @@ describe('streamLandingAgent history', () => {
       },
       { content: 'what i asked you todo', role: 'user' },
     ])
-    expect(capturedMessages[1]?.content).toContain('Tool read done')
+    expect(capturedMessages[1]?.content).not.toContain('Tool read done')
+    expect(capturedMessages[1]?.content).not.toContain('Intent:')
+    expect(capturedMessages[1]?.content).not.toContain('Result:')
   })
 })
 
@@ -386,16 +550,17 @@ async function* emptyFullStream(): AsyncGenerator<never, void, unknown> {}
 
 function fakeAgentStream(
   fullStream: AsyncIterable<unknown> = emptyFullStream(),
+  usage: Record<string, number | undefined> = {
+    cachedInputTokens: 0,
+    inputTokens: 0,
+    outputTokens: 0,
+    totalTokens: 0,
+  },
 ) {
   return {
     finishReason: Promise.resolve('stop'),
     fullStream,
-    usage: Promise.resolve({
-      cachedInputTokens: 0,
-      inputTokens: 0,
-      outputTokens: 0,
-      totalTokens: 0,
-    }),
+    usage: Promise.resolve(usage),
   }
 }
 
@@ -426,6 +591,22 @@ function parseSseEvents(body: string): Array<{ data: unknown; event: string }> {
       }
       return { data, event }
     })
+}
+
+async function* rawCostStream() {
+  yield {
+    payload: {
+      id: 'chatcmpl-provider-cost-1',
+      object: 'chat.completion.chunk',
+      usage: {
+        completion_tokens: 8,
+        cost: 0.0123,
+        prompt_tokens: 23,
+        total_tokens: 31,
+      },
+    },
+    type: 'raw',
+  }
 }
 
 async function* screenshotToolStream() {

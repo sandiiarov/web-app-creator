@@ -7,6 +7,24 @@ const DEFAULT_BASETEN_API_URL = 'https://inference.baseten.co/v1'
 
 export function createConfigFromEnv(source: ConfigEnvironment) {
   return {
+    agentRetry: {
+      modelMaxRetries: parseNonNegativeInteger(
+        optionalEnv(source, 'AGENT_MODEL_MAX_RETRIES') ?? '0',
+        'AGENT_MODEL_MAX_RETRIES',
+      ),
+      retryBaseDelayMs: parseNonNegativeInteger(
+        optionalEnv(source, 'AGENT_RETRY_BASE_DELAY_MS') ?? '1000',
+        'AGENT_RETRY_BASE_DELAY_MS',
+      ),
+      retryMaxDelayMs: parseNonNegativeInteger(
+        optionalEnv(source, 'AGENT_RETRY_MAX_DELAY_MS') ?? '10000',
+        'AGENT_RETRY_MAX_DELAY_MS',
+      ),
+      streamErrorMaxRetries: parseNonNegativeInteger(
+        optionalEnv(source, 'AGENT_STREAM_ERROR_MAX_RETRIES') ?? '2',
+        'AGENT_STREAM_ERROR_MAX_RETRIES',
+      ),
+    },
     baseten: {
       apiKey: requiredEnv(source, 'BASETEN_API_KEY'),
       defaultModel:
@@ -44,6 +62,16 @@ function optionalEnv(source: ConfigEnvironment, name: string) {
   const value = source[name]?.trim()
 
   return value ? value : undefined
+}
+
+function parseNonNegativeInteger(value: string, name: string) {
+  const parsed = Number(value)
+
+  if (!Number.isInteger(parsed) || parsed < 0) {
+    throw new Error(`Invalid ${name} value: ${value}`)
+  }
+
+  return parsed
 }
 
 function requiredEnv(source: ConfigEnvironment, name: string) {

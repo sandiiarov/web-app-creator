@@ -108,7 +108,7 @@ export function Composer({
                       aria-label="Attach image"
                       disabled={isStreaming}
                       onClick={() => fileInputRef.current?.click()}
-                      size="icon-sm"
+                      size="icon-xs"
                       type="button"
                       variant="outline"
                     >

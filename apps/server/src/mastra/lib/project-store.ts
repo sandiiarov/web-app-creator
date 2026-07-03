@@ -17,6 +17,7 @@ import { mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+import { calculateLlmCost } from './cost.ts'
 import { PLACEHOLDER_INDEX_HTML, type HtmlStore } from './html-store.ts'
 import { getImage } from './image-store.ts'
 
@@ -305,6 +306,59 @@ function mediaTypeForName(name: string): string {
   }
 }
 
+function nestedNumber(value: unknown, key: string): number {
+  if (!value || typeof value !== 'object') return 0
+  const nested = (value as Record<string, unknown>)[key]
+  return typeof nested === 'number' && Number.isFinite(nested) && nested > 0
+    ? nested
+    : 0
+}
+
+function nonLlmBreakdownCost(costBreakdown: unknown): number {
+  if (!costBreakdown || typeof costBreakdown !== 'object') return 0
+  const breakdown = costBreakdown as Record<string, unknown>
+  return (
+    nestedNumber(breakdown.image, 'cost') +
+    nestedNumber(breakdown.scrape, 'cost') +
+    nestedNumber(breakdown.vision, 'cost')
+  )
+}
+
+function normalizeMessageCosts(
+  messages: ProjectMessageTurn[],
+): ProjectMessageTurn[] {
+  return messages.map((turn) => {
+    let changed = false
+    const parts = turn.parts.map((part) => {
+      if (part.type !== 'stats' || part.cost > 0) return part
+      const llmCost = calculateLlmCost(part.model, part.usage)
+      if (llmCost <= 0) return part
+      changed = true
+      const nonLlmCost = nonLlmBreakdownCost(part.costBreakdown)
+      const cost = llmCost + nonLlmCost
+      return {
+        ...part,
+        cost,
+        costBreakdown: normalizeStatsCostBreakdown(
+          part.costBreakdown,
+          llmCost,
+          cost,
+        ),
+      }
+    })
+    return changed ? { ...turn, parts } : turn
+  })
+}
+
+function normalizeStatsCostBreakdown(
+  costBreakdown: unknown,
+  llm: number,
+  total: number,
+): unknown {
+  if (!costBreakdown || typeof costBreakdown !== 'object') return costBreakdown
+  return { ...(costBreakdown as Record<string, unknown>), llm, total }
+}
+
 /**
  * Normalize locally-generated image URLs in the HTML into a stable
  * project-relative form and copy their bytes into the project's image folder.
@@ -378,7 +432,9 @@ async function readMessages(id: string): Promise<ProjectMessageTurn[]> {
   try {
     const raw = await readFile(join(projectDir(id), MESSAGES_JSON), 'utf8')
     const parsed = JSON.parse(raw)
-    return Array.isArray(parsed) ? (parsed as ProjectMessageTurn[]) : []
+    return Array.isArray(parsed)
+      ? normalizeMessageCosts(parsed as ProjectMessageTurn[])
+      : []
   } catch {
     return []
   }

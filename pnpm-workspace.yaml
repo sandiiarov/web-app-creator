@@ -10,6 +10,7 @@ catalog:
   '@mastra/loggers': ^1.2.0
   '@mastra/observability': ^1.15.2
   '@shadcn/react': ^0.1.0
+  '@streamdown/code': ^1.1.1
   '@zumer/snapdom': ^2.12.9
   "@types/node": "^24.10.1"
   "@types/react": "^19.2.7"

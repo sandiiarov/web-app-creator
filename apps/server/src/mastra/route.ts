@@ -6,12 +6,17 @@ import { createLandingPageAgent } from './agents/landing-page-agent.ts'
 import { mastra } from './index.ts'
 import { createPendingBrowserScreenshot } from './lib/browser-screenshot.ts'
 import {
-  estimateCost,
+  calculateLlmCost,
   firecrawlCost,
   imageGenCost,
+  providerReportedCost,
   visionCost,
 } from './lib/cost.ts'
-import { ocrImageInputs, type ImageOcrResult } from './lib/image-ocr.ts'
+import {
+  BASETEN_VISION_MODEL,
+  ocrImageInputs,
+  type ImageOcrResult,
+} from './lib/image-ocr.ts'
 import {
   appendProjectMessageTurn,
   createProjectHtmlStore,
@@ -23,16 +28,16 @@ import {
   type ProjectMessageToolCallPart,
   type ProjectMessageTurn,
 } from './lib/project-store.ts'
+import { createLandingAgentErrorProcessors } from './lib/retry.ts'
 import { sendSse, startSse } from './lib/sse.ts'
 
 const ATTACHMENT_OCR_PROMPT =
   'Analyze the attached image for landing-page generation. Extract all visible text exactly, then describe layout, hierarchy, colors, typography, UI components, imagery, brand cues, and any details the landing-page agent should use. If the image is a screenshot or mockup, call out sections, navigation, CTAs, spacing, and visual style.'
-const MAX_EDIT_FAILURES = 2
+const MAX_EDIT_FAILURES = 10
 const MAX_STEPS = 30
 const READ_BEFORE_RETRY_MESSAGE =
   'Edit failed because oldText did not match the current project HTML. Read or grep /index.html before retrying; do not guess whitespace.'
-const REPEATED_EDIT_FAILURE_MESSAGE =
-  'Edit failed twice in this turn. Stopping so the agent does not keep making blind edit attempts. Read/grep the current /index.html and try again.'
+const REPEATED_EDIT_FAILURE_MESSAGE = `Edit failed ${MAX_EDIT_FAILURES} times in this turn. Stopping so the agent does not keep making blind edit attempts. Read/grep the current /index.html and try again.`
 
 export interface AgentImageAttachmentInput extends ProjectMessageAttachment {
   dataUrl: string
@@ -156,6 +161,8 @@ export async function streamLandingAgent({
   let visionCalls = 0
   let visionCostUsd = 0
   let visionImages = 0
+  // Capture provider-reported LLM cost from raw response chunks when present.
+  let llmProviderCostUsd = 0
   // Accumulate bundled image-OCR usage inside scrape cost.
   let scrapeOcrCalls = 0
   let scrapeOcrCostUsd = 0
@@ -186,8 +193,17 @@ export async function streamLandingAgent({
 
     const stream = await agent.stream(agentMessages, {
       abortSignal: controller.signal,
+      errorProcessors: createLandingAgentErrorProcessors(
+        config.agentRetry,
+        (event) => sendSse(response, 'retry', event),
+      ),
+      includeRawChunks: true,
+      maxProcessorRetries: config.agentRetry.streamErrorMaxRetries,
       maxSteps: MAX_STEPS,
-      modelSettings: { maxOutputTokens: 16_384 },
+      modelSettings: {
+        maxOutputTokens: 16_384,
+        maxRetries: config.agentRetry.modelMaxRetries,
+      },
     })
 
     streamLoop: for await (const chunk of stream.fullStream) {
@@ -199,6 +215,11 @@ export async function streamLandingAgent({
               : String(chunk.payload.error)
           recordTurnError(recordedTurn, message)
           sendSse(response, 'error', { message })
+          break
+        }
+        case 'raw': {
+          const providerCost = providerReportedCost(chunk.payload)
+          if (providerCost > 0) llmProviderCostUsd = providerCost
           break
         }
         case 'reasoning-delta': {
@@ -463,7 +484,7 @@ export async function streamLandingAgent({
         }
         default:
           // start, step-start, step-finish, text-start/end, reasoning-start/end,
-          // tool-call-delta, tool-call-input-streaming-end, finish, raw — not
+          // tool-call-delta, tool-call-input-streaming-end, finish — not
           // surfaced individually in the custom protocol.
           break
       }
@@ -471,11 +492,11 @@ export async function streamLandingAgent({
 
     if (!fatalRunError) {
       const usage = await stream.usage
-      const llmCost = estimateCost(modelId, {
+      const llmCost = calculateLlmCost(modelId, {
         cachedInputTokens: usage.cachedInputTokens,
         inputTokens: usage.inputTokens,
         outputTokens: usage.outputTokens,
-        raw: usage.raw,
+        raw: llmProviderCostUsd > 0 ? llmProviderCostUsd : usage.raw,
         reasoningTokens: usage.reasoningTokens,
         totalTokens: usage.totalTokens,
       })
@@ -691,7 +712,7 @@ function buildAttachmentContext(
     )
     .join('\n')
   return [
-    'Attached image OCR/visual transcript from OpenRouter `z-ai/glm-5v-turbo`:',
+    `Attached image OCR/visual transcript from Baseten \`${BASETEN_VISION_MODEL}\`:`,
     imageList,
     '',
     result.text || 'No text returned.',
@@ -706,9 +727,8 @@ function buildHistoryAssistantContent(turn: ProjectMessageTurn): null | string {
       case 'text':
         return [part.text]
       case 'thinking':
-        return []
       case 'tool_call':
-        return [summarizeHistoryTool(part)]
+        return []
     }
   })
 
@@ -907,19 +927,6 @@ function stripAttachmentData({
   ...metadata
 }: AgentImageAttachmentInput): ProjectMessageAttachment {
   return metadata
-}
-
-function summarizeHistoryTool(part: ProjectMessageToolCallPart): string {
-  return (
-    compactLines([
-      `Tool ${part.tool} ${part.state}`,
-      part.intent ? `Intent: ${part.intent}` : null,
-      part.detail && part.detail !== part.intent
-        ? `Detail: ${part.detail}`
-        : null,
-      part.result ? `Result: ${part.result}` : null,
-    ]) ?? `Tool ${part.tool} ${part.state}`
-  )
 }
 
 function summarizeToolArgs(tool: string, args: ToolArgs): null | string {

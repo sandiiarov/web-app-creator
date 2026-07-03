@@ -80,9 +80,9 @@ const BrandingSchema = z
 
 /**
  * Scrape a URL into markdown + links + images + a branding profile (palette,
- * fonts, logo). Also OCRs every scraped image URL with GLM-5V-Turbo and returns
- * the transcript as `imageOcr`. Use to pull a brand's identity before building
- * or refining a landing page. `intent` is surfaced to the UI.
+ * fonts, logo). Also OCRs every scraped image URL with Baseten Kimi vision and
+ * returns the transcript as `imageOcr`. Use to pull a brand's identity before
+ * building or refining a landing page. `intent` is surfaced to the UI.
  */
 interface CollectImageUrlsOptions {
   baseUrl: string

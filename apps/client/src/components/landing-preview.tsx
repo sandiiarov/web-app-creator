@@ -1,3 +1,5 @@
+import { preparePreviewSrcDoc } from '../lib/preview-srcdoc'
+
 export type LandingPreviewProps = {
   html: string
   onError?: (message: string) => void
@@ -12,8 +14,8 @@ export function LandingPreview({ html }: LandingPreviewProps) {
     <iframe
       className="h-svh w-screen border-0"
       referrerPolicy="no-referrer"
-      sandbox="allow-forms allow-modals allow-popups allow-scripts"
-      srcDoc={html}
+      sandbox="allow-forms allow-modals allow-popups allow-same-origin allow-scripts"
+      srcDoc={preparePreviewSrcDoc(html)}
       title="Landing page preview"
     />
   )

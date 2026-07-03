@@ -45,12 +45,10 @@ export function PanelBody({
           </MessageScrollerContent>
         </MessageScrollerViewport>
         <MessageScrollerButton
+          aria-label="Scroll to latest message"
           className="bottom-3 shadow-lg"
-          size="sm"
           variant="secondary"
-        >
-          Latest
-        </MessageScrollerButton>
+        />
       </MessageScroller>
     </MessageScrollerProvider>
   )

@@ -1,7 +1,15 @@
 import { createTool } from '@mastra/core/tools'
 import { z } from 'zod'
 
-import { applyEdits, countChangedLines, type Edit } from '../lib/edit-diff.ts'
+import {
+  applyEdits,
+  countChangedLines,
+  generateDiffString,
+  generateUnifiedPatch,
+  normalizeToLF,
+  stripBom,
+  type Edit,
+} from '../lib/edit-diff.ts'
 import type { HtmlStore } from '../lib/html-store.ts'
 
 const editReplacementSchema = z.object({
@@ -42,25 +50,37 @@ type EditInput = z.infer<typeof editInputSchema>
 /**
  * Apply exact-text replacements to `/index.html`. Batched edits are matched
  * against the original document, must be unique and
- * non-overlapping, and fuzzy matching tolerates trailing whitespace, smart
- * quotes/dashes, special spaces, BOMs, and line endings. `intent` is surfaced
- * to the UI; on success the project file has already been written.
+ * non-overlapping, and fuzzy matching tolerates trailing whitespace, leading
+ * indentation differences, smart quotes/dashes, special spaces, BOMs, and line endings. `intent` is surfaced
+ * to the UI; on success the project file has already been written. Returns a
+ * concise diff/patch instead of the full HTML; use read/grep for follow-up
+ * edit anchors.
  */
 export function createEditTool(store: HtmlStore) {
   return createTool({
     description:
-      'Edit /index.html using exact text replacement. Prefer edits: [{ oldText, newText }] and combine related non-overlapping replacements in one call. Each oldText must be unique in the original document and include exact whitespace/newlines. Use grep/read first to get exact text. The preview updates automatically after a successful edit. Always pass an intent describing the change.',
+      'Edit /index.html using exact text replacement. Prefer edits: [{ oldText, newText }] and combine related non-overlapping replacements in one call. Each oldText must be unique in the original document; exact whitespace is best, but the matcher can tolerate leading indentation differences. Use grep/read first to get exact text. The preview updates automatically after a successful edit. The result includes a concise diff/patch, not the full file; use read/grep again before follow-up edits. Always pass an intent describing the change.',
     execute: async (input) => {
       const edits = prepareEdits(input)
       const before = store.get()
       const after = applyEdits(before, edits)
       const bytes = store.set(after)
-      const changedLines = countChangedLines(before, after)
+      const storedAfter = store.get()
+      const changedLines = countChangedLines(before, storedAfter)
+      const normalizedBefore = normalizeToLF(stripBom(before).text)
+      const normalizedAfter = normalizeToLF(stripBom(storedAfter).text)
+      const diff = generateDiffString(normalizedBefore, normalizedAfter)
       return {
         bytes,
         changedLines,
-        html: store.get(),
+        diff: diff.diff,
+        firstChangedLine: diff.firstChangedLine,
         ok: true,
+        patch: generateUnifiedPatch(
+          '/index.html',
+          normalizedBefore,
+          normalizedAfter,
+        ),
         replacements: edits.length,
       }
     },
@@ -69,8 +89,10 @@ export function createEditTool(store: HtmlStore) {
     outputSchema: z.object({
       bytes: z.number(),
       changedLines: z.number(),
-      html: z.string(),
+      diff: z.string(),
+      firstChangedLine: z.number().optional(),
       ok: z.boolean(),
+      patch: z.string(),
       replacements: z.number(),
     }),
   })

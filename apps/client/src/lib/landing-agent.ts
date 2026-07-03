@@ -64,6 +64,20 @@ export type LandingTurn = {
   prompt: string
 }
 
+export type RetryEvent = {
+  attempt: number
+  delayMs: number
+  issue: string
+  maxAttempts: number
+  reason: string
+}
+
+export type RetryPart = RetryEvent & {
+  id: string
+  startedAt: number
+  type: 'retry'
+}
+
 export type ScrapeCost = {
   calls: number
   cost: number
@@ -157,7 +171,12 @@ export type ToolCallPart = {
 
 export type ToolCallState = 'done' | 'error' | 'running' | 'start'
 
-export type TurnPart = StatsPart | TextPart | ThinkingPart | ToolCallPart
+export type TurnPart =
+  | RetryPart
+  | StatsPart
+  | TextPart
+  | ThinkingPart
+  | ToolCallPart
 
 export type VisionCost = {
   calls: number
@@ -168,6 +187,7 @@ export type VisionCost = {
 // ── Formatting utilities ──────────────────────────────────────────
 
 export function formatCost(cost: number) {
+  if (!Number.isFinite(cost) || cost <= 0) return '$0'
   return cost >= 0.01 ? `$${cost.toFixed(4)}` : '<$0.01'
 }
 
@@ -177,6 +197,12 @@ export function formatDuration(ms: number) {
   if (seconds < 60) return `${seconds.toFixed(seconds < 10 ? 1 : 0)}s`
   const minutes = Math.floor(seconds / 60)
   return `${minutes}m ${Math.round(seconds % 60)}s`
+}
+
+export function formatRetryDelay(ms: number) {
+  if (!Number.isFinite(ms) || ms <= 0) return 'now'
+  const seconds = ms / 1000
+  return `${seconds.toFixed(seconds < 10 ? 1 : 0)}s`
 }
 
 export function formatTokenCount(tokens: number | undefined) {

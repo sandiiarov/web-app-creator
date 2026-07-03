@@ -8,6 +8,7 @@ import {
   type ImageAttachmentMeta,
   type LandingAgentSendInput,
   type LandingTurn,
+  type RetryEvent,
   type ScreenshotRequestEvent,
   type ToolCallPart,
   type TurnPart,
@@ -208,6 +209,16 @@ export function useLandingPage({
                   ...terminalizeActiveTools(turn, message),
                   error: message,
                 }))
+                break
+              }
+              case 'retry': {
+                const retry = data as RetryEvent
+                appendPart(turnId, {
+                  ...retry,
+                  id: `${turnId}-retry-${retry.attempt}`,
+                  startedAt: Date.now(),
+                  type: 'retry',
+                })
                 break
               }
               case 'screenshot_request': {

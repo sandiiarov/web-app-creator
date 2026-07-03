@@ -13,9 +13,15 @@ afterEach(() => {
 })
 
 describe('ocrImageInputs', () => {
-  it('returns a clear result when OpenRouter is not configured', async () => {
-    const { ocrImageInputs } = await loadImageOcr({ openrouterApiKey: '' })
-    const fetch = vi.fn<FetchMock>()
+  it('uses Baseten Kimi for OCR without requiring OpenRouter', async () => {
+    const { ocrImageInputs } = await loadImageOcr()
+    vi.stubEnv('OPENROUTER_API_KEY', '')
+    const fetch = vi.fn<FetchMock>(async () =>
+      jsonResponse({
+        choices: [{ message: { content: 'Image 1\nHero copy visible' } }],
+        usage: { completion_tokens: 4, cost: 0.001, prompt_tokens: 9 },
+      }),
+    )
     vi.stubGlobal('fetch', fetch)
 
     const result = await ocrImageInputs([
@@ -23,16 +29,22 @@ describe('ocrImageInputs', () => {
     ])
 
     expect(result).toMatchObject({
-      imagesAnalyzed: 0,
-      ok: false,
-      text: '',
-      usage: null,
+      cost: 0.001,
+      imagesAnalyzed: 1,
+      ok: true,
+      text: 'Image 1\nHero copy visible',
     })
-    expect(result.reason).toContain('OPENROUTER_API_KEY')
-    expect(fetch).not.toHaveBeenCalled()
+
+    const [chatUrl, chatInit] = fetch.mock.calls[0]!
+    expect(String(chatUrl)).toBe(
+      'https://inference.baseten.co/v1/chat/completions',
+    )
+    expect((chatInit as RequestInit).headers).toMatchObject({
+      Authorization: 'Bearer test-baseten-key',
+    })
   })
 
-  it('rejects unsupported data URL media types before calling OpenRouter', async () => {
+  it('rejects unsupported data URL media types before calling Baseten', async () => {
     const { ocrImageInputs } = await loadImageOcr()
     const fetch = vi.fn<FetchMock>()
     vi.stubGlobal('fetch', fetch)
@@ -51,18 +63,13 @@ describe('ocrImageInputs', () => {
     expect(fetch).not.toHaveBeenCalled()
   })
 
-  it('deduplicates data URLs and sends normalized image parts to OpenRouter', async () => {
+  it('deduplicates data URLs and sends normalized image parts to Baseten', async () => {
     const { ocrImageInputs } = await loadImageOcr()
-    const fetch = vi.fn<FetchMock>(async (input) => {
-      const url = String(input)
-      if (url.includes('/generation')) {
-        return jsonResponse({ data: {} })
-      }
-      return jsonResponse({
+    const fetch = vi.fn<FetchMock>(async () =>
+      jsonResponse({
         choices: [
           { message: { content: 'Image 1\nHero copy: Launch faster' } },
         ],
-        id: 'gen-1',
         usage: {
           completion_tokens: 7,
           cost: 0.002,
@@ -70,8 +77,8 @@ describe('ocrImageInputs', () => {
           prompt_tokens_details: { cached_tokens: 3 },
           total_tokens: 18,
         },
-      })
-    })
+      }),
+    )
     vi.stubGlobal('fetch', fetch)
 
     const result = await ocrImageInputs([
@@ -94,7 +101,7 @@ describe('ocrImageInputs', () => {
 
     const [chatUrl, chatInit] = fetch.mock.calls[0]!
     expect(String(chatUrl)).toBe(
-      'https://openrouter.ai/api/v1/chat/completions',
+      'https://inference.baseten.co/v1/chat/completions',
     )
     const body = JSON.parse((chatInit as RequestInit).body as string) as {
       messages: Array<{
@@ -106,7 +113,7 @@ describe('ocrImageInputs', () => {
       }>
       model: string
     }
-    expect(body.model).toBe('z-ai/glm-5v-turbo')
+    expect(body.model).toBe('moonshotai/Kimi-K2.7-Code')
     expect(body.messages[0]!.content[0]).toMatchObject({
       text: expect.stringContaining('hero.png'),
       type: 'text',
@@ -123,7 +130,7 @@ describe('ocrImageInputs', () => {
 })
 
 describe('ocrImages', () => {
-  it('preserves URL input behavior by fetching image URLs before OpenRouter', async () => {
+  it('preserves URL input behavior by fetching image URLs before Baseten', async () => {
     const { ocrImages } = await loadImageOcr()
     const fetch = vi.fn<FetchMock>(async (input) => {
       const url = String(input)
@@ -133,12 +140,8 @@ describe('ocrImages', () => {
           status: 200,
         })
       }
-      if (url.includes('/generation')) {
-        return jsonResponse({ data: {} })
-      }
       return jsonResponse({
         choices: [{ message: { content: 'Image 1\nNo text found' } }],
-        id: 'gen-2',
         usage: { completion_tokens: 2, prompt_tokens: 4, total_tokens: 6 },
       })
     })
@@ -169,13 +172,8 @@ function jsonResponse(body: unknown): Response {
   })
 }
 
-async function loadImageOcr({
-  openrouterApiKey = 'test-openrouter-key',
-}: {
-  openrouterApiKey?: string
-} = {}): Promise<ImageOcrModule> {
+async function loadImageOcr(): Promise<ImageOcrModule> {
   vi.resetModules()
   vi.stubEnv('BASETEN_API_KEY', 'test-baseten-key')
-  vi.stubEnv('OPENROUTER_API_KEY', openrouterApiKey)
   return import('./image-ocr.ts')
 }

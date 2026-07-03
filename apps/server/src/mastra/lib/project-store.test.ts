@@ -81,6 +81,47 @@ describe('project message storage', () => {
     })
   })
 
+  it('normalizes legacy zero-cost stats from saved token usage', async () => {
+    const project = await createProject()
+    createdProjectIds.push(project.id)
+    const turn = messageTurn(project.id)
+    turn.parts = [
+      {
+        cost: 0,
+        costBreakdown: {
+          image: { cost: 0, count: 0 },
+          llm: 0,
+          scrape: { calls: 0, cost: 0, credits: 0 },
+          total: 0,
+          vision: { calls: 0, cost: 0, images: 0 },
+        },
+        durationMs: 1000,
+        finishReason: 'stop',
+        model: 'zai-org/GLM-5.2',
+        type: 'stats',
+        usage: {
+          cachedInputTokens: 3360,
+          inputTokens: 4981,
+          outputTokens: 67,
+          totalTokens: 5048,
+        },
+      },
+    ]
+
+    await appendProjectMessageTurn(project.id, turn)
+
+    const saved = await getProject(project.id)
+    const stats = saved?.messages[0]?.parts[0]
+    expect(stats).toMatchObject({
+      cost: expect.closeTo(0.0034378, 8),
+      costBreakdown: expect.objectContaining({
+        llm: expect.closeTo(0.0034378, 8),
+        total: expect.closeTo(0.0034378, 8),
+      }),
+      type: 'stats',
+    })
+  })
+
   it('persists the latest project model without rewriting message turns', async () => {
     const project = await createProject({ model: 'moonshotai/Kimi-K2.7-Code' })
     createdProjectIds.push(project.id)

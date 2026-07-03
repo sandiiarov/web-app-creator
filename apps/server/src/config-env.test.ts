@@ -25,6 +25,17 @@ describe('createConfigFromEnv', () => {
     expect(config.clientOrigin).toBe('*')
   })
 
+  it('parses agent retry defaults', () => {
+    const config = createConfigFromEnv(createEnv())
+
+    expect(config.agentRetry).toEqual({
+      modelMaxRetries: 0,
+      retryBaseDelayMs: 1000,
+      retryMaxDelayMs: 10000,
+      streamErrorMaxRetries: 2,
+    })
+  })
+
   it('leaves mastra observability unset when env is absent', () => {
     const config = createConfigFromEnv(createEnv())
 
@@ -48,6 +59,24 @@ describe('createConfigFromEnv', () => {
     expect(config.port).toBe(4000)
   })
 
+  it('overrides agent retry settings from env', () => {
+    const config = createConfigFromEnv(
+      createEnv({
+        AGENT_MODEL_MAX_RETRIES: '1',
+        AGENT_RETRY_BASE_DELAY_MS: '250',
+        AGENT_RETRY_MAX_DELAY_MS: '2000',
+        AGENT_STREAM_ERROR_MAX_RETRIES: '3',
+      }),
+    )
+
+    expect(config.agentRetry).toEqual({
+      modelMaxRetries: 1,
+      retryBaseDelayMs: 250,
+      retryMaxDelayMs: 2000,
+      streamErrorMaxRetries: 3,
+    })
+  })
+
   it('reads mastra observability credentials when present', () => {
     const config = createConfigFromEnv(
       createEnv({
@@ -68,5 +97,11 @@ describe('createConfigFromEnv', () => {
     expect(() => createConfigFromEnv(createEnv({ PORT: 'nope' }))).toThrow(
       'Invalid PORT',
     )
+  })
+
+  it('rejects invalid retry values', () => {
+    expect(() =>
+      createConfigFromEnv(createEnv({ AGENT_MODEL_MAX_RETRIES: '-1' })),
+    ).toThrow('Invalid AGENT_MODEL_MAX_RETRIES')
   })
 })

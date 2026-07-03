@@ -16,7 +16,7 @@
 - Public consumers import through `@workspace/ui/components/*`, `@workspace/ui/lib/*`, `@workspace/ui/hooks/*`, or `@workspace/ui/globals.css`.
 - Internal imports use `#components`, `#hooks`, and `#lib` aliases.
 - Add shadcn components through the client config when generating for the app: `pnpm dlx shadcn@latest add <component> -c apps/client`.
-- Keep Tailwind theme/global CSS centralized in `src/styles/globals.css`; do not create competing global stylesheets.
+- Keep Tailwind theme/global CSS centralized in `src/styles/globals.css`; do not create competing global stylesheets. When app code uses Tailwind class strings from external runtime packages such as Streamdown/plugins, include the package `dist/*.js` paths from the actual installed location in this file's `@source` list (for app-local pnpm installs, use the consuming app's `node_modules` path).
 - Preserve the current `radix-lyra`, Tailwind v4, Lucide icon setup unless the preset is intentionally changed.
 
 ## Work Guidance

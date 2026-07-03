@@ -1,6 +1,6 @@
 import { config } from '../../config.ts'
 
-const VISION_MODEL = 'z-ai/glm-5v-turbo'
+export const BASETEN_VISION_MODEL = 'moonshotai/Kimi-K2.7-Code'
 
 const DEFAULT_OCR_PROMPT =
   'Extract ALL visible text from every image (OCR). Return the text exactly as it appears, preserving headings, lists, and structure. For each image, also briefly describe brand-relevant visual details: logo marks, product UI, people/scene, color palette, layout, and any notable typography. If an image has no text, say "No text found" for that image and still describe what it shows.'
@@ -40,6 +40,28 @@ export interface ImageOcrUrlInput {
   url: string
 }
 
+interface BasetenChatChoice {
+  message?: {
+    content?: null | string
+    reasoning?: string
+    reasoning_details?: Array<{ text?: string }>
+  }
+}
+
+interface BasetenChatResponse {
+  choices?: BasetenChatChoice[]
+  error?: { code?: number | string; message?: string }
+  usage?: {
+    completion_tokens?: number
+    cost?: number
+    estimated_cost?: number
+    prompt_tokens?: number
+    prompt_tokens_details?: { cached_tokens?: number }
+    total_cost?: number
+    total_tokens?: number
+  }
+}
+
 interface FailedImageRef {
   error: string
   sourceLabel: string
@@ -48,35 +70,6 @@ interface FailedImageRef {
 interface LoadedImageRef {
   dataUrl: string
   sourceLabel: string
-}
-
-interface OpenRouterChatChoice {
-  message?: {
-    content?: null | string
-    reasoning?: string
-    reasoning_details?: Array<{ text?: string }>
-  }
-}
-
-interface OpenRouterChatResponse {
-  choices?: OpenRouterChatChoice[]
-  error?: { code?: number; message?: string }
-  id?: string
-  usage?: {
-    completion_tokens?: number
-    cost?: number
-    prompt_tokens?: number
-    prompt_tokens_details?: { cached_tokens?: number }
-    total_tokens?: number
-  }
-}
-
-interface VisionStats {
-  cachedTokens?: number
-  completionTokens?: number
-  cost?: number
-  promptTokens?: number
-  totalTokens?: number
 }
 
 export async function ocrImageInputs(
@@ -89,17 +82,6 @@ export async function ocrImageInputs(
     return {
       imagesAnalyzed: 0,
       ok: true,
-      text: '',
-      usage: null,
-    }
-  }
-
-  if (!config.openrouter.apiKey) {
-    return {
-      imagesAnalyzed: 0,
-      ok: false,
-      reason:
-        'OPENROUTER_API_KEY is not set, so images could not be OCR analyzed.',
       text: '',
       usage: null,
     }
@@ -135,7 +117,7 @@ export async function ocrImageInputs(
   }
 
   const response = await fetch(
-    'https://openrouter.ai/api/v1/chat/completions',
+    `${trimTrailingSlash(config.baseten.url)}/chat/completions`,
     {
       body: JSON.stringify({
         max_tokens: 4096,
@@ -157,10 +139,11 @@ export async function ocrImageInputs(
             role: 'user',
           },
         ],
-        model: VISION_MODEL,
+        model: BASETEN_VISION_MODEL,
+        temperature: 0,
       }),
       headers: {
-        Authorization: `Bearer ${config.openrouter.apiKey}`,
+        Authorization: `Bearer ${config.baseten.apiKey}`,
         'Content-Type': 'application/json',
       },
       method: 'POST',
@@ -172,18 +155,18 @@ export async function ocrImageInputs(
     return {
       imagesAnalyzed: imageRefs.length,
       ok: false,
-      reason: `OpenRouter vision error (${response.status}): ${text.slice(0, 200)}`,
+      reason: `Baseten vision error (${response.status}): ${text.slice(0, 200)}`,
       text: '',
       usage: null,
     }
   }
 
-  const json = (await response.json()) as OpenRouterChatResponse
+  const json = (await response.json()) as BasetenChatResponse
   if (json.error) {
     return {
       imagesAnalyzed: imageRefs.length,
       ok: false,
-      reason: `OpenRouter vision error (${json.error.code ?? 'unknown'}): ${json.error.message ?? 'Unknown error'}`,
+      reason: `Baseten vision error (${json.error.code ?? 'unknown'}): ${json.error.message ?? 'Unknown error'}`,
       text: '',
       usage: null,
     }
@@ -192,21 +175,17 @@ export async function ocrImageInputs(
   const message = json.choices?.[0]?.message
   const content = extractMessageText(message)
   const usage = json.usage
-  const fallbackStats = await fetchGenerationStats(json.id)
 
   return {
-    cost: typeof usage?.cost === 'number' ? usage.cost : fallbackStats?.cost,
+    cost: extractResponseCost(usage),
     imagesAnalyzed: imageRefs.length,
     ok: true,
     text: content,
     usage: {
-      cachedTokens:
-        usage?.prompt_tokens_details?.cached_tokens ??
-        fallbackStats?.cachedTokens,
-      completionTokens:
-        usage?.completion_tokens ?? fallbackStats?.completionTokens,
-      promptTokens: usage?.prompt_tokens ?? fallbackStats?.promptTokens,
-      totalTokens: usage?.total_tokens ?? fallbackStats?.totalTokens,
+      cachedTokens: usage?.prompt_tokens_details?.cached_tokens,
+      completionTokens: usage?.completion_tokens,
+      promptTokens: usage?.prompt_tokens,
+      totalTokens: usage?.total_tokens,
     },
   }
 }
@@ -247,7 +226,7 @@ function detectMediaType(buffer: Buffer): string | undefined {
   return undefined
 }
 
-function extractMessageText(message: OpenRouterChatChoice['message']): string {
+function extractMessageText(message: BasetenChatChoice['message']): string {
   if (typeof message?.content === 'string' && message.content.trim()) {
     return message.content
   }
@@ -261,7 +240,13 @@ function extractMessageText(message: OpenRouterChatChoice['message']): string {
   return reasoning ?? ''
 }
 
-/** Fetch an image and return a base64 data URL suitable for OpenRouter. */
+function extractResponseCost(
+  usage: BasetenChatResponse['usage'],
+): number | undefined {
+  return numberFrom(usage?.cost, usage?.total_cost, usage?.estimated_cost)
+}
+
+/** Fetch an image and return a base64 data URL suitable for Baseten vision. */
 async function fetchAsDataUrl(url: string): Promise<string> {
   const response = await fetch(url)
   if (!response.ok) {
@@ -279,52 +264,6 @@ async function fetchAsDataUrl(url: string): Promise<string> {
     throw new Error(`URL is not a supported image: ${url}`)
   }
   return dataUrlFromBuffer(buffer, mediaType)
-}
-
-async function fetchGenerationStats(
-  generationId: string | undefined,
-): Promise<undefined | VisionStats> {
-  if (!generationId) return undefined
-  await new Promise((resolve) => setTimeout(resolve, 500))
-
-  const response = await fetch(
-    `https://openrouter.ai/api/v1/generation?id=${encodeURIComponent(generationId)}`,
-    {
-      headers: {
-        Authorization: `Bearer ${config.openrouter.apiKey}`,
-      },
-      method: 'GET',
-    },
-  )
-
-  if (!response.ok) return undefined
-  const json = (await response.json()) as { data?: Record<string, unknown> }
-  const data = json.data
-  if (!data) return undefined
-
-  const promptTokens = numberFrom(
-    data.native_tokens_prompt,
-    data.tokens_prompt,
-    data.prompt_tokens,
-  )
-  const completionTokens = numberFrom(
-    data.native_tokens_completion,
-    data.tokens_completion,
-    data.completion_tokens,
-  )
-  const cachedTokens = numberFrom(
-    data.cache_read_input_tokens,
-    data.cached_prompt_tokens,
-  )
-  const totalTokens = numberFrom(data.total_tokens)
-
-  return {
-    cachedTokens,
-    completionTokens,
-    cost: numberFrom(data.total_cost, data.cost),
-    promptTokens,
-    totalTokens: totalTokens ?? sumDefined(promptTokens, completionTokens),
-  }
 }
 
 function isSupportedImageMediaType(mediaType: string): boolean {
@@ -402,14 +341,6 @@ function sourceLabelForInput(input: ImageOcrInput): string {
   return 'Uploaded image'
 }
 
-function sumDefined(...values: Array<number | undefined>): number | undefined {
-  const present = values.filter(
-    (value): value is number => typeof value === 'number',
-  )
-  if (!present.length) return undefined
-  return present.reduce((sum, value) => sum + value, 0)
-}
-
 function summarizeFailedImages(
   loadedImages: Array<FailedImageRef | LoadedImageRef>,
 ): string {
@@ -418,4 +349,8 @@ function summarizeFailedImages(
     .slice(0, 3)
     .map((image) => `${image.sourceLabel}: ${image.error}`)
     .join('; ')
+}
+
+function trimTrailingSlash(value: string): string {
+  return value.replace(/\/+$/, '')
 }
