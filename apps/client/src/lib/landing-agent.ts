@@ -25,6 +25,15 @@ export type CostBreakdown = {
 
 export type ErrorEvent = { message: string }
 
+export type HtmlUpdateEvent = {
+  bytes: number
+  hash: string
+  html: string
+  previousHash: string
+  projectId: string
+  sequence: number
+}
+
 export type ImageAttachmentInput = ImageAttachmentMeta & {
   dataUrl: string
 }

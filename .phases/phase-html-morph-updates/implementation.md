@@ -55,10 +55,17 @@ Add route-local HTML hashing/payload helpers and emit `html_update` after succes
 Add the client event type and route `html_update` through `useLandingPage` so normal edit completion no longer fetches the full project. Work in `apps/client/src/lib/landing-agent.ts` and `apps/client/src/hooks/use-landing-page.ts` only for this slice; screenshot requests must keep their independent latest-project fetch.
 
 ### Todo
-- [ ] Add `HtmlUpdateEvent` and update `useLandingPage` to consume it while removing the edit-done refresh.
+- [x] Add `HtmlUpdateEvent` and update `useLandingPage` to consume it while removing the edit-done refresh.
 
 ### Results
-_(fill at end of the sub-phase — what was implemented, commands run, checks passed)_
+- Added `HtmlUpdateEvent` to the client SSE event model.
+- Updated `useLandingPage` to apply same-project `html_update` payloads via `expandProjectImageUrls(update.html)` and `setHtml(...)`.
+- Removed the normal `refreshHtml()` call from edit-done `tool_call` handling; edit-done now only increments `htmlSwaps` and relies on `html_update` for preview HTML state.
+- Checks run:
+  - `pnpm --filter @workspace/client exec oxfmt -c oxfmt.config.ts --check src/lib/landing-agent.ts src/hooks/use-landing-page.ts` — passed.
+  - `pnpm --filter @workspace/client exec oxlint src/lib/landing-agent.ts src/hooks/use-landing-page.ts` — passed.
+  - `pnpm --filter @workspace/client typecheck` — passed.
+  - `pnpm --filter @workspace/client test` — passed (2 files, 7 tests).
 
 ### Gotchas
 - This slice updates React HTML state but Phase 3 is required before iframe updates avoid `srcDoc` reloads in the UI.

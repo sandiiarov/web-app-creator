@@ -4,6 +4,7 @@ import { captureProjectScreenshot } from '../lib/browser-screenshot'
 import {
   LANDING_AGENT_API,
   LANDING_MODEL_OPTIONS,
+  type HtmlUpdateEvent,
   type ImageAttachmentInput,
   type ImageAttachmentMeta,
   type LandingAgentSendInput,
@@ -98,17 +99,6 @@ export function useLandingPage({
     },
     [patchTurn],
   )
-
-  // Pull the latest HTML from the server after an `edit` completes. The agent
-  // writes the project file directly; this is how the preview stays in sync.
-  const refreshHtml = useCallback(async () => {
-    try {
-      const project = await getProject(projectId)
-      setHtml(expandProjectImageUrls(project.indexHtml))
-    } catch {
-      // Swallow — the run's own error reporting handles hard failures.
-    }
-  }, [projectId])
 
   const persistModel = useCallback(
     (nextModel: string) => {
@@ -209,6 +199,13 @@ export function useLandingPage({
                   ...terminalizeActiveTools(turn, message),
                   error: message,
                 }))
+                break
+              }
+              case 'html_update': {
+                const update = data as HtmlUpdateEvent
+                if (update.projectId === projectId) {
+                  setHtml(expandProjectImageUrls(update.html))
+                }
                 break
               }
               case 'retry': {
@@ -326,13 +323,13 @@ export function useLandingPage({
                   }
                   return { ...turn, parts: [...turn.parts, payload] }
                 })
-                // The edit tool writes the project file; pull the new HTML.
+                // The edit tool writes the project file; the server streams
+                // changed HTML separately through `html_update` for the preview.
                 if (payload.tool === 'edit' && payload.state === 'done') {
                   patchTurn(turnId, (turn) => ({
                     ...turn,
                     htmlSwaps: turn.htmlSwaps + 1,
                   }))
-                  void refreshHtml()
                 }
                 break
               }
@@ -367,7 +364,6 @@ export function useLandingPage({
       model,
       patchTurn,
       projectId,
-      refreshHtml,
       respondToScreenshotRequest,
     ],
   )
