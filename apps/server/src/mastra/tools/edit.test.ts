@@ -4,31 +4,98 @@ import { createHtmlStore } from '../lib/html-store.ts'
 import { createEditTool } from './edit.ts'
 
 describe('createEditTool', () => {
-  it('returns diff and patch metadata without returning the full HTML', async () => {
+  it('applies anchor-range edits and returns metadata without full HTML', async () => {
     const store = createHtmlStore('<main>\n  <h1>Hello</h1>\n</main>\n')
     const tool = createEditTool(store)
 
     const result = await tool.execute?.(
       {
-        edits: [{ newText: '<h1>Hi</h1>', oldText: '<h1>Hello</h1>' }],
+        edits: [
+          {
+            operation: 'replace',
+            range: ['a2'],
+            text: '  <h1>Hi</h1>',
+          },
+        ],
         intent: 'Update hero heading',
       },
       undefined as never,
     )
 
-    if (!result || !('diff' in result)) {
+    if (!result || !('changedText' in result)) {
       throw new Error('Expected edit tool to return edit metadata')
     }
 
     expect(store.get()).toContain('<h1>Hi</h1>')
     expect(result).toMatchObject({
+      changedLines: 1,
+      checksum: expect.stringMatching(/^sha256:/),
       firstChangedLine: 2,
       ok: true,
-      replacements: 1,
+      operations: 1,
     })
-    expect(result.diff).toContain('-2   <h1>Hello</h1>')
-    expect(result.diff).toContain('+2   <h1>Hi</h1>')
-    expect(result.patch).toContain('@@ -1,3 +1,3 @@')
+    expect(result.changedText).toContain('a4|  <h1>Hi</h1>')
     expect(result).not.toHaveProperty('html')
+    expect(result).not.toHaveProperty('diff')
+    expect(result).not.toHaveProperty('patch')
+  })
+
+  it('applies multiple edit operations against the original anchors', async () => {
+    const store = createHtmlStore(
+      '<main>\n  <h1>Hello</h1>\n  <p>World</p>\n</main>\n',
+    )
+    const tool = createEditTool(store)
+
+    await tool.execute?.(
+      {
+        edits: [
+          {
+            operation: 'replace',
+            range: ['a2'],
+            text: '  <h1>Hi</h1>',
+          },
+          {
+            operation: 'insert_after',
+            range: ['a3'],
+            text: '  <a href="#cta">Start</a>',
+          },
+        ],
+        intent: 'Update hero copy and CTA',
+      },
+      undefined as never,
+    )
+
+    expect(store.get()).toBe(
+      '<main>\n  <h1>Hi</h1>\n  <p>World</p>\n  <a href="#cta">Start</a>\n</main>\n',
+    )
+    expect(store.getDocument().lines).toEqual([
+      ['a1', '<main>'],
+      ['a5', '  <h1>Hi</h1>'],
+      ['a3', '  <p>World</p>'],
+      ['a6', '  <a href="#cta">Start</a>'],
+      ['a4', '</main>'],
+    ])
+  })
+
+  it('rejects stale anchors without mutating the store', async () => {
+    const store = createHtmlStore('<main>\n  <h1>Hello</h1>\n</main>\n')
+    const tool = createEditTool(store)
+
+    await expect(
+      tool.execute?.(
+        {
+          edits: [
+            {
+              operation: 'replace',
+              range: ['missing'],
+              text: '  <h1>Hi</h1>',
+            },
+          ],
+          intent: 'Try stale edit',
+        },
+        undefined as never,
+      ),
+    ).rejects.toThrow('missing anchor')
+    expect(store.get()).toBe('<main>\n  <h1>Hello</h1>\n</main>\n')
   })
 })

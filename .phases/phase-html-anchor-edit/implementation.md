@@ -151,13 +151,22 @@ Files: `apps/server/src/mastra/tools/edit.ts`, `apps/server/src/mastra/tools/edi
 Acceptance criteria: `edit` accepts `{ operation, range, text }` batches, resolves all ranges against the original document, applies atomically, returns concise metadata without full HTML, and successful changes still trigger `html_update`.
 
 ### Todo
-- [ ] Integrate anchor-range edit tool and verify focused tests.
+- [x] Integrate anchor-range edit tool and verify focused tests.
 
 ### Results
-_(fill at end of the sub-phase — what was implemented, commands run, checks passed)_
+Replaced `apps/server/src/mastra/tools/edit.ts` with the anchored operation/range schema: `edits: [{ operation, range, text }]` using `replace`, `delete`, `insert_before`, and `insert_after`. The tool applies batches through `applyAnchorEdits()`, persists via `store.setDocument()`, and returns concise metadata plus bounded compact `changedText` without full HTML/diff/patch payloads.
+
+Updated `apps/server/src/mastra/tools/edit.test.ts` for anchor-range replacement, multi-operation batches resolved against original anchors, fresh anchors for changed lines, and stale-anchor rejection without mutation. Updated landing tool guidance to describe the new edit schema.
+
+Checks passed from repo root:
+
+- `pnpm --filter @workspace/server test -- edit.test.ts route.test.ts html-anchor-document.test.ts`
+- `pnpm --filter @workspace/server typecheck`
+- `pnpm --filter @workspace/server lint`
+- `pnpm --filter @workspace/server format:check`
 
 ### Gotchas
-_(fill at end of the sub-phase, if any)_
+- `edit` no longer accepts public `oldText`/`newText` replacements; callers must use anchors returned by `read` or `find`.
 
 ## Phase 6: Update Contracts and Run Focused Checks
 
