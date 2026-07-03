@@ -78,7 +78,7 @@ Add Idiomorph to the client and make the preview iframe morph routine HTML prop 
 ### Todo
 - [x] Add Idiomorph to the catalog, client package, lockfile, and local type declarations.
 - [x] Add preview morph helpers and string-only tests for base preservation and script-change reload detection.
-- [ ] Update `LandingPreview` to keep stable `srcDoc` state and apply routine updates with Idiomorph.
+- [x] Update `LandingPreview` to keep stable `srcDoc` state and apply routine updates with Idiomorph.
 
 ### Results
 - Added `idiomorph` to the root catalog, `@workspace/client` dependencies, and `pnpm-lock.yaml`.
@@ -95,6 +95,14 @@ Add Idiomorph to the client and make the preview iframe morph routine HTML prop 
   - `pnpm --filter @workspace/client exec oxlint src/lib/preview-morph.ts src/components/landing-preview.test.ts` — passed.
   - `pnpm --filter @workspace/client test` — passed (2 files, 9 tests).
   - `pnpm --filter @workspace/client typecheck` — passed.
+- Updated `LandingPreview` to keep local `srcDoc` state for initial load/fallback reloads while routine `html` prop changes morph `iframe.contentDocument.documentElement` with Idiomorph.
+- Preserved empty-state rendering, the existing sandbox flags, and script-change fallback reload behavior.
+- Final Phase 3 checks run:
+  - `pnpm --filter @workspace/client exec oxfmt -c oxfmt.config.ts --check src/components/landing-preview.tsx src/lib/preview-morph.ts src/components/landing-preview.test.ts` — passed.
+  - `pnpm --filter @workspace/client exec oxlint src/components/landing-preview.tsx src/lib/preview-morph.ts src/components/landing-preview.test.ts` — passed.
+  - `pnpm --filter @workspace/client test` — passed (2 files, 9 tests).
+  - `pnpm --filter @workspace/client typecheck` — passed.
+  - `pnpm --filter @workspace/client build` — passed with the existing Node `DEP0205` and Vite chunk-size warnings.
 
 ### Gotchas
 - If React renders the raw `html` prop into `srcDoc`, the iframe will still reload. The component must render stable local `srcDoc` state.

@@ -1,4 +1,10 @@
-import { preparePreviewSrcDoc } from '../lib/preview-srcdoc'
+import { useEffect, useRef, useState } from 'react'
+
+import {
+  morphPreviewDocument,
+  preparePreviewMorphHtml,
+  shouldReloadForScriptChange,
+} from '../lib/preview-morph'
 
 export type LandingPreviewProps = {
   html: string
@@ -6,6 +12,47 @@ export type LandingPreviewProps = {
 }
 
 export function LandingPreview({ html }: LandingPreviewProps) {
+  const iframeRef = useRef<HTMLIFrameElement>(null)
+  const lastAppliedHtmlRef = useRef('')
+  const [srcDoc, setSrcDoc] = useState('')
+
+  useEffect(() => {
+    if (!html.trim()) {
+      lastAppliedHtmlRef.current = ''
+      setSrcDoc('')
+      return
+    }
+
+    function reloadPreview() {
+      lastAppliedHtmlRef.current = html
+      setSrcDoc(preparePreviewMorphHtml(html))
+    }
+
+    const previousHtml = lastAppliedHtmlRef.current
+    if (!previousHtml) {
+      reloadPreview()
+      return
+    }
+    if (previousHtml === html) return
+
+    const doc = iframeRef.current?.contentDocument
+    if (
+      !doc?.documentElement ||
+      doc.readyState === 'loading' ||
+      shouldReloadForScriptChange(previousHtml, html)
+    ) {
+      reloadPreview()
+      return
+    }
+
+    try {
+      morphPreviewDocument(doc, html)
+      lastAppliedHtmlRef.current = html
+    } catch {
+      reloadPreview()
+    }
+  }, [html])
+
   if (!html.trim()) {
     return <LandingEmptyState />
   }
@@ -13,9 +60,10 @@ export function LandingPreview({ html }: LandingPreviewProps) {
   return (
     <iframe
       className="h-svh w-screen border-0"
+      ref={iframeRef}
       referrerPolicy="no-referrer"
       sandbox="allow-forms allow-modals allow-popups allow-same-origin allow-scripts"
-      srcDoc={preparePreviewSrcDoc(html)}
+      srcDoc={srcDoc}
       title="Landing page preview"
     />
   )
