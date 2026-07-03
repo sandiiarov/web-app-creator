@@ -76,12 +76,17 @@ Add the client event type and route `html_update` through `useLandingPage` so no
 Add Idiomorph to the client and make the preview iframe morph routine HTML prop changes in place. Work in `pnpm-workspace.yaml`, `pnpm-lock.yaml`, `apps/client/package.json`, `apps/client/src/types/idiomorph.d.ts`, `apps/client/src/lib/preview-morph.ts`, `apps/client/src/components/landing-preview.tsx`, and `apps/client/src/components/landing-preview.test.ts`.
 
 ### Todo
-- [ ] Add Idiomorph to the catalog, client package, lockfile, and local type declarations.
+- [x] Add Idiomorph to the catalog, client package, lockfile, and local type declarations.
 - [ ] Add preview morph helpers and string-only tests for base preservation and script-change reload detection.
 - [ ] Update `LandingPreview` to keep stable `srcDoc` state and apply routine updates with Idiomorph.
 
 ### Results
-_(fill at end of the sub-phase — what was implemented, commands run, checks passed)_
+- Added `idiomorph` to the root catalog, `@workspace/client` dependencies, and `pnpm-lock.yaml`.
+- Added `apps/client/src/types/idiomorph.d.ts` for the named `Idiomorph` ESM export used by the client.
+- Checks run:
+  - `pnpm install --lockfile-only` — passed.
+  - `pnpm install` — passed.
+  - `pnpm --filter @workspace/client typecheck` — passed.
 
 ### Gotchas
 - If React renders the raw `html` prop into `srcDoc`, the iframe will still reload. The component must render stable local `srcDoc` state.
