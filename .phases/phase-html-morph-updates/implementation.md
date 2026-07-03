@@ -114,11 +114,14 @@ Add Idiomorph to the client and make the preview iframe morph routine HTML prop 
 Update durable contracts after behavior changes and run focused verification before moving to `verification.md`. Work in `apps/client/AGENTS.md`, `apps/server/AGENTS.md`, `apps/server/src/mastra/AGENTS.md`, and this phase file.
 
 ### Todo
-- [ ] Update client/server/Mastra DOX for `html_update` and morph preview behavior.
+- [x] Update client/server/Mastra DOX for `html_update` and morph preview behavior.
 - [ ] Run focused client/server checks and record results in this file.
 
 ### Results
-_(fill at end of the sub-phase — what was implemented, commands run, checks passed)_
+- Updated `apps/client/AGENTS.md` for `html_update`, live Idiomorph preview morphing, and continued server-owned HTML/no client PUT behavior.
+- Updated `apps/server/AGENTS.md` for the `html_update` SSE payload and canonical project REST read path.
+- Updated `apps/server/src/mastra/AGENTS.md` for route-level `html_update` emission from the write-through store and non-persistence of HTML payloads in message turns.
+- Stale contract search: `grep` for old no-HTML/pull-after-edit wording in `**/AGENTS.md` found no matches.
 
 ### Gotchas
 _(fill at end of the sub-phase, if any)_
