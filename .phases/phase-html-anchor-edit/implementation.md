@@ -194,3 +194,30 @@ Focused server checks passed from repo root:
 
 ### Gotchas
 - Legacy `grep` and text-replacement edit helpers remain in source for old helper tests/internal compatibility, but the landing tool registry no longer exposes `grep` and the public edit tool no longer accepts `oldText`/`newText`.
+
+## Phase 7: Fix Changed Anchor Metadata
+
+### Description
+Verification found that `applyAnchorEdits()` reports `firstChangedAnchor`/`lastChangedAnchor` from the bounded context region rather than the actual changed line(s). Fix metadata to point at the actual changed/inserted/replaced line range, and cover it with tests.
+
+Files: `apps/server/src/mastra/lib/html-anchor-document.ts`, `apps/server/src/mastra/lib/html-anchor-document.test.ts`, `apps/server/src/mastra/tools/edit.test.ts`.
+
+Acceptance criteria: edit metadata reports actual changed anchors; changedText may still include context; focused server checks pass.
+
+### Todo
+- [x] Correct changed anchor metadata and verify focused tests.
+
+### Results
+Updated `apps/server/src/mastra/lib/html-anchor-document.ts` so `firstChangedAnchor` and `lastChangedAnchor` are derived from actual inserted/replaced/deleted-result line positions, not the bounded `changedText` context region.
+
+Expanded `apps/server/src/mastra/lib/html-anchor-document.test.ts` and `apps/server/src/mastra/tools/edit.test.ts` to assert actual changed anchors for replacements, insertions, and whole-document replacement.
+
+Checks passed from repo root:
+
+- `pnpm --filter @workspace/server test -- html-anchor-document.test.ts edit.test.ts`
+- `pnpm --filter @workspace/server typecheck`
+- `pnpm --filter @workspace/server lint`
+- `pnpm --filter @workspace/server format:check`
+
+### Gotchas
+- `changedText` still intentionally includes surrounding context; only `firstChangedAnchor`/`lastChangedAnchor` now identify the actual changed anchor span.

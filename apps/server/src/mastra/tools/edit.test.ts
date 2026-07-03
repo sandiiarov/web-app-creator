@@ -30,7 +30,9 @@ describe('createEditTool', () => {
     expect(result).toMatchObject({
       changedLines: 1,
       checksum: expect.stringMatching(/^sha256:/),
+      firstChangedAnchor: 'a4',
       firstChangedLine: 2,
+      lastChangedAnchor: 'a4',
       ok: true,
       operations: 1,
     })

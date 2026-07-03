@@ -113,7 +113,11 @@ export function applyAnchorEdits(
     throw new Error('No changes made. The edits produced identical HTML.')
   }
 
-  const changedRegion = getChangedRegion(nextDocument, compiledEdits)
+  const changedRegion = getChangedRegion(
+    baseDocument,
+    nextDocument,
+    compiledEdits,
+  )
 
   return {
     bytes: Buffer.byteLength(html, 'utf8'),
@@ -531,7 +535,66 @@ function editTextHasFinalNewline(edit: { sourceText?: string }): boolean {
   )
 }
 
+function getChangedIndexes(
+  baseDocument: HtmlDocumentJsonV1,
+  document: HtmlDocumentJsonV1,
+  edits: CompiledEdit[],
+): number[] {
+  const changedIndexes: number[] = []
+  const mutationsByStart = new Map<number, CompiledEdit>()
+  const insertionsByPosition = new Map<number, CompiledEdit[]>()
+
+  for (const edit of edits) {
+    if (edit.kind === 'insert') {
+      const insertions = insertionsByPosition.get(edit.insertPosition) ?? []
+      insertions.push(edit)
+      insertionsByPosition.set(edit.insertPosition, insertions)
+    } else {
+      mutationsByStart.set(edit.startIndex, edit)
+    }
+  }
+
+  function markInsertion(position: number, nextIndex: number): number {
+    let index = nextIndex
+    for (const insertion of insertionsByPosition.get(position) ?? []) {
+      for (let offset = 0; offset < insertion.lines.length; offset++) {
+        changedIndexes.push(index + offset)
+      }
+      index += insertion.lines.length
+    }
+    return index
+  }
+
+  let oldIndex = 0
+  let newIndex = 0
+  while (oldIndex < baseDocument.lines.length) {
+    newIndex = markInsertion(oldIndex, newIndex)
+    const mutation = mutationsByStart.get(oldIndex)
+    if (mutation) {
+      if (mutation.operation === 'replace') {
+        for (let offset = 0; offset < mutation.lines.length; offset++) {
+          changedIndexes.push(newIndex + offset)
+        }
+        newIndex += mutation.lines.length
+      } else if (document.lines.length > 0) {
+        changedIndexes.push(Math.min(newIndex, document.lines.length - 1))
+      }
+      oldIndex = mutation.endExclusive
+      continue
+    }
+
+    oldIndex += 1
+    newIndex += 1
+  }
+  markInsertion(baseDocument.lines.length, newIndex)
+
+  return [...new Set(changedIndexes)]
+    .filter((index) => index >= 0 && index < document.lines.length)
+    .sort((a, b) => a - b)
+}
+
 function getChangedRegion(
+  baseDocument: HtmlDocumentJsonV1,
   document: HtmlDocumentJsonV1,
   edits: CompiledEdit[],
 ): {
@@ -540,23 +603,18 @@ function getChangedRegion(
   lastChangedAnchor?: string
   text: string
 } {
-  const firstIndex = Math.max(
-    0,
-    Math.min(
-      ...edits.map((edit) =>
-        edit.kind === 'insert' ? edit.insertPosition : edit.startIndex,
-      ),
-    ),
-  )
+  const changedIndexes = getChangedIndexes(baseDocument, document, edits)
+  const firstIndex = changedIndexes[0] ?? 0
+  const lastIndex = changedIndexes[changedIndexes.length - 1] ?? firstIndex
   const startIndex = Math.max(0, firstIndex - 2)
   const endIndex = Math.min(document.lines.length, firstIndex + 8)
   const lines = document.lines.slice(startIndex, endIndex)
   const formatted = formatCompactLines(lines)
 
   return {
-    firstChangedAnchor: lines[0]?.[0],
-    firstChangedLine: Math.min(firstIndex + 1, document.lines.length + 1),
-    lastChangedAnchor: lines[lines.length - 1]?.[0],
+    firstChangedAnchor: document.lines[firstIndex]?.[0],
+    firstChangedLine: document.lines.length === 0 ? 1 : firstIndex + 1,
+    lastChangedAnchor: document.lines[lastIndex]?.[0],
     text: formatted.text,
   }
 }

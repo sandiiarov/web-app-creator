@@ -103,6 +103,11 @@ describe('html-anchor-document', () => {
       ['a6', '  <a href="#cta">Start</a>'],
       ['a4', '</main>'],
     ])
+    expect(result).toMatchObject({
+      firstChangedAnchor: 'a5',
+      firstChangedLine: 2,
+      lastChangedAnchor: 'a6',
+    })
     expect(document.lines).toEqual([
       ['a1', '<main>'],
       ['a2', '  <h1>Hello</h1>'],
@@ -129,6 +134,11 @@ describe('html-anchor-document', () => {
       ['a2', '<!doctype html>'],
       ['a3', '<html></html>'],
     ])
+    expect(result).toMatchObject({
+      firstChangedAnchor: 'a2',
+      firstChangedLine: 1,
+      lastChangedAnchor: 'a3',
+    })
   })
 
   it('rejects missing anchors, overlapping ranges, and no-op edits atomically', () => {
