@@ -70,7 +70,36 @@ Inspect committed morph changes plus the current worktree for requirement mismat
 - Debug/TODO search found existing console logs in `mastra-smoke.ts`/server startup and test `stub*` helpers, but no morph debug logs, `debugger`, or TODO/FIXME left in morph implementation files.
 - Current dirty worktree after morph commits contains pre-existing screenshot-selector/viewport changes in client/server files and AGENTS docs plus this verification file before commit; these are not part of the morph deliverable and were intentionally kept unstaged from morph commits.
 
-Final decision: no proven morph bug found; verification complete.
+Superseded decision: this pass missed the real browser behavior. After the user reported the iframe still refreshed, a browser E2E in Phase 3 proved a real bug and looped back to implementation Phase 5.
 
 ### Gotchas
 - Worktree is intentionally not clean because unrelated screenshot tool changes predated this morph implementation and remain unstaged.
+
+## Phase 3: Browser E2E regression for iframe reloads
+
+### Description
+Verify the actual iframe behavior in a live browser after the user reported that the frame still refreshed. Acceptance criteria: a mocked `html_update` changes the iframe DOM while preserving the existing iframe document/window and without changing the iframe `srcDoc` attribute.
+
+### Todo
+- [x] Reproduce the reported iframe refresh in a live browser.
+- [x] Verify the post-fix markup-only `html_update` path preserves the iframe document.
+- [x] Verify the post-fix script-changing `html_update` path reruns scripts without refreshing the frame.
+- [x] Re-run focused client checks and `git diff --check`.
+
+### Results
+- Live E2E harness: Vite client at `http://127.0.0.1:4522` against a mock SSE/project API at `http://127.0.0.1:4311`, driven with `agent-browser`.
+- Reproduction before fix: markup-only `html_update` changed visible iframe content but produced `loads: 1`, `sameDoc: false`, and `srcdocHasMorphed: true`; this proved the frame was refreshed by replacing `srcDoc`.
+- Root cause proven by browser probe: importing Idiomorph in the parent page and morphing iframe nodes threw `TypeError: newContent is not iterable` inside Idiomorph `normalizeParent`, consistent with parent-realm `instanceof Node` checks failing for same-origin iframe nodes. The component caught that error and fell back to `setSrcDoc(...)`.
+- Post-fix markup-only E2E: after `html_update`, the result was `h1: "Morphed hero"`, `loads: 0`, `sameDoc: true`, `sentinel: "keep"`, `srcdocHasInitial: true`, and `srcdocHasMorphed: false`. The iframe content morphed while preserving the old document/window and unchanged initial `srcDoc` attribute.
+- Post-fix script-changing E2E: after `html_update`, the result was `h1: "Script changed hero"`, `boots: 2`, `scriptVersion: 2`, `loads: 0`, `sameDoc: true`, `sentinel: "keep-script"`, and `srcdocHasScriptChanged: false`. Scripts reran inside the existing iframe document without a frame refresh.
+- Focused checks run after the fix:
+  - `pnpm --filter @workspace/client format:check` — passed.
+  - `pnpm --filter @workspace/client lint` — passed with existing `react-refresh(only-export-components)` and Node `DEP0205` warnings.
+  - `pnpm --filter @workspace/client test` — passed (2 files, 9 tests).
+  - `pnpm --filter @workspace/client typecheck` — passed.
+  - `pnpm --filter @workspace/client build` — passed with existing Node `DEP0205` and Vite chunk-size warnings.
+  - `git diff --check` — passed.
+
+### Gotchas
+- This behavior needs browser E2E coverage because focused unit/type/build checks can pass while the iframe refreshes: the visible HTML still updates, but document identity/window state is lost.
+- Keep direct morph code realm-safe for iframe nodes; avoid parent-window `instanceof Node`/`Element` checks against iframe DOM nodes.
