@@ -92,6 +92,8 @@ export type {
   ImageAttachmentMeta,
   LandingAgentSendInput,
   LandingModelOption,
+  LandingModelRole,
+  LandingModels,
   LandingTurn,
   PromptAttachmentInput,
   PromptAttachmentMeta,
@@ -110,10 +112,14 @@ export type {
 export type { ImageCost, ScrapeCost } from '@workspace/prompt-panel'
 
 export {
+  DEFAULT_LANDING_MODELS,
   formatCost,
   formatDuration,
   formatRetryDelay,
   formatTokenCount,
   formatTokenUsage,
+  LANDING_IMAGE_MODEL_OPTIONS,
   LANDING_MODEL_OPTIONS,
+  LANDING_VISION_MODEL_OPTIONS,
+  resolveLandingModels,
 } from '@workspace/prompt-panel'

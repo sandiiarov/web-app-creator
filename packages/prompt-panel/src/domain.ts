@@ -5,15 +5,63 @@
 // URL, wire event payloads) lives in the consuming app; this module must not
 // reference app code or `import.meta.env`.
 
+export interface LandingModelGroup {
+  options: LandingModelOption[]
+  role: LandingModelRole
+  title: string
+}
+
 export type LandingModelOption = {
   id: string
   label: string
 }
 
-export const LANDING_MODEL_OPTIONS: LandingModelOption[] = [
-  { id: 'zai-org/GLM-5.2', label: 'GLM 5.2' },
-  { id: 'moonshotai/Kimi-K2.7-Code', label: 'Kimi K2.7 Code' },
+export type LandingModelRole = 'image' | 'text' | 'vision'
+
+// All model ids are OpenRouter slugs, verified live against the OpenRouter API.
+export const TEXT_MODEL_OPTIONS: LandingModelOption[] = [
+  { id: 'z-ai/glm-5.2', label: 'GLM 5.2' },
+  { id: 'moonshotai/kimi-k2.7-code', label: 'Kimi K2.7 Code' },
+  { id: 'deepseek/deepseek-v4-pro', label: 'DeepSeek V4 Pro' },
+  { id: 'nvidia/nemotron-3-ultra-550b-a55b', label: 'Nemotron Ultra' },
 ]
+
+export const IMAGE_MODEL_OPTIONS: LandingModelOption[] = [
+  { id: 'bytedance-seed/seedream-4.5', label: 'Seedream 4.5' },
+  { id: 'google/gemini-3.1-flash-lite-image', label: 'Gemini 3.1 Flash Lite' },
+  { id: 'openai/gpt-image-2', label: 'GPT Image 2' },
+  { id: 'x-ai/grok-imagine-image-quality', label: 'Grok Imagine' },
+]
+
+export const VISION_MODEL_OPTIONS: LandingModelOption[] = [
+  { id: 'moonshotai/kimi-k2.7-code', label: 'Kimi K2.7 Code' },
+  { id: 'minimax/minimax-m3', label: 'MiniMax M3' },
+  { id: 'xiaomi/mimo-v2.5', label: 'MiMo V2.5' },
+]
+
+export const LANDING_MODEL_GROUPS: LandingModelGroup[] = [
+  { options: TEXT_MODEL_OPTIONS, role: 'text', title: 'Text (agent brain)' },
+  { options: IMAGE_MODEL_OPTIONS, role: 'image', title: 'Image (generation)' },
+  { options: VISION_MODEL_OPTIONS, role: 'vision', title: 'Vision (OCR)' },
+]
+
+// Backward-compatible aliases for the text model list.
+export const LANDING_MODEL_OPTIONS = TEXT_MODEL_OPTIONS
+export const LANDING_IMAGE_MODEL_OPTIONS = IMAGE_MODEL_OPTIONS
+export const LANDING_VISION_MODEL_OPTIONS = VISION_MODEL_OPTIONS
+
+/** Per-category model selection for a project (text + vision + image). */
+export type LandingModels = {
+  image: string
+  text: string
+  vision: string
+}
+
+export const DEFAULT_LANDING_MODELS: LandingModels = {
+  image: IMAGE_MODEL_OPTIONS[0]!.id,
+  text: TEXT_MODEL_OPTIONS[0]!.id,
+  vision: VISION_MODEL_OPTIONS[0]!.id,
+}
 
 // ── Attachments ───────────────────────────────────────────────────
 
@@ -202,4 +250,21 @@ export function formatTokenCount(tokens: number | undefined) {
 export function formatTokenUsage(usage: TokenUsage | undefined) {
   if (!usage) return null
   return formatTokenCount(usage.totalTokens)
+}
+
+/**
+ * Build a complete `LandingModels` from a partial persisted selection,
+ * falling back to the defaults for any missing/blank category. Used when
+ * restoring a project whose metadata only carried a subset of the categories.
+ */
+export function resolveLandingModels(input: {
+  image?: string
+  text?: string
+  vision?: string
+}): LandingModels {
+  return {
+    image: input.image?.trim() || DEFAULT_LANDING_MODELS.image,
+    text: input.text?.trim() || DEFAULT_LANDING_MODELS.text,
+    vision: input.vision?.trim() || DEFAULT_LANDING_MODELS.vision,
+  }
 }
