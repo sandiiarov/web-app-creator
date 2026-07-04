@@ -12,6 +12,7 @@ import { BenchmarkControls } from './components/benchmark-controls'
 import { ReportView } from './components/report-view'
 import { ResultCard } from './components/result-card'
 import { RunDetailDialog } from './components/run-detail-dialog'
+import { ThemeToggle } from './components/theme-toggle'
 import { useBenchmark } from './hooks/use-benchmark'
 import type { BenchmarkModel, BenchmarkPrompt, RunResult } from './lib/types'
 
@@ -41,7 +42,7 @@ export function App() {
   }, [benchmark.progress.completed, benchmark.progress.total])
 
   return (
-    <div className="grid min-h-svh bg-background text-foreground lg:grid-cols-[22rem_1fr]">
+    <div className="grid min-h-svh bg-background text-foreground lg:h-svh lg:grid-cols-[22rem_1fr] lg:overflow-hidden">
       <BenchmarkControls
         concurrency={concurrency}
         isRunning={benchmark.isRunning}
@@ -67,7 +68,7 @@ export function App() {
         onStop={benchmark.stop}
         prompts={prompts}
       />
-      <main className="flex min-h-svh min-w-0 flex-col">
+      <main className="flex min-h-svh min-w-0 flex-col lg:h-svh lg:min-h-0 lg:overflow-hidden">
         <header className="flex flex-wrap items-center justify-between gap-3 border-b p-4">
           <div className="flex min-w-0 flex-col gap-1">
             <div className="flex flex-wrap items-center gap-2">
@@ -86,10 +87,11 @@ export function App() {
               />
             </div>
           </div>
-          <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+          <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
             <Badge variant="secondary">{prompts.length} prompts</Badge>
             <Badge variant="secondary">{models.length} models</Badge>
             <Badge variant="outline">Concurrency {concurrency}</Badge>
+            <ThemeToggle />
           </div>
         </header>
         <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-auto p-4">

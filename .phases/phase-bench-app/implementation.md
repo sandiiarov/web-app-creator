@@ -103,3 +103,31 @@ Files: `apps/benchmark/AGENTS.md`, `apps/AGENTS.md` Child DOX Index, `pnpm-lock.
 
 ### Gotchas
 - Did not click `Run benchmark` during the browser smoke test because the real server was running on `localhost:3001`; clicking it would start live OpenRouter calls.
+
+## Phase 6: Visual QA fixes for running report and detail dialog
+
+### Description
+Files: `apps/benchmark/src/App.tsx`, `apps/benchmark/src/components/report-view.tsx`, `run-detail-dialog.tsx`, `theme-toggle.tsx`, and `apps/benchmark/AGENTS.md`. Fix issues caught from actual screenshots: unfinished runs displayed fake report averages (`0ms`, `$0`, score `0`) and detail dialog tool calls collapsed into a skinny unreadable column. Add the requested fixed header/footer + scrollable content behavior and a benchmark-local theme toggle.
+
+### Todo
+- [x] Make report rows state-aware so unfinished runs show `—` for score/averages until terminal data exists
+- [x] Rebuild the detail dialog as a wide overflow-safe layout with fixed header/footer and scrollable content panes
+- [x] Keep the benchmark app shell fixed at desktop size so the top header and sidebar footer stay visible while content scrolls
+- [x] Add a benchmark-local light/dark theme toggle stored under `benchmark-theme`
+- [x] Verify with headed `agent-browser` screenshots of running, detail, light, and dark states
+- [x] Run focused benchmark `format:check`, `typecheck`, `lint`, and `build`
+
+### Results
+- Report table now includes a State column and suppresses fake score/average metrics until a model has terminal run data.
+- Detail dialog now explicitly overrides the shared dialog `sm:max-w-sm`, uses `92vw`/`72rem` width, removes the problematic full-dialog `ScrollArea`, fixes header/metrics/footer rows, and makes the middle content panes scrollable.
+- Desktop app shell now uses fixed-height overflow containment so the top run header and sidebar run footer stay visible while the main/sidebar content scrolls.
+- Added `ThemeToggle`, an app-local light/dark toggle persisted in `localStorage` under `benchmark-theme`; no production client theme code is imported.
+- Headed `agent-browser` visual verification captured:
+  - `/Users/alexsandiiarov/.pi/agent/sessions/web-app-creator/pi-session-scripts/visual-qa/benchmark-running-fixed.png`
+  - `/Users/alexsandiiarov/.pi/agent/sessions/web-app-creator/pi-session-scripts/visual-qa/benchmark-detail-wide-fixed.png`
+  - `/Users/alexsandiiarov/.pi/agent/sessions/web-app-creator/pi-session-scripts/visual-qa/benchmark-header-toggle-light.png`
+  - `/Users/alexsandiiarov/.pi/agent/sessions/web-app-creator/pi-session-scripts/visual-qa/benchmark-header-toggle-light-after-click.png`
+- Focused benchmark gates passed: `format:check`, `typecheck`, `lint` (`0` errors), and `build`.
+
+### Gotchas
+- `agent-browser click` did not trigger the run/stop buttons reliably in this app state, but `focus` + `Enter` did. Visual verification used the keyboard path for Run/Stop.

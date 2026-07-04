@@ -12,24 +12,26 @@ export interface ReportViewProps {
   results: RunResult[]
 }
 
+type AggregateState = 'complete' | 'queued' | 'running' | 'stopped'
+
 interface ModelAggregate {
-  averageCost: number
-  averageDurationMs: number
-  averageMistakes: number
-  averageToolCalls: number
+  averageCost?: number
+  averageDurationMs?: number
+  averageMistakes?: number
   doneRuns: number
   errorRuns: number
+  finishedRuns: number
   modelId: string
   modelLabel: string
   runs: number
-  score: number
+  score?: number
+  state: AggregateState
+  toolCalls: number
 }
 
 export function ReportView({ results }: ReportViewProps) {
   const aggregates = aggregateByModel(results)
-  const completed = results.filter((result) =>
-    ['done', 'error', 'stopped'].includes(result.status),
-  ).length
+  const completed = results.filter(isTerminalStatus).length
 
   if (!results.length) {
     return (
@@ -49,8 +51,8 @@ export function ReportView({ results }: ReportViewProps) {
         <div className="flex flex-col gap-1">
           <h2 className="font-heading text-base font-semibold">Report</h2>
           <p className="text-xs/relaxed text-muted-foreground">
-            Model ranking across {results.length} runs. Lower mistakes and
-            faster successful runs score higher.
+            Live rows show run state first. Score and averages appear only after
+            a model has finished at least one run.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -61,15 +63,16 @@ export function ReportView({ results }: ReportViewProps) {
         </div>
       </div>
       <div className="overflow-x-auto border">
-        <table className="w-full min-w-[42rem] border-collapse text-left text-xs">
+        <table className="w-full min-w-[46rem] border-collapse text-left text-xs">
           <thead className="bg-muted/60 text-muted-foreground">
             <tr>
               <Th>Rank</Th>
               <Th>Model</Th>
+              <Th>State</Th>
               <Th>Score</Th>
               <Th>Done</Th>
               <Th>Errors</Th>
-              <Th>Avg mistakes</Th>
+              <Th>Avg issues</Th>
               <Th>Avg time</Th>
               <Th>Avg cost</Th>
               <Th>Tool calls</Th>
@@ -78,7 +81,7 @@ export function ReportView({ results }: ReportViewProps) {
           <tbody>
             {aggregates.map((aggregate, index) => (
               <tr className="border-t" key={aggregate.modelId}>
-                <Td>#{index + 1}</Td>
+                <Td>{aggregate.score === undefined ? '—' : `#${index + 1}`}</Td>
                 <Td>
                   <div className="flex min-w-0 flex-col gap-0.5">
                     <span className="font-medium">{aggregate.modelLabel}</span>
@@ -87,15 +90,18 @@ export function ReportView({ results }: ReportViewProps) {
                     </span>
                   </div>
                 </Td>
-                <Td>{aggregate.score.toFixed(0)}</Td>
+                <Td>
+                  <AggregateStateBadge state={aggregate.state} />
+                </Td>
+                <Td>{formatOptionalNumber(aggregate.score, 0)}</Td>
                 <Td>
                   {aggregate.doneRuns}/{aggregate.runs}
                 </Td>
                 <Td>{aggregate.errorRuns}</Td>
-                <Td>{aggregate.averageMistakes.toFixed(1)}</Td>
-                <Td>{formatDuration(aggregate.averageDurationMs)}</Td>
-                <Td>{formatCost(aggregate.averageCost)}</Td>
-                <Td>{aggregate.averageToolCalls.toFixed(1)}</Td>
+                <Td>{formatOptionalNumber(aggregate.averageMistakes, 1)}</Td>
+                <Td>{formatOptionalDuration(aggregate.averageDurationMs)}</Td>
+                <Td>{formatOptionalCost(aggregate.averageCost)}</Td>
+                <Td>{aggregate.toolCalls}</Td>
               </tr>
             ))}
           </tbody>
@@ -115,57 +121,112 @@ function aggregateByModel(results: RunResult[]): ModelAggregate[] {
 
   return Array.from(byModel.entries())
     .map(([modelId, modelRuns]) => {
+      const terminalRuns = modelRuns.filter(isTerminalStatus)
       const doneRuns = modelRuns.filter((run) => run.status === 'done').length
       const errorRuns = modelRuns.filter((run) => run.status === 'error').length
-      const averageMistakes = average(
-        modelRuns.map((run) => run.mistakes.length + run.retryCount),
+      const averageMistakes = optionalAverage(
+        terminalRuns.map((run) => run.mistakes.length + run.retryCount),
       )
-      const averageToolCalls = average(
-        modelRuns.map((run) => run.toolCalls.length),
+      const averageCost = optionalAverage(
+        terminalRuns.map((run) => run.stats.cost).filter(isNumber),
       )
-      const averageCost = average(
-        modelRuns.map((run) => run.stats.cost).filter(isNumber),
-      )
-      const averageDurationMs = average(
-        modelRuns
+      const averageDurationMs = optionalAverage(
+        terminalRuns
           .map((run) => run.stats.durationMs ?? durationFromRun(run))
           .filter(isNumber),
       )
-      const score = Math.max(
-        0,
-        doneRuns * 35 -
-          errorRuns * 20 -
-          averageMistakes * 10 -
-          averageDurationMs / 1500 -
-          averageCost * 30,
-      )
+      const score =
+        terminalRuns.length &&
+        averageMistakes !== undefined &&
+        averageDurationMs !== undefined &&
+        averageCost !== undefined
+          ? Math.max(
+              0,
+              doneRuns * 35 -
+                errorRuns * 20 -
+                averageMistakes * 10 -
+                averageDurationMs / 1500 -
+                averageCost * 30,
+            )
+          : undefined
       return {
         averageCost,
         averageDurationMs,
         averageMistakes,
-        averageToolCalls,
         doneRuns,
         errorRuns,
+        finishedRuns: terminalRuns.length,
         modelId,
         modelLabel: modelRuns[0]?.modelLabel ?? modelId,
         runs: modelRuns.length,
         score,
+        state: aggregateState(modelRuns),
+        toolCalls: modelRuns.reduce(
+          (count, run) => count + run.toolCalls.length,
+          0,
+        ),
       }
     })
-    .sort((a, b) => b.score - a.score)
+    .sort((a, b) => {
+      if (a.score === undefined && b.score === undefined) {
+        return a.modelLabel.localeCompare(b.modelLabel)
+      }
+      if (a.score === undefined) return 1
+      if (b.score === undefined) return -1
+      return b.score - a.score
+    })
 }
 
-function average(values: number[]): number {
-  if (!values.length) return 0
-  return values.reduce((sum, value) => sum + value, 0) / values.length
+function aggregateState(runs: RunResult[]): AggregateState {
+  if (runs.some((run) => run.status === 'running')) return 'running'
+  if (runs.every((run) => run.status === 'pending')) return 'queued'
+  if (runs.every((run) => run.status === 'stopped')) return 'stopped'
+  return 'complete'
+}
+
+function AggregateStateBadge({ state }: { state: AggregateState }) {
+  switch (state) {
+    case 'complete':
+      return <Badge variant="secondary">Complete</Badge>
+    case 'queued':
+      return <Badge variant="outline">Queued</Badge>
+    case 'running':
+      return <Badge variant="default">Running</Badge>
+    case 'stopped':
+      return <Badge variant="outline">Stopped</Badge>
+  }
 }
 
 function durationFromRun(run: RunResult): number | undefined {
   return run.finishedAt ? run.finishedAt - run.startedAt : undefined
 }
 
+function formatOptionalCost(value: number | undefined): string {
+  return typeof value === 'number' ? formatCost(value) : '—'
+}
+
+function formatOptionalDuration(value: number | undefined): string {
+  return typeof value === 'number' ? formatDuration(value) : '—'
+}
+
+function formatOptionalNumber(
+  value: number | undefined,
+  fractionDigits: number,
+): string {
+  return typeof value === 'number' ? value.toFixed(fractionDigits) : '—'
+}
+
 function isNumber(value: number | undefined): value is number {
   return typeof value === 'number' && Number.isFinite(value)
+}
+
+function isTerminalStatus(result: RunResult): boolean {
+  return ['done', 'error', 'stopped'].includes(result.status)
+}
+
+function optionalAverage(values: number[]): number | undefined {
+  if (!values.length) return undefined
+  return values.reduce((sum, value) => sum + value, 0) / values.length
 }
 
 function Td({ children }: { children: React.ReactNode }) {

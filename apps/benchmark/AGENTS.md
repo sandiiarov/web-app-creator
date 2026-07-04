@@ -7,7 +7,7 @@
 ## Ownership
 
 - `src/App.tsx`: benchmark shell, live progress, report, card grid, and run-detail dialog wiring.
-- `src/components/`: benchmark-only controls, result cards, detail dialog, and aggregate report UI.
+- `src/components/`: benchmark-only controls, result cards, detail dialog, theme toggle, and aggregate report UI.
 - `src/hooks/use-benchmark.ts`: run orchestration, concurrency pool, abort/stop handling, project creation, and SSE folding.
 - `src/lib/`: server API helpers, SSE transport, result reducer, domain types, and formatting helpers.
 
@@ -18,6 +18,7 @@
 - Each run creates a disposable draft project through `POST /api/projects` and streams one `POST /agent` request with `{ prompt, projectId, textModel }`.
 - `screenshot_request` events are answered with a deterministic error; the benchmark app does not capture browser screenshots for server screenshot tools.
 - Result previews render streamed `html_update` HTML in sandboxed `srcDoc` iframes after expanding project image URLs to absolute server URLs.
+- The benchmark app owns a local light/dark theme toggle stored in `localStorage` under `benchmark-theme`; do not import the production client theme provider.
 
 ## Work Guidance
 
@@ -31,7 +32,7 @@
 - `pnpm --filter @workspace/benchmark lint`
 - `pnpm --filter @workspace/benchmark format:check`
 - `pnpm --filter @workspace/benchmark build`
-- Browser smoke test with `agent-browser` after UI changes: load the Vite app, verify controls render, run/stop affordances are accessible, and no console/runtime errors appear on initial load.
+- Browser smoke test with `agent-browser` after UI changes: load the Vite app, verify controls render, run/stop affordances are accessible, fixed header/footer regions stay visible while content panes scroll, the theme toggle switches light/dark, and no console/runtime errors appear on initial load.
 
 ## Child DOX Index
 
