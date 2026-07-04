@@ -1,6 +1,6 @@
 # Implementation — bench-app
 
-Status: In Progress
+Status: Complete
 Prerequisite: plan.md `Status: Complete`
 
 > **Purpose:** execute the plan one slice at a time. Small increments, commit each todo, run checks after each sub-phase.
@@ -93,13 +93,13 @@ Files: `apps/benchmark/src/components/benchmark-controls.tsx`, `result-card.tsx`
 Files: `apps/benchmark/AGENTS.md`, `apps/AGENTS.md` Child DOX Index, `pnpm-lock.yaml`.
 
 ### Todo
-- [ ] Write `apps/benchmark/AGENTS.md`
-- [ ] Add `apps/benchmark/` to `apps/AGENTS.md` Child DOX Index + ownership line
-- [ ] Run `pnpm install` to finalize lockfile
-- [ ] Full gate: typecheck, lint, format:check, build for `@workspace/benchmark`; confirm server/client untouched
+- [x] Write `apps/benchmark/AGENTS.md`
+- [x] Add `apps/benchmark/` to `apps/AGENTS.md` Child DOX Index + ownership line
+- [x] Run `pnpm install` to finalize lockfile
+- [x] Full gate: typecheck, lint, format:check, build for `@workspace/benchmark`; confirm server/client untouched
 
 ### Results
-_(fill at end of the sub-phase)_
+- Added benchmark app DOX and registered `apps/benchmark/` in `apps/AGENTS.md`. `pnpm install` was already up to date. Focused benchmark gates passed: `typecheck`, `lint`, `format:check`, and `build`. Headed `agent-browser` smoke test loaded `http://localhost:5175/`, verified controls, checked model toggle + concurrency input interactions, and showed no page errors or benchmark console errors beyond normal Vite/React dev messages. Server/client source files had pre-existing uncommitted changes and were not staged for this phase.
 
 ### Gotchas
-_(fill at end of the sub-phase, if any)_
+- Did not click `Run benchmark` during the browser smoke test because the real server was running on `localhost:3001`; clicking it would start live OpenRouter calls.
