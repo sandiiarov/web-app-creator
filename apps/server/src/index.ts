@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url'
 
 import { config } from './config.ts'
 import { readRequestBody } from './http-body.ts'
+import { saveBenchmarkReport } from './mastra/lib/benchmark-report-store.ts'
 import {
   rejectPendingBrowserScreenshot,
   resolvePendingBrowserScreenshot,
@@ -223,6 +224,10 @@ async function routeRequest(
     return
   }
 
+  if (await routeBenchmarkReports(request, response, pathname)) {
+    return
+  }
+
   if (await routeProjects(request, response, pathname)) {
     return
   }
@@ -238,10 +243,27 @@ async function routeRequest(
   sendNotFound(response)
 }
 
+const BENCHMARK_REPORTS_RE = /^\/api\/benchmark-reports\/?$/i
 const PROJECT_LIST_RE = /^\/api\/projects\/?$/i
 const SCREENSHOT_RESPONSE_RE = /^\/api\/screenshot-responses\/([a-f0-9-]+)$/i
 const PROJECT_ITEM_RE = /^\/api\/projects\/([a-f0-9-]+)$/i
 const PROJECT_IMAGE_RE = /^\/api\/projects\/([a-f0-9-]+)\/images\/([^/]+)$/i
+
+async function handleCreateBenchmarkReport(
+  request: IncomingMessage,
+  response: ServerResponse,
+) {
+  const body = await readJsonObject(request)
+  const error = validateBenchmarkReport(body)
+
+  if (error) {
+    sendJson(response, 400, { error, ok: false })
+    return
+  }
+
+  const report = await saveBenchmarkReport(body)
+  sendJson(response, 201, { ok: true, report })
+}
 
 async function handleCreateProject(
   request: IncomingMessage,
@@ -346,6 +368,18 @@ async function readJsonObject(
   return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
     ? (parsed as Record<string, unknown>)
     : {}
+}
+
+async function routeBenchmarkReports(
+  request: IncomingMessage,
+  response: ServerResponse,
+  pathname: string,
+): Promise<boolean> {
+  if (!BENCHMARK_REPORTS_RE.test(pathname)) return false
+  if (request.method !== 'POST') return false
+
+  await handleCreateBenchmarkReport(request, response)
+  return true
 }
 
 /** REST router for project CRUD + persisted project images. Returns true if handled. */
@@ -586,6 +620,18 @@ function validateAgentImageAttachment(
     name,
     size,
   }
+}
+
+function validateBenchmarkReport(body: Record<string, unknown>): null | string {
+  if (
+    typeof body.reportVersion !== 'string' ||
+    body.reportVersion.trim() === '' ||
+    !Array.isArray(body.runs)
+  ) {
+    return 'Expected benchmark report with reportVersion and runs'
+  }
+
+  return null
 }
 
 function validateScreenshotResponse(
