@@ -1,4 +1,7 @@
-import { PromptPanel } from '@workspace/prompt-panel'
+import {
+  PromptPanel,
+  type ElementAttachmentInput,
+} from '@workspace/prompt-panel'
 import { Button } from '@workspace/ui/components/button'
 import { ArrowLeft } from 'lucide-react'
 import { useCallback, useState } from 'react'
@@ -9,7 +12,6 @@ import { useTheme } from '#components/theme-provider'
 import { ErrorBanner } from './components/error-banner'
 import { LandingPreview } from './components/landing-preview'
 import { useLandingPage } from './hooks/use-landing-page'
-import type { ElementAttachmentInput } from './lib/landing-agent'
 
 export interface EditorPageProps {
   projectId: string

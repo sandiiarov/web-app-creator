@@ -1,8 +1,6 @@
-import {
-  SERVER_URL,
-  type LandingTurn,
-  type ScreenshotResponseInput,
-} from './landing-agent'
+import type { LandingTurn } from '@workspace/prompt-panel'
+
+import { SERVER_URL, type ScreenshotResponseInput } from './landing-agent'
 
 export interface Project extends ProjectMeta {
   indexHtml: string

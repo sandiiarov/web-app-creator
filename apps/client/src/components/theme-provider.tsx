@@ -1,6 +1,5 @@
+import { KEYBOARD_SHORTCUTS } from '@workspace/prompt-panel'
 import * as React from 'react'
-
-import { KEYBOARD_SHORTCUTS } from '#lib/keyboard-shortcuts'
 
 type ResolvedTheme = 'dark' | 'light'
 type Theme = 'dark' | 'light' | 'system'

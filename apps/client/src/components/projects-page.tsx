@@ -1,10 +1,10 @@
+import { LANDING_MODEL_OPTIONS } from '@workspace/prompt-panel'
 import { Button } from '@workspace/ui/components/button'
 import { cn } from '@workspace/ui/lib/utils'
 import { ArrowRight, FileCode2, Plus, Trash2 } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import { Navigate, useNavigate } from 'react-router-dom'
 
-import { LANDING_MODEL_OPTIONS } from '../lib/landing-agent'
 import {
   type ProjectMeta,
   createProject,

@@ -1,6 +1,9 @@
+import {
+  formatCost,
+  formatRetryDelay,
+  formatTokenCount,
+} from '@workspace/prompt-panel'
 import { describe, expect, it } from 'vitest'
-
-import { formatCost, formatRetryDelay, formatTokenCount } from './landing-agent'
 
 describe('formatCost', () => {
   it('formats exact zero as zero, not less than a cent', () => {
