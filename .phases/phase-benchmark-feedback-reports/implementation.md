@@ -1,6 +1,6 @@
 # Implementation — benchmark-feedback-reports
 
-Status: In Progress
+Status: Complete
 Prerequisite: plan.md `Status: Complete`
 
 > **Purpose:** execute the plan one slice at a time. Small increments, commit each todo, run checks after each sub-phase.
@@ -105,10 +105,34 @@ Change the initial state to one prompt and add unlimited add/remove prompt contr
 Update benchmark/server DOX and complete focused checks plus browser visual verification.
 
 ### Todo
-- [ ] Update DOX and run final focused verification
+- [x] Update DOX and run final focused verification
 
 ### Results
-_(fill at end of the sub-phase — what was implemented, commands run, checks passed)_
+- Updated `apps/benchmark/AGENTS.md` for dynamic prompts, structured feedback, saved report JSON, and copied handoff prompt behavior.
+- Updated `apps/server/AGENTS.md` for `POST /api/benchmark-reports` and generated `.data/benchmark-reports/<id>.json` files.
+- Final focused checks passed:
+  - `pnpm --filter @workspace/benchmark format:check`
+  - `pnpm --filter @workspace/benchmark typecheck`
+  - `pnpm --filter @workspace/benchmark lint` (`0` errors)
+  - `pnpm --filter @workspace/benchmark test` (`1` file, `2` tests)
+  - `pnpm --filter @workspace/benchmark build`
+  - `pnpm --filter @workspace/server format:check`
+  - `pnpm --filter @workspace/server typecheck`
+  - `pnpm --filter @workspace/server lint` (`0` errors)
+  - `pnpm --filter @workspace/server test` (`17` files, `119` tests, lines `90.31%`)
+  - `pnpm --filter @workspace/server build`
+- Headed `agent-browser` safe visual QA passed without clicking `Run benchmark`:
+  - Verified initial state has exactly one prompt and a disabled `Save report` button with no runs.
+  - Verified `Add` creates a blank second prompt, disables `Run benchmark`, and shows remove controls.
+  - Verified removing the blank prompt returns to one prompt and re-enables `Run benchmark`.
+  - Verified feedback fields accept input and problem-area checkboxes toggle.
+  - Verified theme toggle still works.
+  - `agent-browser console` showed only Vite/React dev messages; `agent-browser errors` showed none.
+- Screenshots captured:
+  - `/Users/alexsandiiarov/.pi/agent/sessions/web-app-creator/pi-session-scripts/benchmark-feedback-initial.png`
+  - `/Users/alexsandiiarov/.pi/agent/sessions/web-app-creator/pi-session-scripts/benchmark-feedback-added-prompt.png`
+  - `/Users/alexsandiiarov/.pi/agent/sessions/web-app-creator/pi-session-scripts/benchmark-feedback-removed-prompt.png`
+  - `/Users/alexsandiiarov/.pi/agent/sessions/web-app-creator/pi-session-scripts/benchmark-feedback-filled-light.png`
 
 ### Gotchas
-_(fill at end of the sub-phase, if any)_
+- Browser QA intentionally did not click `Run benchmark`, so save-success UI was covered by unit/server route tests rather than a live model run.
