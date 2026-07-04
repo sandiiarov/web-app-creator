@@ -57,13 +57,24 @@ Implement `POST /api/benchmark-reports` with a file-backed store under `apps/ser
 Build the benchmark report JSON from current run data, add the server save API helper, and add a feedback/save panel that copies an agent handoff prompt referencing the saved report path.
 
 ### Todo
-- [ ] Add report builder, save helper, feedback form, save action, and clipboard prompt UI
+- [x] Add report builder, save helper, feedback form, save action, and clipboard prompt UI
 
 ### Results
-_(fill at end of the sub-phase — what was implemented, commands run, checks passed)_
+- Added report JSON/domain types in `apps/benchmark/src/lib/types.ts` and `apps/benchmark/src/lib/report.ts`.
+- Added a coding-agent handoff prompt helper that names the saved report path and asks the next agent to inspect tool behavior, cost, model choice, generated output, reliability, and user feedback.
+- Added `saveBenchmarkReport` to `apps/benchmark/src/lib/server-api.ts` for `POST /api/benchmark-reports`.
+- Added `apps/benchmark/src/components/report-save-panel.tsx` with structured user feedback fields, save/loading/success/error states, automatic clipboard copy on save, and manual copy fallback.
+- Wired the panel into `apps/benchmark/src/App.tsx` after the live report.
+- Added `apps/benchmark/src/lib/report.test.ts` for report JSON and handoff prompt coverage.
+- Checks passed:
+  - `pnpm --filter @workspace/benchmark format:check`
+  - `pnpm --filter @workspace/benchmark typecheck`
+  - `pnpm --filter @workspace/benchmark lint` (`0` errors)
+  - `pnpm --filter @workspace/benchmark test` (`1` file, `2` tests)
+  - `pnpm --filter @workspace/benchmark build`
 
 ### Gotchas
-_(fill at end of the sub-phase, if any)_
+- Clipboard writes can be blocked by the browser; the UI still shows the generated prompt in a read-only textarea with a manual `Copy prompt` button after save.
 
 ## Phase 3: Dynamic prompt management
 

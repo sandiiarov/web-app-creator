@@ -1,8 +1,15 @@
-import { SERVER_URL } from './types'
+import { SERVER_URL, type BenchmarkReport } from './types'
 
 export interface CreateProjectInput {
   model?: string
   title?: string
+}
+
+export interface SavedBenchmarkReport {
+  bytes: number
+  id: string
+  path: string
+  savedAt: string
 }
 
 export interface ScreenshotErrorResponse {
@@ -76,4 +83,23 @@ export async function postScreenshotError(
 /** Absolute URL to open a generated project in the client editor. */
 export function projectEditorUrl(projectId: string): string {
   return `${SERVER_URL.replace(/\/$/, '')}#/projects/${projectId}`
+}
+
+export async function saveBenchmarkReport(
+  report: BenchmarkReport,
+): Promise<SavedBenchmarkReport> {
+  const response = await fetch(`${SERVER_URL}/api/benchmark-reports`, {
+    body: JSON.stringify(report),
+    headers: { 'content-type': 'application/json' },
+    method: 'POST',
+  })
+  const json = (await response.json()) as {
+    error?: string
+    ok: boolean
+    report?: SavedBenchmarkReport
+  }
+  if (!response.ok || !json.ok || !json.report) {
+    throw new Error(json.error ?? 'Failed to save benchmark report')
+  }
+  return json.report
 }

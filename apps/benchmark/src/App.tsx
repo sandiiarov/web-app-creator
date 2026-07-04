@@ -9,6 +9,7 @@ import { Separator } from '@workspace/ui/components/separator'
 import { useMemo, useState } from 'react'
 
 import { BenchmarkControls } from './components/benchmark-controls'
+import { ReportSavePanel } from './components/report-save-panel'
 import { ReportView } from './components/report-view'
 import { ResultCard } from './components/result-card'
 import { RunDetailDialog } from './components/run-detail-dialog'
@@ -96,6 +97,13 @@ export function App() {
         </header>
         <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-auto p-4">
           <ReportView results={benchmark.results} />
+          <ReportSavePanel
+            concurrency={concurrency}
+            isRunning={benchmark.isRunning}
+            models={models}
+            prompts={prompts}
+            results={benchmark.results}
+          />
           <Separator />
           {benchmark.results.length ? (
             <section className="grid gap-4 xl:grid-cols-2 2xl:grid-cols-3">
