@@ -75,17 +75,17 @@ Files: `apps/benchmark/src/lib/run-reducer.ts`, `src/hooks/use-benchmark.ts`.
 Files: `apps/benchmark/src/components/benchmark-controls.tsx`, `result-card.tsx`, `run-detail-dialog.tsx`, `report-view.tsx`, plus `App.tsx` composition.
 
 ### Todo
-- [ ] `benchmark-controls.tsx`: prompt list, model multi-select, concurrency input, Run button
-- [ ] `result-card.tsx`: sandboxed `srcDoc` iframe preview + status badge + key metrics + open-detail trigger
-- [ ] `run-detail-dialog.tsx`: full per-run breakdown (text, tool calls, mistakes, cost breakdown, tokens, duration, projectId)
-- [ ] `report-view.tsx`: comparison table across runs + aggregate summary
-- [ ] Wire `App.tsx`: controls + live progress + cards grid + report; theme provider + globals.css
+- [x] `benchmark-controls.tsx`: prompt list, model multi-select, concurrency input, Run button
+- [x] `result-card.tsx`: sandboxed `srcDoc` iframe preview + status badge + key metrics + open-detail trigger
+- [x] `run-detail-dialog.tsx`: full per-run breakdown (text, tool calls, mistakes, cost breakdown, tokens, duration, projectId)
+- [x] `report-view.tsx`: comparison table across runs + aggregate summary
+- [x] Wire `App.tsx`: controls + live progress + cards grid + report; theme provider + globals.css
 
 ### Results
-_(fill at end of the sub-phase)_
+- Built the benchmark UI as a compare/monitor surface: control rail with editable prompts, multi-select text models, concurrency input, run/stop actions; live progress strip; aggregate report table; sandboxed result cards; and a detail dialog for text, tool calls, mistakes, costs, usage, and timing. `typecheck`, `lint`, `format:check`, and `build` passed for `@workspace/benchmark`.
 
 ### Gotchas
-_(fill at end of the sub-phase, if any)_
+- The cards render the latest streamed `html_update`; runs that fail before any edit show an empty/error state rather than fetching project HTML.
 
 ## Phase 5: DOX + lockfile + final verification
 
