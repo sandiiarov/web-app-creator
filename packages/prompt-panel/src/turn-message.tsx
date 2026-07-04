@@ -17,12 +17,12 @@ import { useEffect, useState } from 'react'
 
 import {
   formatRetryDelay,
-  type ImageAttachmentMeta,
   type LandingTurn,
+  type PromptAttachmentMeta,
   type RetryPart,
   type ThinkingPart,
   type TurnPart,
-} from '../../lib/landing-agent'
+} from './domain'
 import { StreamdownContent } from './streamdown-content'
 import { TurnMetadata } from './turn-metadata'
 import { TurnToolBlock } from './turn-steps'
@@ -63,9 +63,10 @@ export function TurnMessage({ turn }: { turn: LandingTurn }) {
   )
 }
 
-function AttachmentPill({ attachment }: { attachment: ImageAttachmentMeta }) {
+function AttachmentPill({ attachment }: { attachment: PromptAttachmentMeta }) {
   return (
     <span className="inline-flex max-w-full items-center gap-1 border border-current/20 bg-background/15 px-1.5 py-0.5 text-[11px] leading-5">
+      {attachment.kind === 'element' ? <span>HTML</span> : null}
       <span className="truncate">{attachment.name}</span>
       <span className="opacity-75">
         {formatAttachmentSize(attachment.size)}

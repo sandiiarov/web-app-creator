@@ -19,7 +19,7 @@ import {
 } from 'lucide-react'
 import { useState } from 'react'
 
-import type { ToolCallPart, ToolCallState } from '../../lib/landing-agent'
+import type { ToolCallPart, ToolCallState } from './domain'
 
 const TOOL_ICONS: Record<string, LucideIcon> = {
   analyze_image: Image,

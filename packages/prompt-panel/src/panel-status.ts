@@ -1,4 +1,4 @@
-import type { LandingTurn } from '../../lib/landing-agent'
+import type { LandingTurn } from './domain'
 import type { PanelStatus } from './panel-constants'
 
 export function panelStatus({

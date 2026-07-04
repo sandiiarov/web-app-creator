@@ -5,7 +5,7 @@ import { ArrowBigUp, Command as CommandIcon, Option } from 'lucide-react'
 import type {
   KeyboardShortcut as KeyboardShortcutDefinition,
   KeyboardShortcutKey,
-} from '../../lib/keyboard-shortcuts'
+} from './keyboard-shortcuts'
 
 const KEY_LABELS: Record<KeyboardShortcutKey, string> = {
   a: 'A',
@@ -17,7 +17,6 @@ const KEY_LABELS: Record<KeyboardShortcutKey, string> = {
   l: 'L',
   m: 'M',
   option: 'Option',
-  p: 'P',
   r: 'R',
   shift: 'Shift',
 }

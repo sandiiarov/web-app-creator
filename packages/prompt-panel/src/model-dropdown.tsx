@@ -10,7 +10,7 @@ import {
 import { ChevronDown } from 'lucide-react'
 import { type ComponentType } from 'react'
 
-import { LANDING_MODEL_OPTIONS } from '../../lib/landing-agent'
+import { LANDING_MODEL_OPTIONS } from './domain'
 import { GlmIcon } from './glm-icon'
 import { KimiIcon } from './kimi-icon'
 

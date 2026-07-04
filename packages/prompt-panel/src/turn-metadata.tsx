@@ -19,7 +19,7 @@ import {
   type StatsPart,
   type TokenUsage,
   type VisionCost,
-} from '../../lib/landing-agent'
+} from './domain'
 
 export function TurnMetadata({ stats }: { stats: StatsPart }) {
   const [open, setOpen] = useState(false)

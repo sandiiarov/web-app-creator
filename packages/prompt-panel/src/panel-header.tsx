@@ -6,41 +6,45 @@ import {
   TooltipTrigger,
 } from '@workspace/ui/components/tooltip'
 import { cn } from '@workspace/ui/lib/utils'
-import { GripVertical, Maximize2, Minimize2 } from 'lucide-react'
+import { FolderOpen, GripVertical, Maximize2, Minimize2 } from 'lucide-react'
 import { type PointerEvent as ReactPointerEvent } from 'react'
 
 import { KeyboardShortcut } from './keyboard-shortcut'
 import { KEYBOARD_SHORTCUTS } from './keyboard-shortcuts'
-import { PanelCommandMenu } from './panel-command-menu'
-import type { PanelLayout, PanelStatus } from './panel-constants'
+import { PanelLayoutMenu, PanelSettingsMenu } from './panel-command-menu'
+import type { PanelLayout, PanelStatus, PanelTheme } from './panel-constants'
 import { StatusPill } from './status-pill'
 
 export function PanelHeader({
   collapsed,
-  commandMenuOpen,
   dragging,
   layout,
   onAllProjects,
-  onCommandMenuOpenChange,
   onDragEnd,
   onDragMove,
   onDragStart,
   onLayoutChange,
+  onPanelMenuOpenChange,
   onToggleCollapsed,
+  onToggleTheme,
+  panelMenuOpen,
   status,
+  theme,
 }: {
   collapsed: boolean
-  commandMenuOpen: boolean
   dragging: boolean
   layout: PanelLayout
   onAllProjects: () => void
-  onCommandMenuOpenChange: (open: boolean) => void
   onDragEnd: () => void
   onDragMove: (event: ReactPointerEvent<HTMLDivElement>) => void
   onDragStart: (event: ReactPointerEvent<HTMLDivElement>) => void
   onLayoutChange: (layout: PanelLayout) => void
+  onPanelMenuOpenChange: (open: boolean) => void
   onToggleCollapsed: () => void
+  onToggleTheme: () => void
+  panelMenuOpen: boolean
   status: PanelStatus
+  theme: PanelTheme
 }) {
   return (
     <header
@@ -69,6 +73,32 @@ export function PanelHeader({
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
+                  aria-label={`Go to all projects. Shortcut ${KEYBOARD_SHORTCUTS.allProjects.title}`}
+                  onClick={onAllProjects}
+                  size="icon-sm"
+                  type="button"
+                  variant="ghost"
+                >
+                  <FolderOpen />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">
+                All projects
+                <KeyboardShortcut shortcut={KEYBOARD_SHORTCUTS.allProjects} />
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+          <PanelLayoutMenu
+            layout={layout}
+            onLayoutChange={onLayoutChange}
+            onOpenChange={onPanelMenuOpenChange}
+            open={panelMenuOpen}
+          />
+          <PanelSettingsMenu onToggleTheme={onToggleTheme} theme={theme} />
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
                   aria-label={collapsed ? 'Maximize panel' : 'Minimize panel'}
                   onClick={onToggleCollapsed}
                   size="icon-sm"
@@ -84,13 +114,6 @@ export function PanelHeader({
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
-          <PanelCommandMenu
-            layout={layout}
-            onAllProjects={onAllProjects}
-            onLayoutChange={onLayoutChange}
-            onOpenChange={onCommandMenuOpenChange}
-            open={commandMenuOpen}
-          />
         </div>
       </div>
     </header>

@@ -8,8 +8,8 @@ import {
 } from '@workspace/ui/components/message-scroller'
 import { memo } from 'react'
 
-import type { LandingTurn } from '../../lib/landing-agent'
 import { ChatEmptyState } from './chat-empty-state'
+import type { LandingTurn } from './domain'
 import { TurnMessage } from './turn-message'
 
 export const PanelBody = memo(function PanelBody({

@@ -10,7 +10,7 @@ import { cn } from '@workspace/ui/lib/utils'
 import { ArrowUp, MousePointerClick, Paperclip, Square, X } from 'lucide-react'
 import { type FormEvent, type KeyboardEvent, memo, useRef } from 'react'
 
-import type { PromptAttachmentInput } from '../../lib/landing-agent'
+import type { PromptAttachmentInput } from './domain'
 import { KeyboardShortcut } from './keyboard-shortcut'
 import { KEYBOARD_SHORTCUTS } from './keyboard-shortcuts'
 import { ModelDropdown } from './model-dropdown'

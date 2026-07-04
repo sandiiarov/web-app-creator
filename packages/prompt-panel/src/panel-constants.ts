@@ -12,6 +12,8 @@ export type PanelPosition = {
 
 export type PanelStatus = 'done' | 'error' | 'generating' | 'ready' | 'stopped'
 
+export type PanelTheme = 'dark' | 'light' | 'system'
+
 export const STATUS_LABELS: Record<PanelStatus, string> = {
   done: 'Done',
   error: 'Error',

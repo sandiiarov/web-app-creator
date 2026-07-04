@@ -14,8 +14,8 @@ import {
   useState,
 } from 'react'
 import { useHotkeys } from 'react-hotkeys-hook'
-import { useNavigate } from 'react-router-dom'
 
+import { Composer } from './composer'
 import type {
   ElementAttachmentInput,
   ImageAttachmentInput,
@@ -23,8 +23,7 @@ import type {
   LandingAgentSendInput,
   LandingTurn,
   PromptAttachmentInput,
-} from '../../lib/landing-agent'
-import { Composer } from './composer'
+} from './domain'
 import { KEYBOARD_SHORTCUTS } from './keyboard-shortcuts'
 import { PanelBody } from './panel-body'
 import {
@@ -34,6 +33,7 @@ import {
   PANEL_WIDTH,
   type PanelLayout,
   type PanelPosition,
+  type PanelTheme,
 } from './panel-constants'
 import { PanelHeader } from './panel-header'
 import { panelStatus } from './panel-status'
@@ -53,12 +53,15 @@ export type PromptPanelProps = {
   elementSelectionActive: boolean
   isStreaming: boolean
   model: string
+  onAllProjects: () => void
   onElementSelectionToggle: () => void
   onModelChange: (model: string) => void
   onSelectedElementAttachmentConsumed: () => void
   onSend: (input: LandingAgentSendInput) => void
   onStop: () => void
+  onToggleTheme: () => void
   selectedElementAttachment: ElementAttachmentInput | null
+  theme: PanelTheme
   turns: LandingTurn[]
 }
 
@@ -79,15 +82,17 @@ export function PromptPanel({
   elementSelectionActive,
   isStreaming,
   model,
+  onAllProjects,
   onElementSelectionToggle,
   onModelChange,
   onSelectedElementAttachmentConsumed,
   onSend,
   onStop,
+  onToggleTheme,
   selectedElementAttachment,
+  theme,
   turns,
 }: PromptPanelProps) {
-  const navigate = useNavigate()
   const [collapsed, setCollapsed] = useState(initialPanelCollapsed)
   const [panelMenuOpen, setPanelMenuOpen] = useState(false)
   const [position, setPosition] = useState<PanelPosition>(initialPanelPosition)
@@ -225,8 +230,8 @@ export function PromptPanel({
   )
 
   const handleAllProjects = useCallback(() => {
-    navigate('/')
-  }, [navigate])
+    onAllProjects()
+  }, [onAllProjects])
 
   const handleAttachFiles = useCallback(
     (files: FileList | null) => {
@@ -388,8 +393,10 @@ export function PromptPanel({
           onLayoutChange={handleLayoutChange}
           onPanelMenuOpenChange={setPanelMenuOpen}
           onToggleCollapsed={() => setCollapsed(false)}
+          onToggleTheme={onToggleTheme}
           panelMenuOpen={panelMenuOpen}
           status={status}
+          theme={theme}
         />
       ) : (
         <div className="flex h-full min-h-0 flex-col">
@@ -404,8 +411,10 @@ export function PromptPanel({
             onLayoutChange={handleLayoutChange}
             onPanelMenuOpenChange={setPanelMenuOpen}
             onToggleCollapsed={() => setCollapsed(true)}
+            onToggleTheme={onToggleTheme}
             panelMenuOpen={panelMenuOpen}
             status={status}
+            theme={theme}
           />
           <ResizablePanelGroup
             className="min-h-0 flex-1"
