@@ -25,6 +25,7 @@ import { MinimaxIcon } from './minimax-icon'
 import { NvidiaIcon } from './nvidia-icon'
 import { OpenaiIcon } from './openai-icon'
 import { XaiIcon } from './xai-icon'
+import { XiaomiIcon } from './xiaomi-icon'
 
 const MODEL_ICONS: Record<string, ComponentType<{ className?: string }>> = {
   'bytedance-seed/seedream-4.5': BytedanceIcon,
@@ -35,6 +36,7 @@ const MODEL_ICONS: Record<string, ComponentType<{ className?: string }>> = {
   'nvidia/nemotron-3-ultra-550b-a55b': NvidiaIcon,
   'openai/gpt-image-2': OpenaiIcon,
   'x-ai/grok-imagine-image-quality': XaiIcon,
+  'xiaomi/mimo-v2.5': XiaomiIcon,
   'z-ai/glm-5.2': GlmIcon,
 }
 
