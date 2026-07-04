@@ -17,10 +17,12 @@ import { useHotkeys } from 'react-hotkeys-hook'
 import { useNavigate } from 'react-router-dom'
 
 import type {
+  ElementAttachmentInput,
   ImageAttachmentInput,
   ImageAttachmentMediaType,
   LandingAgentSendInput,
   LandingTurn,
+  PromptAttachmentInput,
 } from '../../lib/landing-agent'
 import { Composer } from './composer'
 import { KEYBOARD_SHORTCUTS } from './keyboard-shortcuts'
@@ -48,12 +50,24 @@ const MAX_ATTACHMENT_TOTAL_SIZE = 16 * 1024 * 1024
 const PANEL_POSITION_STORAGE_KEY = 'landing.promptPanel.position.v1'
 
 export type PromptPanelProps = {
+  elementSelectionActive: boolean
   isStreaming: boolean
   model: string
+  onElementSelectionToggle: () => void
   onModelChange: (model: string) => void
+  onSelectedElementAttachmentConsumed: () => void
   onSend: (input: LandingAgentSendInput) => void
   onStop: () => void
+  selectedElementAttachment: ElementAttachmentInput | null
   turns: LandingTurn[]
+}
+
+type DragState = {
+  offsetX: number
+  offsetY: number
+  pointerX: number
+  pointerY: number
+  rafId: null | number
 }
 
 type StoredPanelState = Partial<PanelPosition> & {
@@ -62,29 +76,55 @@ type StoredPanelState = Partial<PanelPosition> & {
 }
 
 export function PromptPanel({
+  elementSelectionActive,
   isStreaming,
   model,
+  onElementSelectionToggle,
   onModelChange,
+  onSelectedElementAttachmentConsumed,
   onSend,
   onStop,
+  selectedElementAttachment,
   turns,
 }: PromptPanelProps) {
   const navigate = useNavigate()
   const [collapsed, setCollapsed] = useState(initialPanelCollapsed)
-  const [commandMenuOpen, setCommandMenuOpen] = useState(false)
+  const [panelMenuOpen, setPanelMenuOpen] = useState(false)
   const [position, setPosition] = useState<PanelPosition>(initialPanelPosition)
   const [prompt, setPrompt] = useState('')
-  const [attachments, setAttachments] = useState<ImageAttachmentInput[]>([])
+  const [attachments, setAttachments] = useState<PromptAttachmentInput[]>([])
   const [attachmentError, setAttachmentError] = useState<null | string>(null)
   const [dragging, setDragging] = useState(false)
 
-  const dragStart = useRef<null | { offsetX: number; offsetY: number }>(null)
+  const sectionRef = useRef<HTMLElement | null>(null)
+  const dragState = useRef<DragState | null>(null)
 
   useClampToViewport(position, setPosition, collapsed)
 
   useEffect(() => {
     writeStoredPanelState(position, collapsed)
   }, [collapsed, position])
+
+  useEffect(() => {
+    if (!selectedElementAttachment) return
+
+    try {
+      setAttachments(
+        appendPromptAttachment(attachments, selectedElementAttachment),
+      )
+      setAttachmentError(null)
+    } catch (error) {
+      setAttachmentError(
+        error instanceof Error ? error.message : 'Failed to attach element',
+      )
+    } finally {
+      onSelectedElementAttachmentConsumed()
+    }
+  }, [
+    attachments,
+    onSelectedElementAttachmentConsumed,
+    selectedElementAttachment,
+  ])
 
   const handleDragStart = useCallback(
     (event: ReactPointerEvent<HTMLDivElement>) => {
@@ -96,9 +136,12 @@ export function PromptPanel({
       }
 
       setDragging(true)
-      dragStart.current = {
+      dragState.current = {
         offsetX: event.clientX - position.x,
         offsetY: event.clientY - position.y,
+        pointerX: event.clientX,
+        pointerY: event.clientY,
+        rafId: null,
       }
       ;(event.target as HTMLElement).setPointerCapture?.(event.pointerId)
     },
@@ -107,22 +150,62 @@ export function PromptPanel({
 
   const handleDragMove = useCallback(
     (event: ReactPointerEvent<HTMLDivElement>) => {
-      if (!dragging || !dragStart.current) {
+      const state = dragState.current
+      if (!dragging || !state) {
         return
       }
 
-      setPosition({
-        x: event.clientX - dragStart.current.offsetX,
-        y: event.clientY - dragStart.current.offsetY,
+      state.pointerX = event.clientX
+      state.pointerY = event.clientY
+
+      if (state.rafId !== null) {
+        return
+      }
+
+      state.rafId = window.requestAnimationFrame(() => {
+        const current = dragState.current
+        if (!current || !sectionRef.current) {
+          if (current) current.rafId = null
+          return
+        }
+
+        current.rafId = null
+        const next = clampPanelPosition(
+          {
+            x: current.pointerX - current.offsetX,
+            y: current.pointerY - current.offsetY,
+          },
+          collapsed,
+        )
+        sectionRef.current.style.left = `${next.x}px`
+        sectionRef.current.style.top = `${next.y}px`
       })
     },
-    [dragging],
+    [collapsed, dragging],
   )
 
   const handleDragEnd = useCallback(() => {
+    const state = dragState.current
+
+    if (state?.rafId != null) {
+      window.cancelAnimationFrame(state.rafId)
+    }
+
+    if (state) {
+      setPosition(
+        clampPanelPosition(
+          {
+            x: state.pointerX - state.offsetX,
+            y: state.pointerY - state.offsetY,
+          },
+          collapsed,
+        ),
+      )
+    }
+
     setDragging(false)
-    dragStart.current = null
-  }, [])
+    dragState.current = null
+  }, [collapsed])
 
   const handleLayoutChange = useCallback(
     (nextLayout: PanelLayout) => {
@@ -144,10 +227,6 @@ export function PromptPanel({
   const handleAllProjects = useCallback(() => {
     navigate('/')
   }, [navigate])
-
-  const handleCommandMenuHotkey = useCallback(() => {
-    setCommandMenuOpen(true)
-  }, [])
 
   const handleAttachFiles = useCallback(
     (files: FileList | null) => {
@@ -182,7 +261,7 @@ export function PromptPanel({
 
     onSend({
       attachments,
-      prompt: trimmed || 'Use the attached image as reference.',
+      prompt: trimmed || 'Use the attached attachment as reference.',
     })
     setPrompt('')
     setAttachments([])
@@ -263,13 +342,6 @@ export function PromptPanel({
     },
     [isStreaming, stopGeneration],
   )
-  useHotkeys(
-    KEYBOARD_SHORTCUTS.panelCommand.hotkey,
-    () => handleCommandMenuHotkey(),
-    { enableOnFormTags: true, preventDefault: true },
-    [handleCommandMenuHotkey],
-  )
-
   const dockedSide = dockedPanelSide(position)
   const layout: PanelLayout = dockedSide ? `${dockedSide}-sidebar` : 'floating'
   const status = panelStatus({ isStreaming, turns })
@@ -301,37 +373,38 @@ export function PromptPanel({
         dockedSide === 'right' && 'border-y-0 border-r-0',
         dragging ? 'select-none' : '',
       )}
+      ref={sectionRef}
       style={panelStyle}
     >
       {shouldRenderCollapsed ? (
         <PanelHeader
           collapsed={collapsed}
-          commandMenuOpen={commandMenuOpen}
           dragging={dragging}
           layout={layout}
           onAllProjects={handleAllProjects}
-          onCommandMenuOpenChange={setCommandMenuOpen}
           onDragEnd={handleDragEnd}
           onDragMove={handleDragMove}
           onDragStart={handleDragStart}
           onLayoutChange={handleLayoutChange}
+          onPanelMenuOpenChange={setPanelMenuOpen}
           onToggleCollapsed={() => setCollapsed(false)}
+          panelMenuOpen={panelMenuOpen}
           status={status}
         />
       ) : (
         <div className="flex h-full min-h-0 flex-col">
           <PanelHeader
             collapsed={collapsed}
-            commandMenuOpen={commandMenuOpen}
             dragging={dragging}
             layout={layout}
             onAllProjects={handleAllProjects}
-            onCommandMenuOpenChange={setCommandMenuOpen}
             onDragEnd={handleDragEnd}
             onDragMove={handleDragMove}
             onDragStart={handleDragStart}
             onLayoutChange={handleLayoutChange}
+            onPanelMenuOpenChange={setPanelMenuOpen}
             onToggleCollapsed={() => setCollapsed(true)}
+            panelMenuOpen={panelMenuOpen}
             status={status}
           />
           <ResizablePanelGroup
@@ -360,10 +433,12 @@ export function PromptPanel({
                   isStreaming ||
                   (prompt.trim().length === 0 && attachments.length === 0)
                 }
+                elementSelectionActive={elementSelectionActive}
                 isStreaming={isStreaming}
                 model={model}
                 onAttachFiles={handleAttachFiles}
                 onChange={setPrompt}
+                onElementSelectionToggle={onElementSelectionToggle}
                 onKeyDown={handleKeyDown}
                 onModelChange={onModelChange}
                 onRemoveAttachment={handleRemoveAttachment}
@@ -377,6 +452,27 @@ export function PromptPanel({
       )}
     </section>
   )
+}
+
+function appendPromptAttachment(
+  current: PromptAttachmentInput[],
+  attachment: PromptAttachmentInput,
+): PromptAttachmentInput[] {
+  if (current.length >= MAX_ATTACHMENT_COUNT) {
+    throw new Error(`Attach up to ${MAX_ATTACHMENT_COUNT} items.`)
+  }
+
+  const next = [...current, attachment]
+  const totalSize = next.reduce(
+    (sum, item) => sum + promptAttachmentSize(item),
+    0,
+  )
+
+  if (totalSize > MAX_ATTACHMENT_TOTAL_SIZE) {
+    throw new Error('Attached items must be 16 MiB or smaller in total.')
+  }
+
+  return next
 }
 
 function assertAttachableImageFile(
@@ -393,29 +489,20 @@ function assertAttachableImageFile(
 
 async function attachImageFiles(
   files: File[],
-  current: ImageAttachmentInput[],
-): Promise<ImageAttachmentInput[]> {
+  current: PromptAttachmentInput[],
+): Promise<PromptAttachmentInput[]> {
   const availableSlots = MAX_ATTACHMENT_COUNT - current.length
   if (availableSlots <= 0) {
-    throw new Error(`Attach up to ${MAX_ATTACHMENT_COUNT} images.`)
+    throw new Error(`Attach up to ${MAX_ATTACHMENT_COUNT} items.`)
   }
 
   const selected = files.slice(0, availableSlots)
   if (files.length > availableSlots) {
-    throw new Error(`Attach up to ${MAX_ATTACHMENT_COUNT} images.`)
+    throw new Error(`Attach up to ${MAX_ATTACHMENT_COUNT} items.`)
   }
 
   const additions = await Promise.all(selected.map(fileToImageAttachment))
-  const totalSize = [...current, ...additions].reduce(
-    (sum, item) => sum + item.size,
-    0,
-  )
-
-  if (totalSize > MAX_ATTACHMENT_TOTAL_SIZE) {
-    throw new Error('Attached images must be 16 MiB or smaller in total.')
-  }
-
-  return [...current, ...additions]
+  return additions.reduce(appendPromptAttachment, current)
 }
 
 function clampPanelPosition(
@@ -519,6 +606,13 @@ function isAcceptedAttachmentType(
 
 function isFiniteNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value)
+}
+
+function promptAttachmentSize(attachment: PromptAttachmentInput) {
+  return (
+    attachment.size +
+    (attachment.kind === 'element' ? new Blob([attachment.html]).size : 0)
+  )
 }
 
 function readFileAsDataUrl(file: File): Promise<string> {
