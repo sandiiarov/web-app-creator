@@ -7,22 +7,24 @@ import {
   TooltipTrigger,
 } from '@workspace/ui/components/tooltip'
 import { cn } from '@workspace/ui/lib/utils'
-import { ArrowUp, Paperclip, Square, X } from 'lucide-react'
-import { type FormEvent, type KeyboardEvent, useRef } from 'react'
+import { ArrowUp, MousePointerClick, Paperclip, Square, X } from 'lucide-react'
+import { type FormEvent, type KeyboardEvent, memo, useRef } from 'react'
 
-import type { ImageAttachmentInput } from '../../lib/landing-agent'
+import type { PromptAttachmentInput } from '../../lib/landing-agent'
 import { KeyboardShortcut } from './keyboard-shortcut'
 import { KEYBOARD_SHORTCUTS } from './keyboard-shortcuts'
 import { ModelDropdown } from './model-dropdown'
 
-export function Composer({
+export const Composer = memo(function Composer({
   attachmentError,
   attachments,
   disabled,
+  elementSelectionActive,
   isStreaming,
   model,
   onAttachFiles,
   onChange,
+  onElementSelectionToggle,
   onKeyDown,
   onModelChange,
   onRemoveAttachment,
@@ -31,12 +33,14 @@ export function Composer({
   prompt,
 }: {
   attachmentError: null | string
-  attachments: ImageAttachmentInput[]
+  attachments: PromptAttachmentInput[]
   disabled: boolean
+  elementSelectionActive: boolean
   isStreaming: boolean
   model: string
   onAttachFiles: (files: FileList | null) => void
   onChange: (value: string) => void
+  onElementSelectionToggle: () => void
   onKeyDown: (event: KeyboardEvent<HTMLTextAreaElement>) => void
   onModelChange: (model: string) => void
   onRemoveAttachment: (id: string) => void
@@ -100,6 +104,34 @@ export function Composer({
               ref={fileInputRef}
               type="file"
             />
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className="inline-flex">
+                    <Button
+                      aria-label={
+                        elementSelectionActive
+                          ? 'Cancel element selection'
+                          : 'Select element from preview'
+                      }
+                      aria-pressed={elementSelectionActive}
+                      disabled={isStreaming}
+                      onClick={onElementSelectionToggle}
+                      size="icon-xs"
+                      type="button"
+                      variant={elementSelectionActive ? 'default' : 'outline'}
+                    >
+                      <MousePointerClick />
+                    </Button>
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent side="top">
+                  {elementSelectionActive
+                    ? 'Cancel element selection'
+                    : 'Select element from preview'}
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -185,19 +217,22 @@ export function Composer({
       </div>
     </form>
   )
-}
+})
 
 function AttachmentChip({
   attachment,
   disabled,
   onRemove,
 }: {
-  attachment: ImageAttachmentInput
+  attachment: PromptAttachmentInput
   disabled: boolean
   onRemove: (id: string) => void
 }) {
   return (
     <span className="inline-flex max-w-full items-center gap-1 border border-border bg-muted/45 px-1.5 py-0.5 text-[11px] leading-5 text-muted-foreground">
+      {attachment.kind === 'element' ? (
+        <span className="shrink-0 text-foreground">HTML</span>
+      ) : null}
       <span className="truncate text-foreground">{attachment.name}</span>
       <span className="shrink-0">{formatAttachmentSize(attachment.size)}</span>
       <Button
