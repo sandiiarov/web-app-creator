@@ -1,36 +1,28 @@
 {
-  "name": "@workspace/client",
+  "name": "@workspace/prompt-panel",
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "imports": {
-    "#components/*": "./src/components/*.tsx",
-    "#hooks/*": "./src/hooks/*.ts",
-    "#lib/*": "./src/lib/*.ts"
+  "exports": {
+    ".": "./src/index.ts",
+    "./domain": "./src/domain.ts",
+    "./keyboard-shortcuts": "./src/keyboard-shortcuts.ts",
+    "./components/*": "./src/*.tsx",
+    "./hooks/*": "./src/hooks/*.ts",
+    "./lib/*": "./src/lib/*.ts"
   },
   "scripts": {
-    "build": "vite build --configLoader runner",
-    "dev": "vite --configLoader runner",
     "format": "oxfmt -c oxfmt.config.ts .",
     "format:check": "oxfmt -c oxfmt.config.ts --check .",
     "lint": "oxlint .",
     "lint:fix": "oxlint --fix .",
-    "preview": "vite preview",
-    "test": "vitest run --config vitest.config.ts",
-    "test:watch": "vitest --config vitest.config.ts",
     "typecheck": "tsgo --noEmit -p tsconfig.json"
   },
   "dependencies": {
     "@streamdown/code": "catalog:",
-    "@workspace/prompt-panel": "workspace:*",
     "@workspace/ui": "workspace:*",
-    "@zumer/snapdom": "catalog:",
-    "bippy": "catalog:",
     "lucide-react": "catalog:",
-    "react": "catalog:",
-    "react-dom": "catalog:",
     "react-hotkeys-hook": "catalog:",
-    "react-router-dom": "catalog:",
     "streamdown": "catalog:"
   },
   "devDependencies": {
@@ -41,11 +33,13 @@
     "@workspace/oxfmt-config": "workspace:*",
     "@workspace/oxlint-config": "workspace:*",
     "@workspace/typescript-config": "workspace:*",
-    "@workspace/vite-config": "workspace:*",
-    "@workspace/vitest-preset": "workspace:*",
     "oxfmt": "catalog:",
     "oxlint": "catalog:",
-    "vite": "catalog:",
-    "vitest": "catalog:"
+    "react": "catalog:",
+    "react-dom": "catalog:"
+  },
+  "peerDependencies": {
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
   }
 }
