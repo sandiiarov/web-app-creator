@@ -13,11 +13,7 @@ import {
   providerReportedCost,
   visionCost,
 } from './lib/cost.ts'
-import {
-  BASETEN_VISION_MODEL,
-  ocrImageInputs,
-  type ImageOcrResult,
-} from './lib/image-ocr.ts'
+import { ocrImageInputs, type ImageOcrResult } from './lib/image-ocr.ts'
 import {
   appendProjectMessageTurn,
   createProjectHtmlStore,
@@ -40,8 +36,22 @@ const READ_BEFORE_RETRY_MESSAGE =
   'Edit failed because the requested range or content did not match the current project HTML. Read or find current anchors before retrying; do not guess.'
 const REPEATED_EDIT_FAILURE_MESSAGE = `Edit failed ${MAX_EDIT_FAILURES} times in this turn. Stopping so the agent does not keep making blind edit attempts. Read/find the current project HTML and try again.`
 
+export type AgentAttachmentInput =
+  | AgentElementAttachmentInput
+  | AgentImageAttachmentInput
+
+export interface AgentElementAttachmentInput extends ProjectMessageAttachment {
+  dataUrl: string
+  html: string
+  kind: 'element'
+  mediaType: 'image/jpeg' | 'image/png' | 'image/webp'
+  screenshotHeight: number
+  screenshotWidth: number
+}
+
 export interface AgentImageAttachmentInput extends ProjectMessageAttachment {
   dataUrl: string
+  kind?: 'image'
 }
 
 type AgentConversationMessage =
@@ -68,12 +78,14 @@ type RecordedStatsPayload = Omit<ProjectMessageStatsPart, 'type'>
 type RecordedToolPayload = Omit<ProjectMessageToolCallPart, 'type'>
 
 interface StreamOptions {
-  attachments?: AgentImageAttachmentInput[]
-  modelId: string
+  attachments?: AgentAttachmentInput[]
+  imageModel?: string
   projectId: string
   prompt: string
   request: IncomingMessage
   response: ServerResponse
+  textModel: string
+  visionModel?: string
 }
 
 type ToolArgs = Record<string, unknown>
@@ -86,10 +98,10 @@ interface ToolCallDisplay {
 }
 
 export function resolveModelId(model?: string): string {
-  const requested = model ?? config.baseten.defaultModel
-  // Allow the model dropdown to send either the bare id or the baseten/ prefix.
-  return requested.startsWith('baseten/')
-    ? requested.slice('baseten/'.length)
+  const requested = model ?? config.openrouter.defaultChatModel
+  // Allow a model dropdown to send either the bare id or the openrouter/ prefix.
+  return requested.startsWith('openrouter/')
+    ? requested.slice('openrouter/'.length)
     : requested
 }
 
@@ -100,11 +112,13 @@ export function resolveModelId(model?: string): string {
  */
 export async function streamLandingAgent({
   attachments = [],
-  modelId,
+  imageModel = config.openrouter.defaultImageModel,
   projectId,
   prompt,
   request,
   response,
+  textModel,
+  visionModel = config.openrouter.defaultVisionModel,
 }: StreamOptions) {
   const project = await getProject(projectId)
   if (!project) {
@@ -115,12 +129,12 @@ export async function streamLandingAgent({
     return
   }
 
-  await updateProjectModel(projectId, modelId)
+  await updateProjectModel(projectId, textModel)
   setTitleIfUntitled(projectId, prompt)
 
   const recordedTurn = createRecordedTurn(
     prompt,
-    modelId,
+    textModel,
     attachments.map(stripAttachmentData),
   )
   const startedAt = Date.now()
@@ -132,7 +146,7 @@ export async function streamLandingAgent({
     store,
     mastra,
     baseUrl,
-    modelId,
+    textModel,
     async ({ selector, timeoutMs, viewportSize }) => {
       const { promise, requestId } = createPendingBrowserScreenshot({
         timeoutMs,
@@ -145,6 +159,7 @@ export async function streamLandingAgent({
       })
       return await promise
     },
+    { imageModel, visionModel },
   )
   const controller = new AbortController()
 
@@ -190,6 +205,7 @@ export async function streamLandingAgent({
       nextToolSeq: () => ++toolCallSeq,
       recordedTurn,
       response,
+      visionModel,
     })
     if (attachmentAnalysis.images > 0) {
       visionImages += attachmentAnalysis.images
@@ -365,7 +381,9 @@ export async function streamLandingAgent({
           break
         }
         case 'tool-result': {
-          const isError = chunk.payload.isError === true
+          const isError =
+            chunk.payload.isError === true ||
+            toolResultIndicatesFailure(chunk.payload.result)
           const args = asToolArgs(chunk.payload.args)
           const display = getToolCallDisplay(
             callDisplay,
@@ -515,7 +533,7 @@ export async function streamLandingAgent({
 
     if (!fatalRunError) {
       const usage = await stream.usage
-      const llmCost = calculateLlmCost(modelId, {
+      const llmCost = calculateLlmCost(textModel, {
         cachedInputTokens: usage.cachedInputTokens,
         inputTokens: usage.inputTokens,
         outputTokens: usage.outputTokens,
@@ -553,7 +571,7 @@ export async function streamLandingAgent({
         },
         durationMs: Date.now() - startedAt,
         finishReason: (await stream.finishReason) ?? 'stop',
-        model: modelId,
+        model: textModel,
         usage: {
           cachedInputTokens: usage.cachedInputTokens,
           inputTokens: usage.inputTokens,
@@ -600,18 +618,20 @@ async function analyzePromptAttachments({
   nextToolSeq,
   recordedTurn,
   response,
+  visionModel,
 }: {
-  attachments: AgentImageAttachmentInput[]
+  attachments: AgentAttachmentInput[]
   nextToolSeq: () => number
   recordedTurn: ProjectMessageTurn
   response: ServerResponse
+  visionModel: string
 }): Promise<AttachmentAnalysis> {
   if (attachments.length === 0) {
     return { contextBlock: '', cost: 0, images: 0, ok: true }
   }
 
   const id = `tool-${nextToolSeq()}-analyze_image`
-  const intent = 'Analyze attached image reference'
+  const intent = 'Analyze attached visual reference'
   const detail = compactLines([
     intent,
     ...attachments.map((attachment) => attachment.name),
@@ -633,6 +653,7 @@ async function analyzePromptAttachments({
         sourceLabel: attachment.name,
       })),
       ATTACHMENT_OCR_PROMPT,
+      visionModel,
     )
     const cost = visionCost(result.usage ?? {}, result.cost)
     const images = result.imagesAnalyzed
@@ -670,7 +691,7 @@ async function analyzePromptAttachments({
     recordToolCall(recordedTurn, donePayload)
     sendSse(response, 'tool_call', donePayload)
     return {
-      contextBlock: buildAttachmentContext(attachments, result),
+      contextBlock: buildAttachmentContext(attachments, result, visionModel),
       cost,
       images,
       ok: true,
@@ -725,17 +746,22 @@ function buildAgentMessages(
 }
 
 function buildAttachmentContext(
-  attachments: AgentImageAttachmentInput[],
+  attachments: AgentAttachmentInput[],
   result: ImageOcrResult,
+  visionModel: string,
 ): string {
   const imageList = attachments
-    .map(
-      (attachment, index) =>
-        `${index + 1}. ${attachment.name} (${attachment.mediaType}, ${attachment.size} bytes)`,
-    )
+    .map((attachment, index) => {
+      const base = `${index + 1}. ${attachment.name} (${attachment.mediaType}, ${attachment.size} bytes)`
+      if (attachment.kind !== 'element') return base
+      return [
+        base,
+        `Selected element HTML:\n${truncateAttachmentHtml(attachment.html)}`,
+      ].join('\n')
+    })
     .join('\n')
   return [
-    `Attached image OCR/visual transcript from Baseten \`${BASETEN_VISION_MODEL}\`:`,
+    `Attached image OCR/visual transcript from OpenRouter \`${visionModel}\`:`,
     imageList,
     '',
     result.text || 'No text returned.',
@@ -763,6 +789,9 @@ function buildHistoryUserContent(turn: ProjectMessageTurn): null | string {
   const attachmentLines = (turn.attachments ?? []).flatMap(
     (attachment, index) => [
       `${index + 1}. ${attachment.name} (${attachment.mediaType}, ${attachment.size} bytes)`,
+      attachment.kind === 'element' && attachment.html
+        ? `Selected element HTML:\n${truncateAttachmentHtml(attachment.html)}`
+        : null,
       attachment.analysisText
         ? `OCR/visual transcript: ${attachment.analysisText}`
         : null,
@@ -986,7 +1015,7 @@ function stringValue(value: unknown): string | undefined {
 function stripAttachmentData({
   dataUrl: _dataUrl,
   ...metadata
-}: AgentImageAttachmentInput): ProjectMessageAttachment {
+}: AgentAttachmentInput): ProjectMessageAttachment {
   return metadata
 }
 
@@ -1072,6 +1101,10 @@ function summarizeToolError(error: unknown): string {
     const data = error as Record<string, unknown>
     const message = stringValue(data.message)
     if (message) return message
+    const reason = stringValue(data.reason)
+    if (reason) return reason
+    const errorMessage = stringValue(data.error)
+    if (errorMessage) return errorMessage
     const details = asToolArgs(data.details)
     const detailMessage = stringValue(details.errorMessage)
     if (detailMessage) return detailMessage
@@ -1199,4 +1232,15 @@ function terminalizeRecordedTools(
       }
     }),
   }
+}
+
+function toolResultIndicatesFailure(result: unknown): boolean {
+  const data = asToolArgs(result)
+  return booleanValue(data.ok) === false
+}
+
+function truncateAttachmentHtml(html: string, maxLength = 20_000) {
+  return html.length > maxLength
+    ? `${html.slice(0, maxLength)}\n<!-- truncated -->`
+    : html
 }

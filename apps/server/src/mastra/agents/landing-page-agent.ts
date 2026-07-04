@@ -2,8 +2,8 @@ import { Agent, type Agent as AgentType } from '@mastra/core/agent'
 import type { Mastra } from '@mastra/core/mastra'
 
 import { config } from '../../config.ts'
-import { basetenModel } from '../lib/baseten-model.ts'
 import { createHtmlStore, type HtmlStore } from '../lib/html-store.ts'
+import { openrouterModel } from '../lib/openrouter-model.ts'
 import { designSkill } from '../skills/design-skill.ts'
 import {
   createLandingTools,
@@ -42,17 +42,18 @@ export function createLandingPageAgent(
   store: HtmlStore,
   mastra: Mastra,
   baseUrl: string,
-  modelId: string = config.baseten.defaultModel,
+  textModel: string = config.openrouter.defaultChatModel,
   requestScreenshot?: RequestBrowserScreenshot,
+  options: { imageModel?: string; visionModel?: string } = {},
 ): AgentType {
   return new Agent({
     id: 'landing-page-agent',
     instructions: LANDING_AGENT_INSTRUCTIONS,
     mastra,
-    model: basetenModel(modelId),
+    model: openrouterModel(textModel),
     name: 'Landing Page Agent',
     skills: [designSkill],
-    tools: createLandingTools(store, baseUrl, requestScreenshot),
+    tools: createLandingTools(store, baseUrl, requestScreenshot, options),
   })
 }
 
@@ -63,16 +64,17 @@ export function createLandingPageAgent(
 export function createLandingPageAgentConfig(
   store: HtmlStore,
   baseUrl: string,
-  modelId: string = config.baseten.defaultModel,
+  textModel: string = config.openrouter.defaultChatModel,
   requestScreenshot?: RequestBrowserScreenshot,
+  options: { imageModel?: string; visionModel?: string } = {},
 ) {
   return {
     id: 'landing-page-agent',
     instructions: LANDING_AGENT_INSTRUCTIONS,
-    model: basetenModel(modelId),
+    model: openrouterModel(textModel),
     name: 'Landing Page Agent',
     skills: [designSkill],
-    tools: createLandingTools(store, baseUrl, requestScreenshot),
+    tools: createLandingTools(store, baseUrl, requestScreenshot, options),
   }
 }
 

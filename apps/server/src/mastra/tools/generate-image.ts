@@ -4,8 +4,6 @@ import { z } from 'zod'
 import { config } from '../../config.ts'
 import { getImage, saveImage } from '../lib/image-store.ts'
 
-const IMAGE_MODEL = 'bytedance-seed/seedream-4.5'
-
 interface OpenRouterImageResponse {
   created?: number
   data?: Array<{ b64_json?: string; media_type?: string }>
@@ -17,7 +15,10 @@ interface OpenRouterImageResponse {
  * (e.g. `http://localhost:3001`) so generated images are served back at a
  * short URL the agent embeds directly in `<img src="...">`.
  */
-export function createGenerateImageTool(baseUrl: string) {
+export function createGenerateImageTool(
+  baseUrl: string,
+  model: string = config.openrouter.defaultImageModel,
+) {
   return createTool({
     description:
       'Generate an image from a text prompt using the Seedream 4.5 model. Returns a hosted URL (e.g. http://localhost:3001/images/img-1.jpg) — embed it directly as `<img src="<url>" alt="...">`. Use for hero/product imagery, brand visuals, or any raster graphic the landing page needs — do NOT use for icons or decoration. Always pass an intent. Be specific and art-directed in the prompt (subject, lighting, composition, style).',
@@ -37,7 +38,7 @@ export function createGenerateImageTool(baseUrl: string) {
       const response = await fetch(config.openrouter.imageApiUrl, {
         body: JSON.stringify({
           aspect_ratio: aspectRatio ?? '16:9',
-          model: IMAGE_MODEL,
+          model,
           prompt,
         }),
         headers: {

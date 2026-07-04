@@ -13,7 +13,21 @@ afterEach(() => {
 })
 
 describe('ocrImageInputs', () => {
-  it('uses Baseten Kimi for OCR without requiring OpenRouter', async () => {
+  it('returns an empty success without calling OpenRouter for empty inputs', async () => {
+    const { ocrImageInputs } = await loadImageOcr()
+    const fetch = vi.fn<FetchMock>()
+    vi.stubGlobal('fetch', fetch)
+
+    await expect(ocrImageInputs([])).resolves.toEqual({
+      imagesAnalyzed: 0,
+      ok: true,
+      text: '',
+      usage: null,
+    })
+    expect(fetch).not.toHaveBeenCalled()
+  })
+
+  it('uses the OpenRouter vision model for OCR', async () => {
     const { ocrImageInputs } = await loadImageOcr()
     vi.stubEnv('OPENROUTER_API_KEY', '')
     const fetch = vi.fn<FetchMock>(async () =>
@@ -37,14 +51,14 @@ describe('ocrImageInputs', () => {
 
     const [chatUrl, chatInit] = fetch.mock.calls[0]!
     expect(String(chatUrl)).toBe(
-      'https://inference.baseten.co/v1/chat/completions',
+      'https://openrouter.ai/api/v1/chat/completions',
     )
     expect((chatInit as RequestInit).headers).toMatchObject({
-      Authorization: 'Bearer test-baseten-key',
+      Authorization: 'Bearer test-openrouter-key',
     })
   })
 
-  it('rejects unsupported data URL media types before calling Baseten', async () => {
+  it('rejects unsupported data URL media types before calling OpenRouter', async () => {
     const { ocrImageInputs } = await loadImageOcr()
     const fetch = vi.fn<FetchMock>()
     vi.stubGlobal('fetch', fetch)
@@ -63,7 +77,7 @@ describe('ocrImageInputs', () => {
     expect(fetch).not.toHaveBeenCalled()
   })
 
-  it('deduplicates data URLs and sends normalized image parts to Baseten', async () => {
+  it('deduplicates data URLs and sends normalized image parts to OpenRouter', async () => {
     const { ocrImageInputs } = await loadImageOcr()
     const fetch = vi.fn<FetchMock>(async () =>
       jsonResponse({
@@ -101,7 +115,7 @@ describe('ocrImageInputs', () => {
 
     const [chatUrl, chatInit] = fetch.mock.calls[0]!
     expect(String(chatUrl)).toBe(
-      'https://inference.baseten.co/v1/chat/completions',
+      'https://openrouter.ai/api/v1/chat/completions',
     )
     const body = JSON.parse((chatInit as RequestInit).body as string) as {
       messages: Array<{
@@ -113,7 +127,7 @@ describe('ocrImageInputs', () => {
       }>
       model: string
     }
-    expect(body.model).toBe('moonshotai/Kimi-K2.7-Code')
+    expect(body.model).toBe('moonshotai/kimi-k2.7-code')
     expect(body.messages[0]!.content[0]).toMatchObject({
       text: expect.stringContaining('hero.png'),
       type: 'text',
@@ -127,10 +141,72 @@ describe('ocrImageInputs', () => {
       },
     ])
   })
+
+  it('surfaces OpenRouter HTTP and JSON errors', async () => {
+    const { ocrImageInputs } = await loadImageOcr()
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn<FetchMock>(
+        async () => new Response('upstream down', { status: 503 }),
+      ),
+    )
+    await expect(
+      ocrImageInputs([{ dataUrl: PNG_DATA_URL, sourceLabel: 'hero.png' }]),
+    ).resolves.toMatchObject({
+      imagesAnalyzed: 1,
+      ok: false,
+      reason: 'OpenRouter vision error (503): upstream down',
+    })
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn<FetchMock>(async () =>
+        jsonResponse({ error: { code: 'bad_request', message: 'bad image' } }),
+      ),
+    )
+    await expect(
+      ocrImageInputs([{ dataUrl: PNG_DATA_URL, sourceLabel: 'hero.png' }]),
+    ).resolves.toMatchObject({
+      ok: false,
+      reason: 'OpenRouter vision error (bad_request): bad image',
+    })
+  })
+
+  it('uses reasoning fallbacks and provider cost aliases', async () => {
+    const { ocrImageInputs } = await loadImageOcr()
+    vi.stubGlobal(
+      'fetch',
+      vi.fn<FetchMock>(async () =>
+        jsonResponse({
+          choices: [
+            {
+              message: {
+                content: ' ',
+                reasoning_details: [
+                  { text: 'Image 1' },
+                  { text: 'CTA visible' },
+                ],
+              },
+            },
+          ],
+          usage: { estimated_cost: 0.007 },
+        }),
+      ),
+    )
+
+    await expect(
+      ocrImageInputs([{ dataUrl: PNG_DATA_URL, sourceLabel: 'hero.png' }]),
+    ).resolves.toMatchObject({
+      cost: 0.007,
+      ok: true,
+      text: 'Image 1\nCTA visible',
+    })
+  })
 })
 
 describe('ocrImages', () => {
-  it('preserves URL input behavior by fetching image URLs before Baseten', async () => {
+  it('preserves URL input behavior by fetching image URLs before OpenRouter', async () => {
     const { ocrImages } = await loadImageOcr()
     const fetch = vi.fn<FetchMock>(async (input) => {
       const url = String(input)
@@ -159,6 +235,42 @@ describe('ocrImages', () => {
     }
     expect(chatBody.messages[0]!.content[1]!.image_url?.url).toBe(WEBP_DATA_URL)
   })
+
+  it('summarizes URL fetch failures when no images load', async () => {
+    const { ocrImages } = await loadImageOcr()
+    vi.stubGlobal(
+      'fetch',
+      vi.fn<FetchMock>(async () => new Response('nope', { status: 404 })),
+    )
+
+    const result = await ocrImages(['https://example.test/missing.png'])
+
+    expect(result).toMatchObject({ imagesAnalyzed: 0, ok: false, usage: null })
+    expect(result.reason).toContain('https://example.test/missing.png')
+    expect(result.reason).toContain('Failed to fetch image (404)')
+  })
+
+  it('rejects fetched URLs without supported image media types', async () => {
+    const { ocrImages } = await loadImageOcr()
+    vi.stubGlobal(
+      'fetch',
+      vi.fn<FetchMock>(
+        async () =>
+          new Response('plain text', {
+            headers: { 'content-type': 'text/plain' },
+            status: 200,
+          }),
+      ),
+    )
+
+    await expect(
+      ocrImages(['https://example.test/readme.txt']),
+    ).resolves.toMatchObject({
+      imagesAnalyzed: 0,
+      ok: false,
+      reason: expect.stringContaining('URL is not a supported image'),
+    })
+  })
 })
 
 function base64Bytes(value: string): Uint8Array {
@@ -174,6 +286,6 @@ function jsonResponse(body: unknown): Response {
 
 async function loadImageOcr(): Promise<ImageOcrModule> {
   vi.resetModules()
-  vi.stubEnv('BASETEN_API_KEY', 'test-baseten-key')
+  vi.stubEnv('OPENROUTER_API_KEY', 'test-openrouter-key')
   return import('./image-ocr.ts')
 }

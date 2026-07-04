@@ -1,7 +1,5 @@
 import { config } from '../../config.ts'
 
-export const BASETEN_VISION_MODEL = 'moonshotai/Kimi-K2.7-Code'
-
 const DEFAULT_OCR_PROMPT =
   'Extract ALL visible text from every image (OCR). Return the text exactly as it appears, preserving headings, lists, and structure. For each image, also briefly describe brand-relevant visual details: logo marks, product UI, people/scene, color palette, layout, and any notable typography. If an image has no text, say "No text found" for that image and still describe what it shows.'
 
@@ -40,7 +38,7 @@ export interface ImageOcrUrlInput {
   url: string
 }
 
-interface BasetenChatChoice {
+interface ChatCompletionChoice {
   message?: {
     content?: null | string
     reasoning?: string
@@ -48,8 +46,8 @@ interface BasetenChatChoice {
   }
 }
 
-interface BasetenChatResponse {
-  choices?: BasetenChatChoice[]
+interface ChatCompletionResponse {
+  choices?: ChatCompletionChoice[]
   error?: { code?: number | string; message?: string }
   usage?: {
     completion_tokens?: number
@@ -75,6 +73,7 @@ interface LoadedImageRef {
 export async function ocrImageInputs(
   inputs: ImageOcrInput[],
   prompt: string = DEFAULT_OCR_PROMPT,
+  model: string = config.openrouter.defaultVisionModel,
 ): Promise<ImageOcrResult> {
   const imageInputs = normalizeImageInputs(inputs)
 
@@ -117,7 +116,7 @@ export async function ocrImageInputs(
   }
 
   const response = await fetch(
-    `${trimTrailingSlash(config.baseten.url)}/chat/completions`,
+    `${trimTrailingSlash(config.openrouter.chatApiUrl)}/chat/completions`,
     {
       body: JSON.stringify({
         max_tokens: 4096,
@@ -139,11 +138,11 @@ export async function ocrImageInputs(
             role: 'user',
           },
         ],
-        model: BASETEN_VISION_MODEL,
+        model,
         temperature: 0,
       }),
       headers: {
-        Authorization: `Bearer ${config.baseten.apiKey}`,
+        Authorization: `Bearer ${config.openrouter.apiKey}`,
         'Content-Type': 'application/json',
       },
       method: 'POST',
@@ -155,18 +154,18 @@ export async function ocrImageInputs(
     return {
       imagesAnalyzed: imageRefs.length,
       ok: false,
-      reason: `Baseten vision error (${response.status}): ${text.slice(0, 200)}`,
+      reason: `OpenRouter vision error (${response.status}): ${text.slice(0, 200)}`,
       text: '',
       usage: null,
     }
   }
 
-  const json = (await response.json()) as BasetenChatResponse
+  const json = (await response.json()) as ChatCompletionResponse
   if (json.error) {
     return {
       imagesAnalyzed: imageRefs.length,
       ok: false,
-      reason: `Baseten vision error (${json.error.code ?? 'unknown'}): ${json.error.message ?? 'Unknown error'}`,
+      reason: `OpenRouter vision error (${json.error.code ?? 'unknown'}): ${json.error.message ?? 'Unknown error'}`,
       text: '',
       usage: null,
     }
@@ -193,10 +192,12 @@ export async function ocrImageInputs(
 export async function ocrImages(
   imageUrls: string[],
   prompt: string = DEFAULT_OCR_PROMPT,
+  model: string = config.openrouter.defaultVisionModel,
 ): Promise<ImageOcrResult> {
   return ocrImageInputs(
     imageUrls.map((url) => ({ sourceLabel: url, url })),
     prompt,
+    model,
   )
 }
 
@@ -226,7 +227,7 @@ function detectMediaType(buffer: Buffer): string | undefined {
   return undefined
 }
 
-function extractMessageText(message: BasetenChatChoice['message']): string {
+function extractMessageText(message: ChatCompletionChoice['message']): string {
   if (typeof message?.content === 'string' && message.content.trim()) {
     return message.content
   }
@@ -241,12 +242,12 @@ function extractMessageText(message: BasetenChatChoice['message']): string {
 }
 
 function extractResponseCost(
-  usage: BasetenChatResponse['usage'],
+  usage: ChatCompletionResponse['usage'],
 ): number | undefined {
   return numberFrom(usage?.cost, usage?.total_cost, usage?.estimated_cost)
 }
 
-/** Fetch an image and return a base64 data URL suitable for Baseten vision. */
+/** Fetch an image and return a base64 data URL suitable for OpenRouter vision. */
 async function fetchAsDataUrl(url: string): Promise<string> {
   const response = await fetch(url)
   if (!response.ok) {

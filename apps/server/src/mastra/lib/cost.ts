@@ -1,7 +1,7 @@
 /**
  * Cost accounting. Prefer provider/tool-reported costs when present; otherwise
  * calculate fallback costs from token/image/credit usage using the rates below.
- * Baseten token prices come from `/v1/models` metadata and the Model APIs UI.
+ * OpenRouter reports costs in raw response metadata; token prices are fallbacks.
  */
 
 interface TokenPricing {
@@ -10,21 +10,21 @@ interface TokenPricing {
   output: number
 }
 
-const BASETEN_TOKEN_PRICING_USD: Record<string, TokenPricing> = {
-  'moonshotai/Kimi-K2.7-Code': {
-    cachedInput: perMillion(0.16),
-    input: perMillion(0.95),
-    output: perMillion(4),
+const OPENROUTER_TOKEN_PRICING_USD: Record<string, TokenPricing> = {
+  'moonshotai/kimi-k2.7-code': {
+    cachedInput: perMillion(0.48),
+    input: perMillion(0.6),
+    output: perMillion(2.5),
   },
-  'zai-org/GLM-5.2': {
-    cachedInput: perMillion(0.26),
-    input: perMillion(1.4),
-    output: perMillion(4.4),
+  'z-ai/glm-5.2': {
+    cachedInput: perMillion(0.14),
+    input: perMillion(0.4),
+    output: perMillion(2),
   },
 }
 
-const DEFAULT_BASETEN_MODEL_ID = 'zai-org/GLM-5.2'
-const BASETEN_VISION_MODEL_ID = 'moonshotai/Kimi-K2.7-Code'
+const DEFAULT_OPENROUTER_CHAT_MODEL = 'z-ai/glm-5.2'
+const DEFAULT_OPENROUTER_VISION_MODEL = 'moonshotai/kimi-k2.7-code'
 
 /**
  * Firecrawl credits → USD. Metered API rate from firecrawl.dev/pricing
@@ -84,7 +84,7 @@ export function providerReportedCost(...sources: unknown[]): number {
 
 export function visionCost(usage: VisionUsage, providerCost?: number): number {
   if (typeof providerCost === 'number' && providerCost > 0) return providerCost
-  return tokenUsageCost(BASETEN_VISION_MODEL_ID, {
+  return tokenUsageCost(DEFAULT_OPENROUTER_VISION_MODEL, {
     cachedInputTokens: usage.cachedTokens,
     inputTokens: usage.promptTokens,
     outputTokens: usage.completionTokens,
@@ -131,12 +131,12 @@ function extractProviderCost(
 }
 
 function modelPricing(modelId: string): TokenPricing {
-  const normalized = modelId.startsWith('baseten/')
-    ? modelId.slice('baseten/'.length)
+  const normalized = modelId.startsWith('openrouter/')
+    ? modelId.slice('openrouter/'.length)
     : modelId
   return (
-    BASETEN_TOKEN_PRICING_USD[normalized] ??
-    BASETEN_TOKEN_PRICING_USD[DEFAULT_BASETEN_MODEL_ID]!
+    OPENROUTER_TOKEN_PRICING_USD[normalized] ??
+    OPENROUTER_TOKEN_PRICING_USD[DEFAULT_OPENROUTER_CHAT_MODEL]!
   )
 }
 

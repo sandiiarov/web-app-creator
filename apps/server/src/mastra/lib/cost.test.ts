@@ -11,7 +11,7 @@ import {
 describe('calculateLlmCost', () => {
   it('calculates GLM 5.2 fallback cost from tokens when provider cost is absent', () => {
     expect(
-      calculateLlmCost('zai-org/GLM-5.2', {
+      calculateLlmCost('z-ai/glm-5.2', {
         cachedInputTokens: 3360,
         inputTokens: 4981,
         outputTokens: 67,
@@ -21,7 +21,7 @@ describe('calculateLlmCost', () => {
 
   it('prefers provider-reported LLM cost over token fallback', () => {
     expect(
-      calculateLlmCost('zai-org/GLM-5.2', {
+      calculateLlmCost('z-ai/glm-5.2', {
         inputTokens: 100_000,
         outputTokens: 100_000,
         raw: { usage: { cost: 0.0123 } },
@@ -79,7 +79,7 @@ describe('providerReportedCost', () => {
 })
 
 describe('tool costs', () => {
-  it('calculates Baseten Kimi vision OCR fallback cost from tokens', () => {
+  it('calculates OpenRouter Kimi vision OCR fallback cost from tokens', () => {
     expect(
       visionCost({
         cachedTokens: 200,

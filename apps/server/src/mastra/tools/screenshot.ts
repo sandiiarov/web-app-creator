@@ -1,6 +1,7 @@
 import { createTool } from '@mastra/core/tools'
 import { z } from 'zod'
 
+import { config } from '../../config.ts'
 import type { BrowserScreenshotResult } from '../lib/browser-screenshot.ts'
 import { ocrImageInputs } from '../lib/image-ocr.ts'
 
@@ -41,6 +42,7 @@ const ImageOcrSchema = z.object({
 
 export function createScreenshotTool(
   requestScreenshot?: RequestBrowserScreenshot,
+  visionModel: string = config.openrouter.defaultVisionModel,
 ) {
   return createTool({
     description:
@@ -104,6 +106,7 @@ export function createScreenshotTool(
           },
         ],
         `${SCREENSHOT_OCR_PROMPT}\nTarget selector: ${selector}\nViewport size: ${viewportSize}`,
+        visionModel,
       )
 
       return {

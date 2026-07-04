@@ -5,7 +5,7 @@ import { createHtmlStore } from '../lib/html-store.ts'
 import { createReadTool } from './read.ts'
 
 describe('createReadTool', () => {
-  it('emits Baseten-compatible JSON schema for empty anchor ranges', () => {
+  it('emits OpenRouter-compatible JSON schema for empty anchor ranges', () => {
     const tool = createReadTool(createHtmlStore())
     const schemaText = JSON.stringify(
       z.toJSONSchema(tool.inputSchema as z.ZodType),

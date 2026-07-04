@@ -21,9 +21,36 @@ afterEach(async () => {
   await Promise.all(createdProjectIds.splice(0).map((id) => deleteProject(id)))
 })
 
+describe('streamLandingAgent missing projects', () => {
+  it('returns an SSE error when the project does not exist', async () => {
+    vi.stubEnv('OPENROUTER_API_KEY', 'test-openrouter-key')
+    vi.doMock('./index.ts', () => ({ mastra: {} }))
+    vi.doMock('./agents/landing-page-agent.ts', () => ({
+      createLandingPageAgent: vi.fn<() => never>(),
+    }))
+
+    const { streamLandingAgent } = await import('./route.ts')
+    const response = new FakeResponse()
+
+    await streamLandingAgent({
+      projectId: '00000000-0000-0000-0000-000000000000',
+      prompt: 'Build',
+      request: fakeRequest(),
+      response: response as unknown as ServerResponse,
+      textModel: 'z-ai/glm-5.2',
+    })
+
+    expect(response.statusCode).toBe(404)
+    expect(parseSseEvents(response.body)).toEqual([
+      { data: { message: 'Project not found' }, event: 'error' },
+      { data: {}, event: 'done' },
+    ])
+  })
+})
+
 describe('streamLandingAgent attachments', () => {
   it('analyzes attachments before the agent run and persists tool metadata', async () => {
-    vi.stubEnv('BASETEN_API_KEY', 'test-baseten-key')
+    vi.stubEnv('OPENROUTER_API_KEY', 'test-openrouter-key')
 
     let capturedMessages: Array<{ content: string; role: string }> = []
     vi.doMock('./index.ts', () => ({ mastra: {} }))
@@ -75,11 +102,11 @@ describe('streamLandingAgent attachments', () => {
           size: 68,
         },
       ],
-      modelId: 'zai-org/GLM-5.2',
       projectId: project.id,
       prompt: 'Use this reference image.',
       request: fakeRequest(),
       response: response as unknown as ServerResponse,
+      textModel: 'z-ai/glm-5.2',
     })
 
     expect(capturedMessages.at(-1)).toMatchObject({
@@ -149,11 +176,123 @@ describe('streamLandingAgent attachments', () => {
     })
     expect(JSON.stringify(saved?.messages[0])).not.toContain(PNG_DATA_URL)
   })
+
+  it('records attachment analysis failures without blocking the agent run', async () => {
+    vi.stubEnv('OPENROUTER_API_KEY', 'test-openrouter-key')
+
+    vi.doMock('./index.ts', () => ({ mastra: {} }))
+    vi.doMock('./lib/image-ocr.ts', () => ({
+      ocrImageInputs: vi.fn<
+        () => Promise<{
+          imagesAnalyzed: number
+          ok: boolean
+          reason: string
+          text: string
+          usage: null
+        }>
+      >(async () => ({
+        imagesAnalyzed: 1,
+        ok: false,
+        reason: 'vision unavailable',
+        text: '',
+        usage: null,
+      })),
+    }))
+    vi.doMock('./agents/landing-page-agent.ts', () => ({
+      createLandingPageAgent: () => ({
+        stream: async () => fakeAgentStream(),
+      }),
+    }))
+
+    const { createProject, getProject } = await import('./lib/project-store.ts')
+    const project = await createProject()
+    createdProjectIds.push(project.id)
+    const { streamLandingAgent } = await import('./route.ts')
+    const response = new FakeResponse()
+
+    await streamLandingAgent({
+      attachments: [
+        {
+          dataUrl: PNG_DATA_URL,
+          id: 'image-1',
+          mediaType: 'image/png',
+          name: 'wireframe.png',
+          size: 68,
+        },
+      ],
+      projectId: project.id,
+      prompt: 'Use this reference image.',
+      request: fakeRequest(),
+      response: response as unknown as ServerResponse,
+      textModel: 'z-ai/glm-5.2',
+    })
+
+    expect(parseSseEvents(response.body)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          data: expect.objectContaining({
+            result: 'vision unavailable',
+            state: 'error',
+            tool: 'analyze_image',
+          }),
+          event: 'tool_call',
+        }),
+      ]),
+    )
+    await expect(getProject(project.id)).resolves.toMatchObject({
+      messages: [
+        expect.objectContaining({
+          attachments: [
+            expect.not.objectContaining({ analysisText: expect.any(String) }),
+          ],
+        }),
+      ],
+    })
+  })
+})
+
+describe('streamLandingAgent error handling', () => {
+  it('streams model errors and persists the failed turn', async () => {
+    vi.stubEnv('OPENROUTER_API_KEY', 'test-openrouter-key')
+
+    vi.doMock('./index.ts', () => ({ mastra: {} }))
+    vi.doMock('./agents/landing-page-agent.ts', () => ({
+      createLandingPageAgent: () => ({
+        stream: async () => {
+          throw new Error('model exploded')
+        },
+      }),
+    }))
+
+    const { createProject, getProject } = await import('./lib/project-store.ts')
+    const project = await createProject()
+    createdProjectIds.push(project.id)
+    const { streamLandingAgent } = await import('./route.ts')
+    const response = new FakeResponse()
+
+    await streamLandingAgent({
+      projectId: project.id,
+      prompt: 'Trigger an error.',
+      request: fakeRequest(),
+      response: response as unknown as ServerResponse,
+      textModel: 'z-ai/glm-5.2',
+    })
+
+    expect(parseSseEvents(response.body)).toEqual(
+      expect.arrayContaining([
+        { data: { message: 'model exploded' }, event: 'error' },
+        { data: {}, event: 'done' },
+      ]),
+    )
+    await expect(getProject(project.id)).resolves.toMatchObject({
+      messages: [expect.objectContaining({ error: 'model exploded' })],
+    })
+  })
 })
 
 describe('streamLandingAgent cost accounting', () => {
   it('uses provider-reported LLM cost from raw stream chunks', async () => {
-    vi.stubEnv('BASETEN_API_KEY', 'test-baseten-key')
+    vi.stubEnv('OPENROUTER_API_KEY', 'test-openrouter-key')
 
     let capturedOptions: Record<string, unknown> | undefined
     vi.doMock('./index.ts', () => ({ mastra: {} }))
@@ -181,16 +320,16 @@ describe('streamLandingAgent cost accounting', () => {
     const response = new FakeResponse()
 
     await streamLandingAgent({
-      modelId: 'zai-org/GLM-5.2',
       projectId: project.id,
       prompt: 'Test provider cost.',
       request: fakeRequest(),
       response: response as unknown as ServerResponse,
+      textModel: 'z-ai/glm-5.2',
     })
 
     expect(capturedOptions).toMatchObject({
       includeRawChunks: true,
-      maxProcessorRetries: 2,
+      maxProcessorRetries: 10,
       modelSettings: { maxOutputTokens: 16_384, maxRetries: 0 },
     })
     const errorProcessors = capturedOptions?.errorProcessors as
@@ -211,7 +350,7 @@ describe('streamLandingAgent cost accounting', () => {
   })
 
   it('calculates LLM cost from tokens when provider cost is absent', async () => {
-    vi.stubEnv('BASETEN_API_KEY', 'test-baseten-key')
+    vi.stubEnv('OPENROUTER_API_KEY', 'test-openrouter-key')
 
     vi.doMock('./index.ts', () => ({ mastra: {} }))
     vi.doMock('./agents/landing-page-agent.ts', () => ({
@@ -233,20 +372,20 @@ describe('streamLandingAgent cost accounting', () => {
     const response = new FakeResponse()
 
     await streamLandingAgent({
-      modelId: 'zai-org/GLM-5.2',
       projectId: project.id,
       prompt: 'Test calculated cost.',
       request: fakeRequest(),
       response: response as unknown as ServerResponse,
+      textModel: 'z-ai/glm-5.2',
     })
 
     expect(parseSseEvents(response.body)).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           data: expect.objectContaining({
-            cost: expect.closeTo(0.0034378, 8),
+            cost: expect.closeTo(0.0012528, 8),
             costBreakdown: expect.objectContaining({
-              llm: expect.closeTo(0.0034378, 8),
+              llm: expect.closeTo(0.0012528, 8),
             }),
           }),
           event: 'stats',
@@ -256,9 +395,106 @@ describe('streamLandingAgent cost accounting', () => {
   })
 })
 
+describe('streamLandingAgent stream mapping', () => {
+  it('maps text, tool summaries, tool errors, and aggregate costs', async () => {
+    vi.stubEnv('OPENROUTER_API_KEY', 'test-openrouter-key')
+
+    vi.doMock('./index.ts', () => ({ mastra: {} }))
+    vi.doMock('./agents/landing-page-agent.ts', () => ({
+      createLandingPageAgent: () => ({
+        stream: async () =>
+          fakeAgentStream(mixedToolStream(), {
+            cachedInputTokens: 10,
+            inputTokens: 100,
+            outputTokens: 50,
+            totalTokens: 150,
+          }),
+      }),
+    }))
+
+    const { createProject, getProject } = await import('./lib/project-store.ts')
+    const project = await createProject()
+    createdProjectIds.push(project.id)
+    const { streamLandingAgent } = await import('./route.ts')
+    const response = new FakeResponse()
+
+    await streamLandingAgent({
+      projectId: project.id,
+      prompt: 'Map stream chunks.',
+      request: fakeRequest(),
+      response: response as unknown as ServerResponse,
+      textModel: 'z-ai/glm-5.2',
+    })
+
+    const events = parseSseEvents(response.body)
+    expect(events).toEqual(
+      expect.arrayContaining([
+        { data: { delta: 'Thinking.' }, event: 'thinking' },
+        { data: { delta: 'Done.' }, event: 'text' },
+        expect.objectContaining({
+          data: expect.objectContaining({
+            detail: expect.stringContaining('Aspect ratio: 1:1'),
+            result: expect.stringContaining('Generated 2 images'),
+            state: 'done',
+            tool: 'generate_image',
+          }),
+          event: 'tool_call',
+        }),
+        expect.objectContaining({
+          data: expect.objectContaining({
+            result: 'Example · 123 chars · 2 links · 3 images · OCR 2 images',
+            state: 'done',
+            tool: 'scrape',
+          }),
+          event: 'tool_call',
+        }),
+        expect.objectContaining({
+          data: expect.objectContaining({
+            result: '2 matches · truncated',
+            state: 'done',
+            tool: 'find',
+          }),
+          event: 'tool_call',
+        }),
+        expect.objectContaining({
+          data: expect.objectContaining({
+            result: 'Boom',
+            state: 'error',
+            tool: 'skill_read',
+          }),
+          event: 'tool_call',
+        }),
+        expect.objectContaining({
+          data: expect.objectContaining({
+            costBreakdown: expect.objectContaining({
+              image: expect.objectContaining({ count: 2 }),
+              scrape: expect.objectContaining({
+                calls: 1,
+                credits: 1,
+                ocrImages: 2,
+              }),
+            }),
+            finishReason: 'stop',
+          }),
+          event: 'stats',
+        }),
+      ]),
+    )
+
+    const saved = await getProject(project.id)
+    expect(saved?.messages[0]?.parts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ text: 'Thinking.', type: 'thinking' }),
+        expect.objectContaining({ text: 'Done.', type: 'text' }),
+        expect.objectContaining({ state: 'error', tool: 'skill_read' }),
+      ]),
+    )
+  })
+})
+
 describe('streamLandingAgent retries', () => {
   it('emits retry events with issue, attempt, max attempts, and delay', async () => {
-    vi.stubEnv('BASETEN_API_KEY', 'test-baseten-key')
+    vi.stubEnv('OPENROUTER_API_KEY', 'test-openrouter-key')
     vi.stubEnv('AGENT_RETRY_BASE_DELAY_MS', '0')
     vi.stubEnv('AGENT_RETRY_MAX_DELAY_MS', '0')
 
@@ -290,11 +526,11 @@ describe('streamLandingAgent retries', () => {
     const response = new FakeResponse()
 
     await streamLandingAgent({
-      modelId: 'zai-org/GLM-5.2',
       projectId: project.id,
       prompt: 'Test visible retry.',
       request: fakeRequest(),
       response: response as unknown as ServerResponse,
+      textModel: 'z-ai/glm-5.2',
     })
 
     expect(parseSseEvents(response.body)).toEqual(
@@ -304,7 +540,7 @@ describe('streamLandingAgent retries', () => {
             attempt: 1,
             delayMs: 0,
             issue: 'ECONNRESET',
-            maxAttempts: 2,
+            maxAttempts: 10,
             reason: 'Transient network issue',
           },
           event: 'retry',
@@ -316,7 +552,7 @@ describe('streamLandingAgent retries', () => {
 
 describe('streamLandingAgent html updates', () => {
   it('emits html_update after a successful changed edit', async () => {
-    vi.stubEnv('BASETEN_API_KEY', 'test-baseten-key')
+    vi.stubEnv('OPENROUTER_API_KEY', 'test-openrouter-key')
 
     const nextHtml =
       '<!doctype html><html><head><title>Updated</title></head><body><main><h1>Updated hero</h1></main></body></html>'
@@ -337,11 +573,11 @@ describe('streamLandingAgent html updates', () => {
     const response = new FakeResponse()
 
     await streamLandingAgent({
-      modelId: 'zai-org/GLM-5.2',
       projectId: project.id,
       prompt: 'Update the hero.',
       request: fakeRequest(),
       response: response as unknown as ServerResponse,
+      textModel: 'z-ai/glm-5.2',
     })
 
     const events = parseSseEvents(response.body)
@@ -383,7 +619,7 @@ describe('streamLandingAgent html updates', () => {
   })
 
   it('does not emit html_update for failed edits', async () => {
-    vi.stubEnv('BASETEN_API_KEY', 'test-baseten-key')
+    vi.stubEnv('OPENROUTER_API_KEY', 'test-openrouter-key')
 
     vi.doMock('./index.ts', () => ({ mastra: {} }))
     vi.doMock('./agents/landing-page-agent.ts', () => ({
@@ -402,18 +638,18 @@ describe('streamLandingAgent html updates', () => {
     const response = new FakeResponse()
 
     await streamLandingAgent({
-      modelId: 'zai-org/GLM-5.2',
       projectId: project.id,
       prompt: 'Try an edit.',
       request: fakeRequest(),
       response: response as unknown as ServerResponse,
+      textModel: 'z-ai/glm-5.2',
     })
 
     expect(htmlUpdateEvents(response.body)).toEqual([])
   })
 
   it('does not emit html_update when successful edits leave HTML unchanged', async () => {
-    vi.stubEnv('BASETEN_API_KEY', 'test-baseten-key')
+    vi.stubEnv('OPENROUTER_API_KEY', 'test-openrouter-key')
 
     vi.doMock('./index.ts', () => ({ mastra: {} }))
     vi.doMock('./agents/landing-page-agent.ts', () => ({
@@ -430,11 +666,11 @@ describe('streamLandingAgent html updates', () => {
     const response = new FakeResponse()
 
     await streamLandingAgent({
-      modelId: 'zai-org/GLM-5.2',
       projectId: project.id,
       prompt: 'Try an edit.',
       request: fakeRequest(),
       response: response as unknown as ServerResponse,
+      textModel: 'z-ai/glm-5.2',
     })
 
     expect(htmlUpdateEvents(response.body)).toEqual([])
@@ -443,7 +679,7 @@ describe('streamLandingAgent html updates', () => {
 
 describe('streamLandingAgent history', () => {
   it('sends persisted project messages before the current prompt', async () => {
-    vi.stubEnv('BASETEN_API_KEY', 'test-baseten-key')
+    vi.stubEnv('OPENROUTER_API_KEY', 'test-openrouter-key')
 
     let capturedMessages: Array<{ content: string; role: string }> = []
     vi.doMock('./index.ts', () => ({ mastra: {} }))
@@ -487,11 +723,11 @@ describe('streamLandingAgent history', () => {
     const response = new FakeResponse()
 
     await streamLandingAgent({
-      modelId: 'zai-org/GLM-5.2',
       projectId: project.id,
       prompt: 'what i asked you todo',
       request: fakeRequest(),
       response: response as unknown as ServerResponse,
+      textModel: 'z-ai/glm-5.2',
     })
 
     expect(capturedMessages).toEqual([
@@ -515,7 +751,7 @@ describe('streamLandingAgent history', () => {
 
 describe('streamLandingAgent screenshots', () => {
   it('emits screenshot_request events with project correlation', async () => {
-    vi.stubEnv('BASETEN_API_KEY', 'test-baseten-key')
+    vi.stubEnv('OPENROUTER_API_KEY', 'test-openrouter-key')
 
     let capturedScreenshot: unknown
     let capturedScreenshotRequest: unknown
@@ -546,7 +782,7 @@ describe('streamLandingAgent screenshots', () => {
         _store: unknown,
         _mastra: unknown,
         _baseUrl: string,
-        _modelId: string,
+        _textModel: string,
         requestScreenshot: (input: {
           selector: string
           timeoutMs: number
@@ -573,11 +809,11 @@ describe('streamLandingAgent screenshots', () => {
     const response = new FakeResponse()
 
     await streamLandingAgent({
-      modelId: 'zai-org/GLM-5.2',
       projectId: project.id,
       prompt: 'Check the page visually.',
       request: fakeRequest(),
       response: response as unknown as ServerResponse,
+      textModel: 'z-ai/glm-5.2',
     })
 
     expect(capturedScreenshotRequest).toMatchObject({
@@ -601,7 +837,7 @@ describe('streamLandingAgent screenshots', () => {
   })
 
   it('summarizes screenshot tool results and adds vision cost', async () => {
-    vi.stubEnv('BASETEN_API_KEY', 'test-baseten-key')
+    vi.stubEnv('OPENROUTER_API_KEY', 'test-openrouter-key')
 
     vi.doMock('./index.ts', () => ({ mastra: {} }))
     vi.doMock('./agents/landing-page-agent.ts', () => ({
@@ -617,11 +853,11 @@ describe('streamLandingAgent screenshots', () => {
     const response = new FakeResponse()
 
     await streamLandingAgent({
-      modelId: 'zai-org/GLM-5.2',
       projectId: project.id,
       prompt: 'Review the rendered result.',
       request: fakeRequest(),
       response: response as unknown as ServerResponse,
+      textModel: 'z-ai/glm-5.2',
     })
 
     const events = parseSseEvents(response.body)
@@ -647,11 +883,53 @@ describe('streamLandingAgent screenshots', () => {
       ]),
     )
   })
+
+  it('marks failed screenshot result payloads as tool errors', async () => {
+    vi.stubEnv('OPENROUTER_API_KEY', 'test-openrouter-key')
+
+    vi.doMock('./index.ts', () => ({ mastra: {} }))
+    vi.doMock('./agents/landing-page-agent.ts', () => ({
+      createLandingPageAgent: () => ({
+        stream: async () =>
+          fakeAgentStream(screenshotToolStream({ failed: true })),
+      }),
+    }))
+
+    const { createProject } = await import('./lib/project-store.ts')
+    const project = await createProject()
+    createdProjectIds.push(project.id)
+    const { streamLandingAgent } = await import('./route.ts')
+    const response = new FakeResponse()
+
+    await streamLandingAgent({
+      projectId: project.id,
+      prompt: 'Review the rendered result.',
+      request: fakeRequest(),
+      response: response as unknown as ServerResponse,
+      textModel: 'z-ai/glm-5.2',
+    })
+
+    const events = parseSseEvents(response.body)
+    expect(events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          data: expect.objectContaining({
+            result:
+              'Selected element screenshot is too large (1456×6691). Choose a smaller selector.',
+            state: 'error',
+            tool: 'screenshot',
+          }),
+          event: 'tool_call',
+        }),
+      ]),
+    )
+  })
 })
 
 class FakeResponse {
   readonly chunks: string[] = []
   headersSent = false
+  statusCode = 200
 
   get body() {
     return this.chunks.join('')
@@ -671,8 +949,9 @@ class FakeResponse {
     return true
   }
 
-  writeHead(_statusCode: number, _headers?: OutgoingHttpHeaders) {
+  writeHead(statusCode: number, _headers?: OutgoingHttpHeaders) {
     this.headersSent = true
+    this.statusCode = statusCode
     return this
   }
 }
@@ -748,6 +1027,96 @@ function jsonResponse(body: unknown): Response {
   })
 }
 
+async function* mixedToolStream() {
+  yield { payload: { text: 'Thinking.' }, type: 'reasoning-delta' }
+  yield { payload: { text: 'Done.' }, type: 'text-delta' }
+  yield {
+    payload: {
+      args: {
+        aspectRatio: '1:1',
+        intent: 'Create product image',
+        prompt: 'Studio product shot',
+      },
+      toolCallId: 'call-image',
+      toolName: 'generate_image',
+    },
+    type: 'tool-call',
+  }
+  yield {
+    payload: {
+      args: { intent: 'Create product image' },
+      isError: false,
+      result: {
+        cost: 0.02,
+        imagesGenerated: 2,
+        ok: true,
+        url: 'http://localhost:3001/images/img-1.jpg',
+      },
+      toolCallId: 'call-image',
+      toolName: 'generate_image',
+    },
+    type: 'tool-result',
+  }
+  yield {
+    payload: {
+      args: { intent: 'Scrape brand', url: 'https://example.test' },
+      toolCallId: 'call-scrape',
+      toolName: 'scrape',
+    },
+    type: 'tool-call',
+  }
+  yield {
+    payload: {
+      args: { intent: 'Scrape brand', url: 'https://example.test' },
+      isError: false,
+      result: {
+        charCount: 123,
+        creditsUsed: 1,
+        imageCount: 3,
+        imageOcr: {
+          cost: 0.004,
+          imagesAnalyzed: 2,
+          ok: true,
+          usage: { completionTokens: 20, promptTokens: 100 },
+        },
+        linkCount: 2,
+        title: 'Example',
+        url: 'https://example.test',
+      },
+      toolCallId: 'call-scrape',
+      toolName: 'scrape',
+    },
+    type: 'tool-result',
+  }
+  yield {
+    payload: {
+      args: { intent: 'Find CTA', text: 'CTA' },
+      toolCallId: 'call-find',
+      toolName: 'find',
+    },
+    type: 'tool-call-input-streaming-start',
+  }
+  yield {
+    payload: {
+      args: { intent: 'Find CTA', text: 'CTA' },
+      isError: false,
+      result: { matchCount: 2, truncatedLines: true },
+      toolCallId: 'call-find',
+      toolName: 'find',
+    },
+    type: 'tool-result',
+  }
+  yield {
+    payload: {
+      args: { path: 'reference.md', skillName: 'design' },
+      error: 'Boom',
+      toolCallId: 'call-skill-read',
+      toolName: 'skill_read',
+    },
+    type: 'tool-error',
+  }
+}
+
 function parseSseEvents(body: string): Array<{ data: unknown; event: string }> {
   return body
     .trim()
@@ -780,40 +1149,63 @@ async function* rawCostStream() {
   }
 }
 
-async function* screenshotToolStream() {
+async function* screenshotToolStream({ failed = false } = {}) {
+  const args = failed
+    ? { selector: 'body', viewportSize: 'desktop' }
+    : { selector: '#hero', viewportSize: 'tablet' }
   yield {
     payload: {
-      args: { selector: '#hero', viewportSize: 'tablet' },
-      toolCallId: 'call-screenshot-1',
+      args,
+      toolCallId: failed ? 'call-screenshot-failed' : 'call-screenshot-1',
       toolName: 'screenshot',
     },
     type: 'tool-call',
   }
   yield {
     payload: {
-      args: { selector: '#hero', viewportSize: 'tablet' },
+      args,
       isError: false,
-      result: {
-        height: 600,
-        imageOcr: {
-          cost: 0.006,
-          imagesAnalyzed: 1,
-          ok: true,
-          text: 'Image 1\nHero headline visible. CTA is clipped.',
-          usage: {
-            completionTokens: 20,
-            promptTokens: 30,
-            totalTokens: 50,
+      result: failed
+        ? {
+            height: null,
+            imageOcr: {
+              imagesAnalyzed: 0,
+              ok: false,
+              reason:
+                'Selected element screenshot is too large (1456×6691). Choose a smaller selector.',
+              text: '',
+              usage: null,
+            },
+            mediaType: null,
+            ok: false,
+            reason:
+              'Selected element screenshot is too large (1456×6691). Choose a smaller selector.',
+            selector: 'body',
+            text: '',
+            viewportSize: 'desktop',
+            width: null,
+          }
+        : {
+            height: 600,
+            imageOcr: {
+              cost: 0.006,
+              imagesAnalyzed: 1,
+              ok: true,
+              text: 'Image 1\nHero headline visible. CTA is clipped.',
+              usage: {
+                completionTokens: 20,
+                promptTokens: 30,
+                totalTokens: 50,
+              },
+            },
+            mediaType: 'image/jpeg',
+            ok: true,
+            selector: '#hero',
+            text: 'Image 1\nHero headline visible. CTA is clipped.',
+            viewportSize: 'tablet',
+            width: 800,
           },
-        },
-        mediaType: 'image/jpeg',
-        ok: true,
-        selector: '#hero',
-        text: 'Image 1\nHero headline visible. CTA is clipped.',
-        viewportSize: 'tablet',
-        width: 800,
-      },
-      toolCallId: 'call-screenshot-1',
+      toolCallId: failed ? 'call-screenshot-failed' : 'call-screenshot-1',
       toolName: 'screenshot',
     },
     type: 'tool-result',

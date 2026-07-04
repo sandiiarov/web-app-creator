@@ -5,7 +5,7 @@ import { createHtmlStore } from '../lib/html-store.ts'
 import { createEditTool } from './edit.ts'
 
 describe('createEditTool', () => {
-  it('emits Baseten-compatible JSON schema for empty anchor ranges', () => {
+  it('emits OpenRouter-compatible JSON schema for empty anchor ranges', () => {
     const tool = createEditTool(createHtmlStore())
     const schemaText = JSON.stringify(
       z.toJSONSchema(tool.inputSchema as z.ZodType),

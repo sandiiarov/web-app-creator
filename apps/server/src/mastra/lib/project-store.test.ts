@@ -1,16 +1,20 @@
-import { readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { afterEach, describe, expect, it } from 'vitest'
 
 import { applyAnchorEdits } from './html-anchor-document.ts'
+import { saveImage } from './image-store.ts'
 import {
   appendProjectMessageTurn,
   createProject,
   createProjectHtmlStore,
   deleteProject,
   getProject,
+  listProjects,
+  readProjectImage,
+  setTitleIfUntitled,
   updateProjectModel,
   type ProjectMessageTurn,
 } from './project-store.ts'
@@ -190,10 +194,10 @@ describe('project message storage', () => {
     const saved = await getProject(project.id)
     const stats = saved?.messages[0]?.parts[0]
     expect(stats).toMatchObject({
-      cost: expect.closeTo(0.0034378, 8),
+      cost: expect.closeTo(0.0012528, 8),
       costBreakdown: expect.objectContaining({
-        llm: expect.closeTo(0.0034378, 8),
-        total: expect.closeTo(0.0034378, 8),
+        llm: expect.closeTo(0.0012528, 8),
+        total: expect.closeTo(0.0012528, 8),
       }),
       type: 'stats',
     })
@@ -211,6 +215,124 @@ describe('project message storage', () => {
       id: project.id,
       messages: [turn],
       model: 'zai-org/GLM-5.2',
+    })
+  })
+
+  it('lists only generated projects newest first and tolerates missing projects', async () => {
+    const older = await createProject({ title: 'Older' })
+    const newer = await createProject({ title: 'Newer' })
+    createdProjectIds.push(older.id, newer.id)
+
+    createProjectHtmlStore(older.id).set('<main>Older</main>')
+    await new Promise((resolve) => setTimeout(resolve, 5))
+    createProjectHtmlStore(newer.id).set('<main>Newer</main>')
+
+    const listed = (await listProjects()).filter(
+      (project) => project.id === newer.id || project.id === older.id,
+    )
+    expect(listed).toEqual([
+      expect.objectContaining({ id: newer.id, title: 'Newer' }),
+      expect.objectContaining({ id: older.id, title: 'Older' }),
+    ])
+    await expect(
+      updateProjectModel('missing-project', 'model'),
+    ).resolves.toBeNull()
+    await expect(deleteProject('missing-project')).resolves.toBeUndefined()
+  })
+
+  it('sets the title once from the first prompt and truncates long titles', async () => {
+    const project = await createProject()
+    createdProjectIds.push(project.id)
+
+    setTitleIfUntitled(
+      project.id,
+      '   Build    a landing page with a title that is definitely longer than sixty characters   ',
+    )
+    setTitleIfUntitled(project.id, 'Do not overwrite')
+
+    const saved = await getProject(project.id)
+    expect(saved?.title).toMatch(/^Build a landing page.*…$/)
+    expect(saved?.title).toHaveLength(61)
+  })
+
+  it('reads persisted project images by safe names and media type', async () => {
+    const project = await createProject()
+    createdProjectIds.push(project.id)
+    const imageDir = join(PROJECTS_DIR, project.id, 'images')
+    await mkdir(imageDir, { recursive: true })
+    await writeFile(join(imageDir, 'img-123.jpg'), 'jpg-bytes')
+    await writeFile(join(imageDir, 'logo.svg'), '<svg />')
+    await writeFile(join(imageDir, 'asset.gif'), 'gif-bytes')
+    await writeFile(join(imageDir, 'asset.webp'), 'webp-bytes')
+    await writeFile(join(imageDir, 'asset.unknown'), 'png-bytes')
+
+    await expect(readProjectImage(project.id, 'img-123.jpg')).resolves.toEqual({
+      buffer: Buffer.from('jpg-bytes'),
+      mediaType: 'image/jpeg',
+    })
+    await expect(readProjectImage(project.id, 'logo.svg')).resolves.toEqual({
+      buffer: Buffer.from('<svg />'),
+      mediaType: 'image/svg+xml',
+    })
+    await expect(
+      readProjectImage(project.id, 'asset.gif'),
+    ).resolves.toMatchObject({
+      mediaType: 'image/gif',
+    })
+    await expect(
+      readProjectImage(project.id, 'asset.webp'),
+    ).resolves.toMatchObject({
+      mediaType: 'image/webp',
+    })
+    await expect(
+      readProjectImage(project.id, 'asset.unknown'),
+    ).resolves.toMatchObject({ mediaType: 'image/png' })
+    await expect(
+      readProjectImage(project.id, '../secret.png'),
+    ).resolves.toBeNull()
+    await expect(
+      readProjectImage(project.id, 'missing.webp'),
+    ).resolves.toBeNull()
+  })
+
+  it('resets project stores with custom and placeholder documents', async () => {
+    const project = await createProject()
+    createdProjectIds.push(project.id)
+    const store = createProjectHtmlStore(project.id)
+
+    store.reset('<main>Seed</main>')
+    expect(store.get()).toBe('<main>Seed</main>')
+
+    store.reset()
+    expect(store.get()).toContain('<title>Untitled</title>')
+  })
+
+  it('copies generated images into project storage and preserves existing project URLs', async () => {
+    const project = await createProject()
+    createdProjectIds.push(project.id)
+    const imageId = saveImage(
+      Buffer.from([0xff, 0xd8, 0xff, 0x00]),
+      'image/jpeg',
+    )
+    const store = createProjectHtmlStore(project.id)
+
+    store.set(
+      `<main><img src="http://localhost:3001/images/${imageId}.jpg"><img src="http://localhost:3001/api/projects/${project.id}/images/already.png"><img src="/images/img-999.png"></main>`,
+    )
+
+    const saved = await getProject(project.id)
+    expect(saved?.indexHtml).toContain(
+      `/api/projects/${project.id}/images/${imageId}.jpg`,
+    )
+    expect(saved?.indexHtml).toContain(
+      `/api/projects/${project.id}/images/already.png`,
+    )
+    expect(saved?.indexHtml).toContain('/images/img-999.png')
+    await expect(
+      readProjectImage(project.id, `${imageId}.jpg`),
+    ).resolves.toEqual({
+      buffer: Buffer.from([0xff, 0xd8, 0xff, 0x00]),
+      mediaType: 'image/jpeg',
     })
   })
 })

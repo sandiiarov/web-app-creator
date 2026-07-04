@@ -21,8 +21,10 @@ type LandingTool =
 
 interface LandingToolContext {
   baseUrl: string
+  imageModel?: string
   requestScreenshot?: RequestBrowserScreenshot
   store: HtmlStore
+  visionModel?: string
 }
 
 interface LandingToolDefinition {
@@ -50,7 +52,7 @@ const LANDING_TOOL_DEFINITIONS = [
   tool(
     'scrape',
     'Use `scrape` when the user gives a reference URL or asks you to match a brand. It returns markdown, links, image URLs, branding, and `imageOcr` — the OCR + visual transcript for all scraped images. Use `imageOcr.text` directly. Prefer relevant URLs from `images` for source-site content such as portraits, logos, screenshots, newsletter art, and video thumbnails; do not hotlink arbitrary image URLs that were not returned by `scrape`. If `images` is empty, say no OCR was possible.',
-    () => createScrapeTool(),
+    ({ visionModel }) => createScrapeTool(visionModel),
   ),
   tool(
     'read',
@@ -70,12 +72,13 @@ const LANDING_TOOL_DEFINITIONS = [
   tool(
     'screenshot',
     'Use `screenshot` after substantial edits or when visual feedback is needed. It asks the browser to render the current project HTML at `viewportSize` (`mobile`, `tablet`, or `desktop`), captures the element matching `selector` with 8px padding around it, and returns OCR plus visual QA notes for layout, text, spacing, contrast, clipping, and responsive issues. The tool accepts only `selector` and `viewportSize`, and creates no files.',
-    ({ requestScreenshot }) => createScreenshotTool(requestScreenshot),
+    ({ requestScreenshot, visionModel }) =>
+      createScreenshotTool(requestScreenshot, visionModel),
   ),
   tool(
     'generate_image',
     'Use `generate_image` whenever the landing page would benefit from net-new raster imagery or art-directed visual assets (hero art, editorial photos, product scenes, abstract brand visuals, textures, etc.). Prefer `scrape.images` for faithful source-site imagery; generate new imagery when scraped assets are missing, low quality, legally/visually unsuitable, or when a new concept strengthens the page. It returns a hosted URL such as `http://localhost:3001/images/img-1.jpg`; embed that URL directly in `<img src="...">`. Do not use placeholders or pasted image bytes.',
-    ({ baseUrl }) => createGenerateImageTool(baseUrl),
+    ({ baseUrl, imageModel }) => createGenerateImageTool(baseUrl, imageModel),
   ),
 ] satisfies LandingToolDefinition[]
 
@@ -93,11 +96,18 @@ export function createLandingTools(
   store: HtmlStore,
   baseUrl: string,
   requestScreenshot?: RequestBrowserScreenshot,
+  options: { imageModel?: string; visionModel?: string } = {},
 ): Record<string, LandingTool> {
   return Object.fromEntries(
     LANDING_TOOL_DEFINITIONS.map(({ create, id }) => [
       id,
-      create({ baseUrl, requestScreenshot, store }),
+      create({
+        baseUrl,
+        imageModel: options.imageModel,
+        requestScreenshot,
+        store,
+        visionModel: options.visionModel,
+      }),
     ]),
   )
 }

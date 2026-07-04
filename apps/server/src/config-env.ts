@@ -2,8 +2,10 @@ export type Config = ReturnType<typeof createConfigFromEnv>
 
 export type ConfigEnvironment = Record<string, string | undefined>
 
-const DEFAULT_BASETEN_MODEL_ID = 'zai-org/GLM-5.2'
-const DEFAULT_BASETEN_API_URL = 'https://inference.baseten.co/v1'
+const DEFAULT_OPENROUTER_CHAT_MODEL = 'z-ai/glm-5.2'
+const DEFAULT_OPENROUTER_IMAGE_MODEL = 'bytedance-seed/seedream-4.5'
+const DEFAULT_OPENROUTER_VISION_MODEL = 'moonshotai/kimi-k2.7-code'
+const DEFAULT_OPENROUTER_API_URL = 'https://openrouter.ai/api/v1'
 
 export function createConfigFromEnv(source: ConfigEnvironment) {
   return {
@@ -21,15 +23,9 @@ export function createConfigFromEnv(source: ConfigEnvironment) {
         'AGENT_RETRY_MAX_DELAY_MS',
       ),
       streamErrorMaxRetries: parseNonNegativeInteger(
-        optionalEnv(source, 'AGENT_STREAM_ERROR_MAX_RETRIES') ?? '2',
+        optionalEnv(source, 'AGENT_STREAM_ERROR_MAX_RETRIES') ?? '10',
         'AGENT_STREAM_ERROR_MAX_RETRIES',
       ),
-    },
-    baseten: {
-      apiKey: requiredEnv(source, 'BASETEN_API_KEY'),
-      defaultModel:
-        optionalEnv(source, 'BASETEN_MODEL') ?? DEFAULT_BASETEN_MODEL_ID,
-      url: optionalEnv(source, 'BASETEN_API_URL') ?? DEFAULT_BASETEN_API_URL,
     },
     clientOrigin: optionalEnv(source, 'CLIENT_ORIGIN') ?? '*',
     firecrawl: {
@@ -42,6 +38,17 @@ export function createConfigFromEnv(source: ConfigEnvironment) {
     },
     openrouter: {
       apiKey: optionalEnv(source, 'OPENROUTER_API_KEY'),
+      chatApiUrl:
+        optionalEnv(source, 'OPENROUTER_API_URL') ?? DEFAULT_OPENROUTER_API_URL,
+      defaultChatModel:
+        optionalEnv(source, 'OPENROUTER_CHAT_MODEL') ??
+        DEFAULT_OPENROUTER_CHAT_MODEL,
+      defaultImageModel:
+        optionalEnv(source, 'OPENROUTER_IMAGE_MODEL') ??
+        DEFAULT_OPENROUTER_IMAGE_MODEL,
+      defaultVisionModel:
+        optionalEnv(source, 'OPENROUTER_VISION_MODEL') ??
+        DEFAULT_OPENROUTER_VISION_MODEL,
       imageApiUrl: 'https://openrouter.ai/api/v1/images',
     },
     port: parsePort(optionalEnv(source, 'PORT') ?? '3001'),
@@ -72,14 +79,4 @@ function parseNonNegativeInteger(value: string, name: string) {
   }
 
   return parsed
-}
-
-function requiredEnv(source: ConfigEnvironment, name: string) {
-  const value = source[name]
-
-  if (!value?.trim()) {
-    throw new Error(`Missing required environment variable: ${name}`)
-  }
-
-  return value
 }

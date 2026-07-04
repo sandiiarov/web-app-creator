@@ -80,7 +80,7 @@ const BrandingSchema = z
 
 /**
  * Scrape a URL into markdown + links + images + a branding profile (palette,
- * fonts, logo). Also OCRs every scraped image URL with Baseten Kimi vision and
+ * fonts, logo). Also OCRs every scraped image URL with the configured OpenRouter vision model and
  * returns the transcript as `imageOcr`. Use to pull a brand's identity before
  * building or refining a landing page. `intent` is surfaced to the UI.
  */
@@ -92,7 +92,9 @@ interface CollectImageUrlsOptions {
   rawImages: string[]
 }
 
-export function createScrapeTool() {
+export function createScrapeTool(
+  visionModel: string = config.openrouter.defaultVisionModel,
+) {
   return createTool({
     description:
       'Scrape a URL into markdown + links + images + branding (palette, fonts, logo), then OCR all scraped image URLs and return the OCR/visual transcript in `imageOcr`. Handles JavaScript-rendered pages. Use to pull a brand identity before building or refining a landing page. Always pass an intent describing what you are scraping and why.',
@@ -146,7 +148,7 @@ export function createScrapeTool() {
         metadata: doc.metadata,
         rawImages: doc.images ?? [],
       })
-      const imageOcr = await ocrImages(images)
+      const imageOcr = await ocrImages(images, undefined, visionModel)
       const title = doc.metadata?.title
       const sourceUrl = doc.metadata?.sourceURL ?? doc.metadata?.url ?? url
       const creditsUsed =
