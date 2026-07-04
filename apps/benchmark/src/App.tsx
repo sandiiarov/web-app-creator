@@ -19,14 +19,12 @@ import type { BenchmarkModel, BenchmarkPrompt, RunResult } from './lib/types'
 
 const DEFAULT_PROMPTS: BenchmarkPrompt[] = [
   {
-    id: 'saas-hero-edit',
+    id: 'initial-landing-page',
     text: 'Create a high-converting landing page for a compliance automation product called AuditPilot. It sells to operations leaders at mid-market fintech companies. Include a strong hero, proof metrics, feature sections, security reassurance, and a clear demo CTA.',
   },
-  {
-    id: 'restaurant-refresh',
-    text: 'Create a single-page website for Lumen Table, a neighborhood restaurant that hosts seasonal chef dinners. The page needs a menu preview, reservation CTA, event schedule, location details, and warm editorial voice.',
-  },
 ]
+
+let promptSeq = 0
 
 export function App() {
   const benchmark = useBenchmark()
@@ -58,11 +56,21 @@ export function App() {
               : [...current, model],
           )
         }}
+        onPromptAdd={() =>
+          setPrompts((current) => [...current, createEmptyPrompt()])
+        }
         onPromptChange={(id, text) =>
           setPrompts((current) =>
             current.map((prompt) =>
               prompt.id === id ? { ...prompt, text } : prompt,
             ),
+          )
+        }
+        onPromptRemove={(id) =>
+          setPrompts((current) =>
+            current.length > 1
+              ? current.filter((prompt) => prompt.id !== id)
+              : current,
           )
         }
         onRun={() => benchmark.run({ concurrency, models, prompts })}
@@ -140,4 +148,9 @@ export function App() {
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value))
+}
+
+function createEmptyPrompt(): BenchmarkPrompt {
+  promptSeq += 1
+  return { id: `custom-prompt-${Date.now()}-${promptSeq}`, text: '' }
 }

@@ -82,13 +82,22 @@ Build the benchmark report JSON from current run data, add the server save API h
 Change the initial state to one prompt and add unlimited add/remove prompt controls while preserving run-count and validation behavior.
 
 ### Todo
-- [ ] Add single initial prompt plus add/remove prompt controls
+- [x] Add single initial prompt plus add/remove prompt controls
 
 ### Results
-_(fill at end of the sub-phase — what was implemented, commands run, checks passed)_
+- Reduced benchmark initial state to one default prompt in `apps/benchmark/src/App.tsx`.
+- Added client-side prompt creation/removal handlers with no artificial upper limit and a guard that preserves at least one prompt.
+- Added `Add` and per-row `Remove` controls to `apps/benchmark/src/components/benchmark-controls.tsx`; controls disable while a benchmark is running.
+- Run-count and existing validation behavior remain derived from `prompts.length * models.length` and non-empty prompt text.
+- Checks passed:
+  - `pnpm --filter @workspace/benchmark format`
+  - `pnpm --filter @workspace/benchmark typecheck`
+  - `pnpm --filter @workspace/benchmark lint` (`0` errors)
+  - `pnpm --filter @workspace/benchmark test` (`1` file, `2` tests)
+  - `pnpm --filter @workspace/benchmark build`
 
 ### Gotchas
-_(fill at end of the sub-phase, if any)_
+- Newly added prompts start blank, intentionally disabling `Run benchmark` until the user writes the prompt.
 
 ## Phase 4: DOX and closeout verification
 

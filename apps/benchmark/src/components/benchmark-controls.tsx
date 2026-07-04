@@ -4,7 +4,7 @@ import { Button } from '@workspace/ui/components/button'
 import { Input } from '@workspace/ui/components/input'
 import { Separator } from '@workspace/ui/components/separator'
 import { Textarea } from '@workspace/ui/components/textarea'
-import { PlayIcon, SquareIcon } from 'lucide-react'
+import { PlayIcon, PlusIcon, SquareIcon, Trash2Icon } from 'lucide-react'
 import { useId, useMemo } from 'react'
 
 import type { BenchmarkModel, BenchmarkPrompt } from '../lib/types'
@@ -15,7 +15,9 @@ export interface BenchmarkControlsProps {
   models: BenchmarkModel[]
   onConcurrencyChange: (value: number) => void
   onModelToggle: (model: BenchmarkModel) => void
+  onPromptAdd: () => void
   onPromptChange: (id: string, text: string) => void
+  onPromptRemove: (id: string) => void
   onRun: () => void
   onStop: () => void
   prompts: BenchmarkPrompt[]
@@ -27,7 +29,9 @@ export function BenchmarkControls({
   models,
   onConcurrencyChange,
   onModelToggle,
+  onPromptAdd,
   onPromptChange,
+  onPromptRemove,
   onRun,
   onStop,
   prompts,
@@ -60,15 +64,43 @@ export function BenchmarkControls({
       <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-auto p-4">
         <section className="flex flex-col gap-2">
           <div className="flex items-center justify-between gap-3">
-            <h2 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
-              Prompts
-            </h2>
-            <Badge variant="secondary">{prompts.length}</Badge>
+            <div className="flex items-center gap-2">
+              <h2 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+                Prompts
+              </h2>
+              <Badge variant="secondary">{prompts.length}</Badge>
+            </div>
+            <Button
+              disabled={isRunning}
+              onClick={onPromptAdd}
+              size="xs"
+              type="button"
+              variant="outline"
+            >
+              <PlusIcon data-icon="inline-start" />
+              Add
+            </Button>
           </div>
           <div className="flex flex-col gap-3">
             {prompts.map((prompt, index) => (
-              <label className="flex flex-col gap-1" key={prompt.id}>
-                <span className="text-xs font-medium">Prompt {index + 1}</span>
+              <div className="flex flex-col gap-1" key={prompt.id}>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs font-medium">
+                    Prompt {index + 1}
+                  </span>
+                  {prompts.length > 1 ? (
+                    <Button
+                      aria-label={`Remove prompt ${index + 1}`}
+                      disabled={isRunning}
+                      onClick={() => onPromptRemove(prompt.id)}
+                      size="icon-xs"
+                      type="button"
+                      variant="ghost"
+                    >
+                      <Trash2Icon />
+                    </Button>
+                  ) : null}
+                </div>
                 <Textarea
                   aria-label={`Benchmark prompt ${index + 1}`}
                   className="min-h-24 resize-y"
@@ -78,7 +110,7 @@ export function BenchmarkControls({
                   }
                   value={prompt.text}
                 />
-              </label>
+              </div>
             ))}
           </div>
         </section>
