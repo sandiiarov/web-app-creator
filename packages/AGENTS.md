@@ -7,6 +7,7 @@
 ## Ownership
 
 - `ui/`: shared shadcn/Tailwind React component package.
+- `prompt-panel/`: landing-page prompt panel UI + conversation domain model, source-consumed by the client.
 - `typescript-config/`: shared strict tsgo/TypeScript configs.
 - `vite-config/`: shared Vite React config factory.
 - `vitest-preset/`: shared Vitest config factory.
@@ -34,3 +35,4 @@
 ## Child DOX Index
 
 - `ui/AGENTS.md` — shared shadcn/Tailwind component system and globals.
+- `prompt-panel/AGENTS.md` — extracted prompt panel UI + landing conversation domain model.

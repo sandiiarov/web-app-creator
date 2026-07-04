@@ -10,9 +10,9 @@
 - `src/main.tsx`: `BrowserRouter` + route table (`/`, `/projects/new`, `/projects/:id`) and `ThemeProvider` root.
 - `src/App.tsx`: `EditorPage` (preview + prompt panel composition), param-driven and keyed by project id.
 - `src/components/projects-page.tsx`: project list + new-project redirect.
-- `src/components/`: app-specific UI; `components/prompt/` owns conversation and composer components.
+- `src/components/`: app-specific UI (error banner, landing preview, theme provider). The prompt panel is consumed from `@workspace/prompt-panel` (see `packages/prompt-panel/AGENTS.md`); `EditorPage` injects `onAllProjects`, `theme`, and `onToggleTheme`.
 - `src/hooks/`: streaming hooks.
-- `src/lib/`: custom SSE client, landing-agent event types, image URL expansion, browser screenshot capture, and the project REST API client.
+- `src/lib/`: custom SSE client, landing-agent transport (server URL + SSE wire events; the domain model lives in `@workspace/prompt-panel` and is re-exported from `landing-agent.ts` as a bridge while in-flight files are repointed), image URL expansion, browser screenshot capture, and the project REST API client.
 - `components.json`: shadcn project config that targets shared UI code in `packages/ui`.
 
 ## Local Contracts
@@ -25,7 +25,7 @@
 - The prompt panel command menu owns All Projects navigation plus layout/theme commands; the Command/Control Option A shortcut still navigates to `/`. The panel persists only position/layout plus minimized/maximized state in browser localStorage under `landing.promptPanel.position.v1`.
 - Prompt message markdown renders with Streamdown; code fences must use `@streamdown/code` syntax highlighting with Catppuccin Latte/Mocha configured on the code plugin (Streamdown reads `plugins.code.getThemes()` before the `shikiTheme` prop) and panel-scoped Streamdown styling so headings, tables, lists, inline code, and code blocks match the square/sharp UI language. Keep highlighted code line wrappers block-level when line numbers are off so multiline fences do not collapse into one visual line. Code-block chrome must stay square/no-radius and hide copy/download controls.
 - Prompt diagnostic blocks (`tool_call` and `thinking` parts) render as individual blocks, not grouped clusters. Blocks stay collapsed unless the user explicitly expands them; streaming state must not auto-open or auto-close details. State is communicated through color treatment instead of status chips, and only the latest streamed part shows active/loading treatment. Thinking keeps its own treatment: brain icon plus `Thinking` header, with thinking text in the body. Every tool call uses the same collapsible component shape: header row with icon plus tool name, untruncated multiline subheader intent, and expanded body containing args plus result/error.
-- Use `@workspace/ui/...` for reusable UI package imports and `#components`, `#hooks`, `#lib` for app-local aliases.
+- Use `@workspace/ui/...` and `@workspace/prompt-panel` for shared package imports, and `#components`, `#hooks`, `#lib` for app-local aliases.
 - Do not put secrets in client code; only `VITE_*` variables are client-readable.
 - Preserve the sharp/square visual language unless the design direction is explicitly changed.
 
