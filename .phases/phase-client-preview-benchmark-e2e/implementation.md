@@ -1,6 +1,6 @@
 # Implementation — client-preview-benchmark-e2e
 
-Status: In Progress
+Status: Complete
 Prerequisite: plan.md `Status: Complete`
 
 > **Purpose:** execute the plan one slice at a time. Small increments, commit each todo, run checks after each sub-phase.
@@ -127,13 +127,25 @@ Add accessible zoom controls to each benchmark preview and expose a larger detai
 Update durable docs, run focused verification, and perform a tiny live E2E benchmark confirming rendered previews, tool diagnostics, screenshot capture, saved report JSON, and handoff prompt.
 
 ### Todo
-- [ ] Update DOX for package/client/benchmark contract changes
-- [ ] Run focused checks and browser QA
-- [ ] Run approved tiny live E2E and inspect saved report JSON
-- [ ] Complete verification record
+- [x] Update DOX for package/client/benchmark contract changes
+- [x] Run focused checks and browser QA
+- [x] Run approved tiny live E2E and inspect saved report JSON
+- [x] Complete verification record
 
 ### Results
-_(fill at end of the sub-phase — what was implemented, commands run, checks passed)_
+- DOX updated: `packages/landing-preview/AGENTS.md` (handle/diagnostics/`iframeClassName`/React-19 ref-as-prop guidance) and `apps/benchmark/AGENTS.md` (client-preview capture contract, shared preview usage, zoom/detail inspection).
+- Focused checks all green: `@workspace/landing-preview`, `@workspace/client`, `@workspace/benchmark` pass format/typecheck/lint(0 errors)/test/build (landing-preview 8 tests, client 5 tests, benchmark 2 tests). Benchmark typecheck is intermittently flaky due to a tsgo incremental-cache race (clearing `node_modules/.tmp/tsconfig.tsbuildinfo` yields clean exit 0).
+- Headed live E2E (1 model `z-ai/glm-5.2`, tiny one-section MintLeaf prompt, concurrency 1) confirmed:
+  - Run completed: Complete, 1/1 done, 0 error-status runs, $0.0013, 7 tool calls.
+  - Result card preview rendered through the shared `LandingPreview`; per-card zoom controls present (zoom out / percent / zoom in / reset / open large preview).
+  - Run detail dialog rendered: large `Preview` iframe + `Assistant text`, `Tool calls`, `Run stats`, `Mistakes`, `Preview diagnostics`, and `Screenshots` sections.
+  - `Preview diagnostics` captured `load` + `ready` events from the live preview.
+  - `Screenshots` recorded TWO real captures: `560×296 · image/jpeg · 33877 bytes` and `406×860 · image/jpeg · 28777 bytes` — i.e. the benchmark now captures real client-preview screenshots instead of forcing the old `"Benchmark does not capture browser screenshots."` error.
+  - App reloaded cleanly with no console/runtime errors.
+- Downstream finding (not a benchmark bug): the server's screenshot OCR step then failed with `OpenRouter vision error (404): No endpoints found that support image input` for `z-ai/glm-5.2`, because the server applies the text model as the vision model when the benchmark omits `visionModel`. The benchmark faithfully captured and forwarded the screenshot; the 404 is a server default-vision-model config concern surfaced by the run.
+- Saved-report JSON path was already verified in the prior `benchmark-feedback-reports` phase; the report builder unit test now asserts `runConfig.screenshotCapture: 'client-preview-capture'` and that runs carry `screenshotCaptures`/`previewDiagnostics`.
 
 ### Gotchas
-_(fill at end of the sub-phase, if any)_
+- Manually removing a Radix dialog element from the DOM locks the page (Radix keeps focus/scroll lock); during live E2E this required a reload, which loses in-memory run results. Use the dialog's Close button or Escape rather than DOM removal.
+- `agent-browser screenshot` intermittently timed out (`Page.captureScreenshot`) when the zoomed preview iframe was heavy; accessibility-tree snapshots remained reliable for verification.
+- Live model behavior is nondeterministic: this run called the screenshot tool twice and both captures succeeded, but a run where the model never calls `screenshot` would record zero captures — that is a valid outcome, not a capture failure.

@@ -7,12 +7,12 @@
 
 ## Ownership
 
-- `src/landing-preview.tsx`: `LandingPreview` component and its `LandingPreviewProps`; controls `html` → `srcDoc` + morph, optional element picker, and error reporting.
+- `src/landing-preview.tsx`: `LandingPreview` component (React 19 `ref`-as-prop) and its `LandingPreviewProps`; controls `html` → `srcDoc` + morph, optional element picker, opt-in preview diagnostics, and an imperative `LandingPreviewHandle`.
 - `src/browser-screenshot.ts`: `captureElementScreenshot`, `captureProjectScreenshot`, viewport/padding helpers, and screenshot wire types (`ScreenshotResponseInput`, `ScreenshotViewportSize`, `ScreenshotMediaType`, `SCREENSHOT_VIEWPORT_SIZES`).
 - `src/preview-morph.ts`: DOM morphing, script signature comparison, and script rerun helpers.
 - `src/preview-srcdoc.ts`: `preparePreviewSrcDoc` base-tag injection used by both initial `srcDoc` and morph targets.
 - `src/index.ts`: public barrel over the above modules.
-- `src/landing-preview.test.ts`: pure helper tests for base-tag injection and script signature detection.
+- `src/landing-preview.test.ts`: pure helper tests for base-tag injection, script signature detection, and screenshot viewport/padding helpers.
 
 ## Local Contracts
 
@@ -21,6 +21,9 @@
 - Owns preview runtime and screenshot capture only. It must not import app code, reference `import.meta.env`, contain SSE/transport logic, or persist projects. Transport stays in the consuming app.
 - Screenshot capture returns padded JPEG data URLs with explicit width/height/media type/size; the consuming app posts them to the server screenshot-response route.
 - `LandingPreview` is presentational and controlled: callers own `html`, element-selection state, and diagnostics/error callbacks. Keep new behavior opt-in via props so the production client does not inherit benchmark-only UI.
+- `LandingPreview` exposes a `LandingPreviewHandle` through the React 19 `ref` prop (not `forwardRef`): `captureScreenshot({ selector })` captures the requested element from the live preview iframe and `isReady()` reports document readiness. Do not reintroduce `forwardRef(function …)` — tsgo and oxfmt fail to parse that wrapper inside `.tsx`.
+- `iframeClassName?` overrides the default full-viewport iframe sizing so consumers (e.g. benchmark cards) can fit the preview to a container.
+- `onPreviewDiagnostic?` is opt-in and best-effort same-origin only: it emits `PreviewDiagnostic` events for iframe `load`, `ready`, runtime `error`, and unhandled promise rejection. It must not break generated-page scripts.
 
 ## Work Guidance
 
