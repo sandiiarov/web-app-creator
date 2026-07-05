@@ -77,8 +77,8 @@ export function RunDetailDialog({
       <DialogContent
         className={
           showPreview
-            ? 'h-[94svh] w-[96vw] max-w-none overflow-hidden p-0'
-            : 'h-[min(90svh,54rem)] w-[92vw] max-w-none overflow-hidden p-0 xl:w-6xl'
+            ? 'h-[94svh] w-[96vw] max-w-none! overflow-hidden p-0'
+            : 'h-[min(90svh,54rem)] w-[92vw] max-w-none! overflow-hidden p-0 xl:w-6xl'
         }
         showCloseButton
       >
