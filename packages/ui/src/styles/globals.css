@@ -4,8 +4,10 @@
 @import '@fontsource-variable/noto-sans';
 
 @custom-variant dark (&:is(.dark *));
-@source '../../../apps/**/*.{ts,tsx}';
-@source '../../../components/**/*.{ts,tsx}';
+@source '../../../../apps/**/*.{ts,tsx}';
+@source '../../../../components/**/*.{ts,tsx}';
+@source '../../../prompt-panel/src/**/*.{ts,tsx}';
+@source '../../../landing-preview/src/**/*.{ts,tsx}';
 @source '../**/*.{ts,tsx}';
 @source '../../../../apps/client/node_modules/streamdown/dist/*.js';
 @source '../../../../apps/client/node_modules/@streamdown/code/dist/*.js';

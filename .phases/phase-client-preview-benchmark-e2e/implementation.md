@@ -149,3 +149,21 @@ Update durable docs, run focused verification, and perform a tiny live E2E bench
 - Manually removing a Radix dialog element from the DOM locks the page (Radix keeps focus/scroll lock); during live E2E this required a reload, which loses in-memory run results. Use the dialog's Close button or Escape rather than DOM removal.
 - `agent-browser screenshot` intermittently timed out (`Page.captureScreenshot`) when the zoomed preview iframe was heavy; accessibility-tree snapshots remained reliable for verification.
 - Live model behavior is nondeterministic: this run called the screenshot tool twice and both captures succeeded, but a run where the model never calls `screenshot` would record zero captures — that is a valid outcome, not a capture failure.
+
+## Phase 6: Fix Tailwind purge regression from package extraction
+
+### Description
+User reported the client preview rendered in a small 300×150 window at `/projects/:id`. Root cause: extracting `LandingPreview` into `@workspace/landing-preview` moved its Tailwind classes out of the client's content scan. `packages/ui/src/styles/globals.css` (the shared stylesheet both client and benchmark import) listed `@source` for `prompt-panel/src` but not `landing-preview/src`, so Tailwind v4 purged `h-svh w-screen` (and every other class used inside the package) and the preview iframe collapsed to the browser's 300×150 default.
+
+### Todo
+- [x] Add `@source '../../../landing-preview/src/**/*.{ts,tsx}'` to the shared globals
+- [x] Verify iframe fills viewport in dev (HMR) and production build CSS
+
+### Results
+- Added `@source '../../../landing-preview/src/**/*.{ts,tsx}';` to `packages/ui/src/styles/globals.css` alongside the existing `prompt-panel/src` entry.
+- Dev HMR verified at `http://localhost:5174/projects/...`: preview iframe went from `300×150` to `1280×577` (full viewport), `h-svh w-screen` now applied.
+- Production build verified: `apps/client/dist/assets/index-*.css` (126558 bytes) now contains `h-svh`, `w-screen`, and `bg-muted` (package-only classes previously purged). `pnpm --filter @workspace/client build` passed.
+- DOX: `packages/ui/AGENTS.md` already documents this contract ("Include source-consumed workspace package paths ... in this file's `@source` list"), so this was an execution miss, not a missing rule; doc left unchanged.
+
+### Gotchas
+- When extracting any component into a new `packages/*` package whose classes are compiled through `@workspace/ui/globals.css`, the package `src` MUST be added to that globals `@source` list or Tailwind v4 silently purges every class and the UI renders at browser defaults (e.g. iframe 300×150). This is now the second package this happened with (prompt-panel was the first); treat the `@source` update as a required step of package extraction, not an optional one.
