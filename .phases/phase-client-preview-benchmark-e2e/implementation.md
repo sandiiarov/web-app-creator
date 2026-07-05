@@ -57,15 +57,22 @@ Create `@workspace/landing-preview`, move the production iframe/screenshot/morph
 Add opt-in preview diagnostics and an imperative preview handle in `@workspace/landing-preview` so benchmark can capture screenshots and iframe diagnostics without importing client code.
 
 ### Todo
-- [ ] Add diagnostics types/callbacks and preview handle to the shared package
-- [ ] Add tests for diagnostics/screenshot helper behavior
-- [ ] Re-run package/client focused checks
+- [x] Add diagnostics types/callbacks and preview handle to the shared package
+- [x] Add tests for diagnostics/screenshot helper behavior
+- [x] Re-run package/client focused checks
 
 ### Results
-_(fill at end of the sub-phase — what was implemented, commands run, checks passed)_
+- `LandingPreview` is now a plain function component (React 19 `ref`-as-prop) exposing a `LandingPreviewHandle` via `useImperativeHandle`: `captureScreenshot({ selector })` captures the requested element from the live preview iframe, and `isReady()` reports document readiness.
+- Added opt-in diagnostics: new `onPreviewDiagnostic?(diagnostic)` prop emits `PreviewDiagnostic` events for iframe `load`, `ready`, runtime `error` (message/source/line/col), and unhandled promise rejections; listeners attach after iframe load and detach on cleanup.
+- Added public types `LandingPreviewHandle`, `LandingPreviewScreenshotInput`, `PreviewDiagnostic`, `PreviewConsoleLevel`, and per-kind diagnostic types; exported from `src/index.ts`.
+- Switched away from `forwardRef(function …)` after tsgo/oxfmt both failed to parse that wrapper inside `.tsx`; the plain-function + ref-prop pattern compiles cleanly under React 19.
+- Tests grew from 4 to 8: added screenshot helper coverage for `SCREENSHOT_VIEWPORT_SIZES`, `getScreenshotViewportDimensions`, and `getPaddedScreenshotSize` (default + custom padding).
+- Checks: `@workspace/landing-preview` format/typecheck/lint (clean, no warnings)/test (8 tests) pass; `@workspace/client` typecheck/lint (only pre-existing `main.tsx` warning)/build pass.
 
 ### Gotchas
-_(fill at end of the sub-phase, if any)_
+- `forwardRef(function Named(props, ref) { … })` triggers a parse failure in tsgo and oxfmt inside `.tsx`; the repo targets React 19, so `ref` as a regular prop avoids the hazard entirely.
+- oxlint `perfectionist/sort-union-types` mismatches when one union member is multi-line (oxfmt expands long object types) and others are single-line; extracting diagnostic members into named interfaces/types sorts consistently.
+- `useImperativeHandle` deps are intentionally `[]` because handle methods read `iframeRef.current` lazily; the exhaustive-deps warning is suppressed with an inline disable matching the repo convention.
 
 ## Phase 3: Replace benchmark raw iframes and forced screenshot errors with shared client preview runtime
 

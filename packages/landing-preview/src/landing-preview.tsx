@@ -1,12 +1,28 @@
 import type { ElementAttachmentInput } from '@workspace/prompt-panel'
-import { useEffect, useRef, useState } from 'react'
+import {
+  type Ref,
+  useEffect,
+  useImperativeHandle,
+  useRef,
+  useState,
+} from 'react'
 
-import { captureElementScreenshot } from './browser-screenshot'
+import {
+  captureElementScreenshot,
+  type ElementScreenshotCapture,
+} from './browser-screenshot'
 import {
   morphPreviewDocument,
   preparePreviewMorphHtml,
   shouldRerunScriptsAfterMorph,
 } from './preview-morph'
+
+export interface LandingPreviewHandle {
+  captureScreenshot(
+    input: LandingPreviewScreenshotInput,
+  ): Promise<ElementScreenshotCapture>
+  isReady(): boolean
+}
 
 export type LandingPreviewProps = {
   elementSelectionActive?: boolean
@@ -14,7 +30,41 @@ export type LandingPreviewProps = {
   onElementSelected?: (attachment: ElementAttachmentInput) => void
   onElementSelectionCancel?: () => void
   onError?: (message: string) => void
+  onPreviewDiagnostic?: (diagnostic: PreviewDiagnostic) => void
+  ref?: Ref<LandingPreviewHandle>
 }
+
+export interface LandingPreviewScreenshotInput {
+  selector?: string
+}
+
+export interface PreviewConsoleDiagnostic {
+  at: number
+  kind: 'console'
+  level: PreviewConsoleLevel
+  message: string
+}
+
+export type PreviewConsoleLevel = 'debug' | 'error' | 'info' | 'log' | 'warn'
+
+export type PreviewDiagnostic =
+  | PreviewConsoleDiagnostic
+  | PreviewErrorDiagnostic
+  | PreviewLoadDiagnostic
+  | PreviewReadyDiagnostic
+
+export interface PreviewErrorDiagnostic {
+  at: number
+  colno?: number
+  kind: 'error'
+  lineno?: number
+  message: string
+  source?: string
+}
+
+export type PreviewLoadDiagnostic = { at: number; kind: 'load' }
+
+export type PreviewReadyDiagnostic = { at: number; kind: 'ready' }
 
 const ELEMENT_PICKER_ACTIVE_ATTR = 'data-landing-element-picker-active'
 const ELEMENT_PICKER_LERP_FACTOR = 0.32
@@ -59,10 +109,35 @@ export function LandingPreview({
   onElementSelected,
   onElementSelectionCancel,
   onError,
+  onPreviewDiagnostic,
+  ref,
 }: LandingPreviewProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null)
   const lastAppliedHtmlRef = useRef('')
   const [srcDoc, setSrcDoc] = useState('')
+
+  const handle: LandingPreviewHandle = {
+    captureScreenshot: async ({ selector }: LandingPreviewScreenshotInput) => {
+      const doc = iframeRef.current?.contentDocument
+      if (!doc?.documentElement) {
+        throw new Error('Landing preview is not ready for capture.')
+      }
+      const target = selector
+        ? (doc.querySelector(selector) ?? null)
+        : (doc.body ?? doc.documentElement)
+      if (!target) {
+        throw new Error(
+          selector
+            ? `Screenshot selector did not match an element: ${selector}`
+            : 'Screenshot target has no document body.',
+        )
+      }
+      return captureElementScreenshot(target)
+    },
+    isReady: () => Boolean(iframeRef.current?.contentDocument?.documentElement),
+  }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- handle methods read iframeRef lazily; deps intentionally empty.
+  useImperativeHandle(ref, () => handle, [])
 
   useEffect(() => {
     if (!html.trim()) {
@@ -174,6 +249,57 @@ export function LandingPreview({
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [elementSelectionActive, onElementSelectionCancel])
+
+  useEffect(() => {
+    if (!onPreviewDiagnostic) return
+    const iframe = iframeRef.current
+    if (!iframe) return
+    let cancelled = false
+    let detach: (() => void) | undefined
+
+    const emit = (diagnostic: PreviewDiagnostic) => {
+      if (!cancelled) onPreviewDiagnostic(diagnostic)
+    }
+
+    const handleLoad = () => {
+      emit({ at: Date.now(), kind: 'load' })
+      const win = iframe.contentWindow
+      const doc = iframe.contentDocument
+      if (!win || !doc) return
+      emit({ at: Date.now(), kind: 'ready' })
+
+      const handleError = (event: ErrorEvent) => {
+        emit({
+          at: Date.now(),
+          colno: event.colno,
+          kind: 'error',
+          lineno: event.lineno,
+          message: event.message || 'Preview runtime error.',
+          source: event.filename,
+        })
+      }
+      const handleRejection = (event: PromiseRejectionEvent) => {
+        const reason = event.reason
+        const message =
+          reason instanceof Error ? reason.message : String(reason)
+        emit({ at: Date.now(), kind: 'error', message })
+      }
+
+      win.addEventListener('error', handleError)
+      win.addEventListener('unhandledrejection', handleRejection)
+      detach = () => {
+        win.removeEventListener('error', handleError)
+        win.removeEventListener('unhandledrejection', handleRejection)
+      }
+    }
+
+    iframe.addEventListener('load', handleLoad)
+    return () => {
+      cancelled = true
+      iframe.removeEventListener('load', handleLoad)
+      detach?.()
+    }
+  }, [html, onPreviewDiagnostic])
 
   if (!html.trim()) {
     return <LandingEmptyState />

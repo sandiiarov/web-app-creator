@@ -10,7 +10,14 @@ export {
   type ScreenshotResponseInput,
   type ScreenshotViewportSize,
 } from './browser-screenshot'
-export { LandingPreview, type LandingPreviewProps } from './landing-preview'
+export {
+  LandingPreview,
+  type LandingPreviewHandle,
+  type LandingPreviewProps,
+  type LandingPreviewScreenshotInput,
+  type PreviewConsoleLevel,
+  type PreviewDiagnostic,
+} from './landing-preview'
 export {
   getScriptSignature,
   morphPreviewDocument,
