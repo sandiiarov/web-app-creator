@@ -21,9 +21,10 @@ import {
 } from '../lib/types'
 
 export interface RunMatrixOptions {
-  concurrency: number
+  imageModel: BenchmarkModel
   models: BenchmarkModel[]
   prompts: BenchmarkPrompt[]
+  visionModel: BenchmarkModel
 }
 
 export interface UseBenchmark {
@@ -108,7 +109,7 @@ export function useBenchmark(): UseBenchmark {
   )
 
   const run = useCallback(
-    ({ concurrency, models, prompts }: RunMatrixOptions) => {
+    ({ imageModel, models, prompts, visionModel }: RunMatrixOptions) => {
       if (isRunning) return
       const controller = new AbortController()
       abortRef.current = controller
@@ -133,74 +134,86 @@ export function useBenchmark(): UseBenchmark {
       setProgress({ completed: 0, total: matrix.length })
 
       let completed = 0
-      void pool(matrix, Math.max(1, concurrency), async (meta) => {
-        if (controller.signal.aborted) return
-        let projectId = ''
-        try {
-          const project = await createProject({
-            model: meta.modelId,
-            title: `${meta.modelLabel} · ${meta.promptText.slice(0, 40)}`,
-          })
-          projectId = project.id
-          updateResult(meta.id, (r) => ({
-            ...r,
-            projectId,
-            startedAt: Date.now(),
-            status: 'running',
-          }))
+      void Promise.all(
+        matrix.map(async (meta) => {
+          if (controller.signal.aborted) return
+          let projectId = ''
+          try {
+            const project = await createProject({
+              model: meta.modelId,
+              title: `${meta.modelLabel} · ${meta.promptText.slice(0, 40)}`,
+            })
+            projectId = project.id
+            updateResult(meta.id, (r) => ({
+              ...r,
+              projectId,
+              startedAt: Date.now(),
+              status: 'running',
+            }))
 
-          await streamSSE(
-            AGENT_API,
-            { projectId, prompt: meta.promptText, textModel: meta.modelId },
-            {
-              onEvent: ({ data, event }) => {
-                const { result: next, screenshotRequest } = applySseEvent(
-                  readResult(resultsRef.current, meta.id),
-                  { data, event },
-                )
-                // Commit synchronously so the next event (which may arrive
-                // before React re-renders) reads the freshly-accumulated state.
-                const nextWithProject = { ...next, projectId }
-                commit(
-                  resultsRef.current.map((r) =>
-                    r.id === meta.id ? nextWithProject : r,
-                  ),
-                )
-                if (screenshotRequest) {
-                  void answerScreenshotRequest(
-                    meta.id,
-                    screenshotRequest,
-                    nextWithProject.html,
-                    recordScreenshotCapture,
-                  )
-                }
+            await streamSSE(
+              AGENT_API,
+              {
+                imageModel: imageModel.id,
+                projectId,
+                prompt: meta.promptText,
+                textModel: meta.modelId,
+                visionModel: visionModel.id,
               },
-              signal: controller.signal,
-            },
-          )
-        } catch (error) {
-          const message = controller.signal.aborted
-            ? 'stopped'
-            : error instanceof Error
-              ? error.message
-              : String(error)
-          updateResult(meta.id, (r) => ({
-            ...r,
-            error: message === 'stopped' ? undefined : message,
-            finishedAt: Date.now(),
-            projectId,
-            status: controller.signal.aborted ? 'stopped' : 'error',
-          }))
-        } finally {
-          completed += 1
-          setProgress({ completed, total: matrix.length })
-          updateResult(meta.id, (r) =>
-            r.status === 'pending' || r.status === 'running'
-              ? { ...r, finishedAt: r.finishedAt ?? Date.now(), status: 'done' }
-              : r,
-          )
-        }
-      }).then(() => {
+              {
+                onEvent: ({ data, event }) => {
+                  const { result: next, screenshotRequest } = applySseEvent(
+                    readResult(resultsRef.current, meta.id),
+                    { data, event },
+                  )
+                  // Commit synchronously so the next event (which may arrive
+                  // before React re-renders) reads the freshly-accumulated state.
+                  const nextWithProject = { ...next, projectId }
+                  commit(
+                    resultsRef.current.map((r) =>
+                      r.id === meta.id ? nextWithProject : r,
+                    ),
+                  )
+                  if (screenshotRequest) {
+                    void answerScreenshotRequest(
+                      meta.id,
+                      screenshotRequest,
+                      nextWithProject.html,
+                      recordScreenshotCapture,
+                    )
+                  }
+                },
+                signal: controller.signal,
+              },
+            )
+          } catch (error) {
+            const message = controller.signal.aborted
+              ? 'stopped'
+              : error instanceof Error
+                ? error.message
+                : String(error)
+            updateResult(meta.id, (r) => ({
+              ...r,
+              error: message === 'stopped' ? undefined : message,
+              finishedAt: Date.now(),
+              projectId,
+              status: controller.signal.aborted ? 'stopped' : 'error',
+            }))
+          } finally {
+            completed += 1
+            setProgress({ completed, total: matrix.length })
+            updateResult(meta.id, (r) =>
+              r.status === 'pending' || r.status === 'running'
+                ? {
+                    ...r,
+                    finishedAt: r.finishedAt ?? Date.now(),
+                    status: 'done',
+                  }
+                : r,
+            )
+          }
+        }),
+      ).then(() => {
         setIsRunning(false)
         abortRef.current = null
       })
@@ -308,24 +321,6 @@ function normalizeViewport(
   if (value === 'tablet') return 'tablet'
   if (value === 'desktop') return 'desktop'
   return 'mobile'
-}
-
-async function pool<T>(
-  items: T[],
-  concurrency: number,
-  fn: (item: T) => Promise<void>,
-): Promise<void> {
-  let cursor = 0
-  const workers = Array.from(
-    { length: Math.min(concurrency, items.length) },
-    async () => {
-      while (cursor < items.length) {
-        const index = cursor++
-        await fn(items[index]!)
-      }
-    },
-  )
-  await Promise.all(workers)
 }
 
 function readResult(results: RunResult[], id: string): RunResult {

@@ -1,13 +1,23 @@
 import { describe, expect, it } from 'vitest'
 
 import { buildBenchmarkReport, createReportHandoffPrompt } from './report'
-import type { BenchmarkUserFeedback, RunResult } from './types'
+import type { BenchmarkModel, BenchmarkUserFeedback, RunResult } from './types'
 
 const FEEDBACK: BenchmarkUserFeedback = {
   notes: 'Hero is generic and the edit loop was expensive.',
   problemAreas: ['tool_behavior', 'cost'],
   rating: 'needs-work',
   requestedAdjustment: 'Improve edit targeting and reduce retries.',
+}
+
+const IMAGE_MODEL: BenchmarkModel = {
+  id: 'bytedance-seed/seedream-4.5',
+  label: 'Seedream 4.5',
+}
+
+const VISION_MODEL: BenchmarkModel = {
+  id: 'moonshotai/kimi-k2.7-code',
+  label: 'Kimi K2.7 Code',
 }
 
 const RUN: RunResult = {
@@ -55,19 +65,22 @@ const RUN: RunResult = {
 describe('benchmark report', () => {
   it('builds a coding-agent-readable report from run results', () => {
     const report = buildBenchmarkReport({
-      concurrency: 1,
+      imageModel: IMAGE_MODEL,
       models: [{ id: 'z-ai/glm-5.2', label: 'GLM 5.2' }],
       prompts: [{ id: 'prompt-1', text: RUN.promptText }],
       results: [RUN],
       userFeedback: FEEDBACK,
+      visionModel: VISION_MODEL,
     })
 
     expect(report).toMatchObject({
       app: 'benchmark',
       reportVersion: '1',
       runConfig: {
-        concurrency: 1,
+        imageModel: IMAGE_MODEL,
+        parallelism: 'all-selected-runs',
         screenshotCapture: 'client-preview-capture',
+        visionModel: VISION_MODEL,
       },
       summary: {
         completedRuns: 1,
@@ -95,11 +108,12 @@ describe('benchmark report', () => {
 
   it('creates a handoff prompt that points the next agent at the saved file', () => {
     const report = buildBenchmarkReport({
-      concurrency: 1,
+      imageModel: IMAGE_MODEL,
       models: [{ id: 'z-ai/glm-5.2', label: 'GLM 5.2' }],
       prompts: [{ id: 'prompt-1', text: RUN.promptText }],
       results: [RUN],
       userFeedback: FEEDBACK,
+      visionModel: VISION_MODEL,
     })
 
     const prompt = createReportHandoffPrompt(

@@ -9,23 +9,11 @@ import {
   EmptyDescription,
   EmptyTitle,
 } from '@workspace/ui/components/empty'
-import {
-  EyeIcon,
-  LoaderCircleIcon,
-  MaximizeIcon,
-  MinimizeIcon,
-  ZoomInIcon,
-  ZoomOutIcon,
-} from 'lucide-react'
-import { useState } from 'react'
+import { EyeIcon, LoaderCircleIcon, MaximizeIcon } from 'lucide-react'
 
 import { formatCost, formatDuration, formatTokens } from '../lib/format'
 import { expandProjectImageUrls } from '../lib/server-api'
 import type { RunResult, RunStatus } from '../lib/types'
-
-const PREVIEW_ZOOM_MAX = 3
-const PREVIEW_ZOOM_MIN = 0.5
-const PREVIEW_ZOOM_STEP = 0.25
 
 export interface ResultCardProps {
   onOpenPreview: (result: RunResult) => void
@@ -40,14 +28,11 @@ export function ResultCard({
   onPreviewDiagnostic,
   result,
 }: ResultCardProps) {
-  const [zoom, setZoom] = useState(1)
   const durationMs =
     result.stats.durationMs ??
     (result.finishedAt ? result.finishedAt - result.startedAt : undefined)
   const totalTokens = result.stats.usage?.totalTokens
   const html = result.html ? expandProjectImageUrls(result.html) : ''
-  const zoomPercent = `${Math.round(zoom * 100)}%`
-
   return (
     <article className="flex min-h-112 min-w-0 flex-col border bg-card text-card-foreground">
       <div className="flex items-start justify-between gap-3 border-b p-3">
@@ -93,16 +78,11 @@ export function ResultCard({
       <div className="relative min-h-0 flex-1 bg-muted/30">
         <div className="absolute inset-0 overflow-auto">
           {html ? (
-            <div
-              className="relative"
-              style={{ height: `${zoom * 100}%`, width: `${zoom * 100}%` }}
-            >
-              <LandingPreview
-                html={html}
-                iframeClassName="absolute inset-0 size-full border-0 bg-white"
-                onPreviewDiagnostic={onPreviewDiagnostic}
-              />
-            </div>
+            <LandingPreview
+              html={html}
+              iframeClassName="absolute inset-0 size-full border-0 bg-white"
+              onPreviewDiagnostic={onPreviewDiagnostic}
+            />
           ) : (
             <Empty className="absolute inset-0 border-0">
               <EmptyTitle>{emptyTitle(result.status)}</EmptyTitle>
@@ -113,52 +93,16 @@ export function ResultCard({
           )}
         </div>
         {html ? (
-          <div className="absolute top-2 right-2 z-10 flex items-center gap-1 border bg-background/90 p-1 text-xs backdrop-blur">
+          <div className="absolute top-2 right-2 z-10 border bg-background/90 p-1 backdrop-blur">
             <Button
-              aria-label="Zoom preview out"
-              disabled={zoom <= PREVIEW_ZOOM_MIN}
-              onClick={() =>
-                setZoom((value) => clampZoom(value - PREVIEW_ZOOM_STEP))
-              }
-              size="icon-xs"
-              type="button"
-              variant="ghost"
-            >
-              <ZoomOutIcon />
-            </Button>
-            <span className="min-w-9 text-center text-muted-foreground tabular-nums">
-              {zoomPercent}
-            </span>
-            <Button
-              aria-label="Zoom preview in"
-              disabled={zoom >= PREVIEW_ZOOM_MAX}
-              onClick={() =>
-                setZoom((value) => clampZoom(value + PREVIEW_ZOOM_STEP))
-              }
-              size="icon-xs"
-              type="button"
-              variant="ghost"
-            >
-              <ZoomInIcon />
-            </Button>
-            <Button
-              aria-label="Reset preview zoom"
-              disabled={zoom === 1}
-              onClick={() => setZoom(1)}
-              size="icon-xs"
-              type="button"
-              variant="ghost"
-            >
-              <MinimizeIcon />
-            </Button>
-            <Button
-              aria-label={`Open large preview for ${result.modelLabel}`}
+              aria-label={`Open preview for ${result.modelLabel}`}
               onClick={() => onOpenPreview(result)}
-              size="icon-xs"
+              size="xs"
               type="button"
-              variant="ghost"
+              variant="outline"
             >
-              <MaximizeIcon />
+              <MaximizeIcon data-icon="inline-start" />
+              Preview
             </Button>
           </div>
         ) : null}
@@ -171,10 +115,6 @@ export function ResultCard({
   )
 }
 
-function clampZoom(value: number): number {
-  return Math.min(PREVIEW_ZOOM_MAX, Math.max(PREVIEW_ZOOM_MIN, value))
-}
-
 function emptyDescription(status: RunStatus): string {
   switch (status) {
     case 'done':
@@ -182,7 +122,7 @@ function emptyDescription(status: RunStatus): string {
     case 'error':
       return 'Open the details to inspect the failure and tool events.'
     case 'pending':
-      return 'Waiting for its turn in the concurrency pool.'
+      return 'Waiting for the parallel run to start.'
     case 'running':
       return 'The first successful edit will render here.'
     case 'stopped':

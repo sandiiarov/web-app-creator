@@ -40,11 +40,12 @@ const PROBLEM_AREAS: Array<{ id: FeedbackProblemArea; label: string }> = [
 ]
 
 interface ReportSavePanelProps {
-  concurrency: number
+  imageModel: BenchmarkModel
   isRunning: boolean
   models: BenchmarkModel[]
   prompts: BenchmarkPrompt[]
   results: RunResult[]
+  visionModel: BenchmarkModel
 }
 
 type SaveState =
@@ -59,11 +60,12 @@ type SaveState =
   | { status: 'saving' }
 
 export function ReportSavePanel({
-  concurrency,
+  imageModel,
   isRunning,
   models,
   prompts,
   results,
+  visionModel,
 }: ReportSavePanelProps) {
   const [feedback, setFeedback] = useState(DEFAULT_FEEDBACK)
   const [saveState, setSaveState] = useState<SaveState>({ status: 'idle' })
@@ -72,13 +74,14 @@ export function ReportSavePanel({
   const reportPreview = useMemo(
     () =>
       buildBenchmarkReport({
-        concurrency,
+        imageModel,
         models,
         prompts,
         results,
         userFeedback: feedback,
+        visionModel,
       }),
-    [concurrency, feedback, models, prompts, results],
+    [feedback, imageModel, models, prompts, results, visionModel],
   )
 
   async function handleCopy(prompt: string) {
@@ -94,11 +97,12 @@ export function ReportSavePanel({
 
     try {
       const report = buildBenchmarkReport({
-        concurrency,
+        imageModel,
         models,
         prompts,
         results,
         userFeedback: feedback,
+        visionModel,
       })
       const saved = await saveBenchmarkReport(report)
       const handoffPrompt = createReportHandoffPrompt(saved.path, report)

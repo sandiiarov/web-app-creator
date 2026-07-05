@@ -1,42 +1,48 @@
-import { LANDING_MODEL_OPTIONS } from '@workspace/prompt-panel'
+import {
+  LANDING_IMAGE_MODEL_OPTIONS,
+  LANDING_MODEL_OPTIONS,
+  LANDING_VISION_MODEL_OPTIONS,
+} from '@workspace/prompt-panel'
 import { Badge } from '@workspace/ui/components/badge'
 import { Button } from '@workspace/ui/components/button'
-import { Input } from '@workspace/ui/components/input'
 import { Separator } from '@workspace/ui/components/separator'
 import { Textarea } from '@workspace/ui/components/textarea'
 import { PlayIcon, PlusIcon, SquareIcon, Trash2Icon } from 'lucide-react'
-import { useId, useMemo } from 'react'
+import { useMemo } from 'react'
 
 import type { BenchmarkModel, BenchmarkPrompt } from '../lib/types'
 
 export interface BenchmarkControlsProps {
-  concurrency: number
+  imageModel: BenchmarkModel
   isRunning: boolean
   models: BenchmarkModel[]
-  onConcurrencyChange: (value: number) => void
+  onImageModelChange: (model: BenchmarkModel) => void
   onModelToggle: (model: BenchmarkModel) => void
   onPromptAdd: () => void
   onPromptChange: (id: string, text: string) => void
   onPromptRemove: (id: string) => void
   onRun: () => void
   onStop: () => void
+  onVisionModelChange: (model: BenchmarkModel) => void
   prompts: BenchmarkPrompt[]
+  visionModel: BenchmarkModel
 }
 
 export function BenchmarkControls({
-  concurrency,
+  imageModel,
   isRunning,
   models,
-  onConcurrencyChange,
+  onImageModelChange,
   onModelToggle,
   onPromptAdd,
   onPromptChange,
   onPromptRemove,
   onRun,
   onStop,
+  onVisionModelChange,
   prompts,
+  visionModel,
 }: BenchmarkControlsProps) {
-  const concurrencyId = useId()
   const selectedModelIds = useMemo(
     () => new Set(models.map((model) => model.id)),
     [models],
@@ -55,8 +61,8 @@ export function BenchmarkControls({
             Landing Page Benchmark
           </h1>
           <p className="max-w-64 text-xs/relaxed text-muted-foreground">
-            Run the same landing-page edits against each text model and compare
-            the generated pages, cost, latency, retries, and tool mistakes.
+            Run every selected text model in parallel while keeping image
+            generation and visual review models fixed across the matrix.
           </p>
         </div>
       </div>
@@ -142,34 +148,30 @@ export function BenchmarkControls({
             })}
           </div>
         </section>
-        <section className="flex flex-col gap-2">
-          <label className="flex flex-col gap-1" htmlFor={concurrencyId}>
-            <span className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
-              Concurrency
-            </span>
-            <Input
-              disabled={isRunning}
-              id={concurrencyId}
-              max={4}
-              min={1}
-              onChange={(event) =>
-                onConcurrencyChange(Number(event.target.value))
-              }
-              type="number"
-              value={concurrency}
-            />
-          </label>
-          <p className="text-xs/relaxed text-muted-foreground">
-            Keep this low when running real models. Each run creates a draft
-            project and streams one `/agent` request.
-          </p>
-        </section>
+        <SingleModelGroup
+          disabled={isRunning}
+          label="Image generation"
+          models={LANDING_IMAGE_MODEL_OPTIONS}
+          onChange={onImageModelChange}
+          selected={imageModel}
+        />
+        <SingleModelGroup
+          disabled={isRunning}
+          label="Vision review"
+          models={LANDING_VISION_MODEL_OPTIONS}
+          onChange={onVisionModelChange}
+          selected={visionModel}
+        />
       </div>
       <Separator />
       <div className="flex flex-col gap-2 p-4">
         <div className="flex items-center justify-between text-xs text-muted-foreground">
-          <span>Queued runs</span>
+          <span>Parallel runs</span>
           <span>{runCount}</span>
+        </div>
+        <div className="flex flex-col gap-1 text-xs text-muted-foreground">
+          <span className="truncate">Image: {imageModel.label}</span>
+          <span className="truncate">Vision: {visionModel.label}</span>
         </div>
         {isRunning ? (
           <Button onClick={onStop} type="button" variant="destructive">
@@ -184,5 +186,53 @@ export function BenchmarkControls({
         )}
       </div>
     </aside>
+  )
+}
+
+function SingleModelGroup({
+  disabled,
+  label,
+  models,
+  onChange,
+  selected,
+}: {
+  disabled: boolean
+  label: string
+  models: BenchmarkModel[]
+  onChange: (model: BenchmarkModel) => void
+  selected: BenchmarkModel
+}) {
+  return (
+    <section className="flex flex-col gap-2">
+      <div className="flex items-center justify-between gap-3">
+        <h2 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+          {label}
+        </h2>
+        <Badge className="max-w-32 truncate" variant="secondary">
+          {selected.label}
+        </Badge>
+      </div>
+      <div className="flex flex-col gap-1">
+        {models.map((model) => (
+          <label
+            className="flex min-h-9 cursor-pointer items-center gap-2 border px-2 py-1.5 text-xs transition-colors hover:bg-muted has-disabled:cursor-not-allowed has-disabled:opacity-50"
+            key={model.id}
+            onClick={() => {
+              if (!disabled) onChange(model)
+            }}
+          >
+            <input
+              checked={selected.id === model.id}
+              className="accent-primary"
+              disabled={disabled}
+              name={label}
+              onChange={() => onChange(model)}
+              type="radio"
+            />
+            <span className="min-w-0 flex-1 truncate">{model.label}</span>
+          </label>
+        ))}
+      </div>
+    </section>
   )
 }

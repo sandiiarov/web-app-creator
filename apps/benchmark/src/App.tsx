@@ -1,4 +1,8 @@
-import { LANDING_MODEL_OPTIONS } from '@workspace/prompt-panel'
+import {
+  LANDING_IMAGE_MODEL_OPTIONS,
+  LANDING_MODEL_OPTIONS,
+  LANDING_VISION_MODEL_OPTIONS,
+} from '@workspace/prompt-panel'
 import { Badge } from '@workspace/ui/components/badge'
 import {
   Empty,
@@ -20,7 +24,7 @@ import type { BenchmarkModel, BenchmarkPrompt, RunResult } from './lib/types'
 const DEFAULT_PROMPTS: BenchmarkPrompt[] = [
   {
     id: 'initial-landing-page',
-    text: 'Create a high-converting landing page for a compliance automation product called AuditPilot. It sells to operations leaders at mid-market fintech companies. Include a strong hero, proof metrics, feature sections, security reassurance, and a clear demo CTA.',
+    text: 'Create a high-converting landing page for a compliance automation product called AuditPilot. It sells to operations leaders at mid-market fintech companies. Generate one original hero or product image and embed it in the page. After the HTML is generated, inspect the rendered page visually at desktop and mobile sizes, then fix any layout, image, spacing, contrast, or responsiveness issues before finishing. Include a strong hero, proof metrics, feature sections, security reassurance, and a clear demo CTA.',
   },
 ]
 
@@ -30,7 +34,12 @@ export function App() {
   const benchmark = useBenchmark()
   const [prompts, setPrompts] = useState(DEFAULT_PROMPTS)
   const [models, setModels] = useState<BenchmarkModel[]>(LANDING_MODEL_OPTIONS)
-  const [concurrency, setConcurrency] = useState(1)
+  const [imageModel, setImageModel] = useState<BenchmarkModel>(
+    LANDING_IMAGE_MODEL_OPTIONS[0]!,
+  )
+  const [visionModel, setVisionModel] = useState<BenchmarkModel>(
+    LANDING_VISION_MODEL_OPTIONS[0]!,
+  )
   const [detail, setDetail] = useState<null | {
     mode: 'preview' | 'report'
     result: RunResult
@@ -46,12 +55,10 @@ export function App() {
   return (
     <div className="grid min-h-svh bg-background text-foreground lg:h-svh lg:grid-cols-[22rem_1fr] lg:overflow-hidden">
       <BenchmarkControls
-        concurrency={concurrency}
+        imageModel={imageModel}
         isRunning={benchmark.isRunning}
         models={models}
-        onConcurrencyChange={(value) =>
-          setConcurrency(Number.isFinite(value) ? clamp(value, 1, 4) : 1)
-        }
+        onImageModelChange={setImageModel}
         onModelToggle={(model) => {
           setModels((current) =>
             current.some((entry) => entry.id === model.id)
@@ -76,9 +83,13 @@ export function App() {
               : current,
           )
         }
-        onRun={() => benchmark.run({ concurrency, models, prompts })}
+        onRun={() =>
+          benchmark.run({ imageModel, models, prompts, visionModel })
+        }
         onStop={benchmark.stop}
+        onVisionModelChange={setVisionModel}
         prompts={prompts}
+        visionModel={visionModel}
       />
       <main className="flex min-h-svh min-w-0 flex-col lg:h-svh lg:min-h-0 lg:overflow-hidden">
         <header className="flex flex-wrap items-center justify-between gap-3 border-b p-4">
@@ -101,19 +112,20 @@ export function App() {
           </div>
           <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
             <Badge variant="secondary">{prompts.length} prompts</Badge>
-            <Badge variant="secondary">{models.length} models</Badge>
-            <Badge variant="outline">Concurrency {concurrency}</Badge>
+            <Badge variant="secondary">{models.length} text models</Badge>
+            <Badge variant="outline">All runs parallel</Badge>
             <ThemeToggle />
           </div>
         </header>
         <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-auto p-4">
           <ReportView results={benchmark.results} />
           <ReportSavePanel
-            concurrency={concurrency}
+            imageModel={imageModel}
             isRunning={benchmark.isRunning}
             models={models}
             prompts={prompts}
             results={benchmark.results}
+            visionModel={visionModel}
           />
           <Separator />
           {benchmark.results.length ? (
@@ -138,9 +150,9 @@ export function App() {
             <Empty className="min-h-96 border bg-card">
               <EmptyTitle>Ready to compare real model behavior</EmptyTitle>
               <EmptyDescription>
-                The benchmark creates draft projects, streams `/agent` with a
-                selected text model, and renders each generated page here as a
-                sandboxed card preview.
+                The benchmark creates draft projects, streams `/agent` with
+                selected text, image, and vision models, and renders each
+                generated page here as a sandboxed card preview.
               </EmptyDescription>
             </Empty>
           )}
@@ -156,10 +168,6 @@ export function App() {
       />
     </div>
   )
-}
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.min(max, Math.max(min, value))
 }
 
 function createEmptyPrompt(): BenchmarkPrompt {

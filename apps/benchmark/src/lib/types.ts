@@ -93,10 +93,12 @@ export interface BenchmarkReportSummary {
 }
 
 export interface BenchmarkRunConfig {
-  concurrency: number
+  imageModel: BenchmarkModel
   models: BenchmarkModel[]
+  parallelism: 'all-selected-runs'
   prompts: BenchmarkPrompt[]
   screenshotCapture: BenchmarkScreenshotCaptureMode
+  visionModel: BenchmarkModel
 }
 
 export type BenchmarkScreenshotCaptureMode =

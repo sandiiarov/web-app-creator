@@ -14,19 +14,21 @@ import {
 export const BENCHMARK_REPORT_VERSION = '1'
 
 export interface BuildBenchmarkReportInput {
-  concurrency: number
+  imageModel: BenchmarkModel
   models: BenchmarkModel[]
   prompts: BenchmarkPrompt[]
   results: RunResult[]
   userFeedback: BenchmarkUserFeedback
+  visionModel: BenchmarkModel
 }
 
 export function buildBenchmarkReport({
-  concurrency,
+  imageModel,
   models,
   prompts,
   results,
   userFeedback,
+  visionModel,
 }: BuildBenchmarkReportInput): BenchmarkReport {
   const runs = results.map(toReportRun)
 
@@ -36,10 +38,12 @@ export function buildBenchmarkReport({
     generatedAt: new Date().toISOString(),
     reportVersion: BENCHMARK_REPORT_VERSION,
     runConfig: {
-      concurrency,
+      imageModel,
       models,
+      parallelism: 'all-selected-runs',
       prompts,
       screenshotCapture: 'client-preview-capture',
+      visionModel,
     },
     runs,
     serverUrl: SERVER_URL,
