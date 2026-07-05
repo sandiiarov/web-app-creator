@@ -37,13 +37,19 @@ Create `@workspace/landing-preview`, move the production iframe/screenshot/morph
 ### Todo
 - [x] Create `@workspace/landing-preview` package and move preview/screenshot modules
 - [x] Repoint client imports and remove/re-export obsolete app-local preview modules
-- [ ] Update package DOX/workspace dependencies and run focused package/client checks
+- [x] Update package DOX/workspace dependencies and run focused package/client checks
 
 ### Results
-_(fill at end of the sub-phase — what was implemented, commands run, checks passed)_
+- New package `@workspace/landing-preview` (`packages/landing-preview/`) is a JIT/source-consumed React package mirroring `@workspace/prompt-panel` conventions; it owns `LandingPreview`, `captureElementScreenshot`, `captureProjectScreenshot`, `preview-morph`, and `preview-srcdoc`.
+- Screenshot wire types (`ScreenshotResponseInput`, `ScreenshotViewportSize`, `ScreenshotMediaType`, `SCREENSHOT_VIEWPORT_SIZES`) now live in the package and are re-exported by `apps/client/src/lib/landing-agent.ts`.
+- Client now imports `LandingPreview` and `captureProjectScreenshot` from `@workspace/landing-preview`; deleted `apps/client/src/components/landing-preview.tsx(.test.ts)`, `apps/client/src/lib/browser-screenshot.ts`, `apps/client/src/lib/preview-morph.ts`, and `apps/client/src/lib/preview-srcdoc.ts`.
+- Client no longer directly depends on `@zumer/snapdom`; it depends on `@workspace/landing-preview`.
+- DOX: added `packages/landing-preview/AGENTS.md`, registered it in `packages/AGENTS.md`, and updated `apps/client/AGENTS.md` ownership bullets for moved modules.
+- Checks: `@workspace/landing-preview` format/typecheck/lint/test (1 file, 4 tests) pass; `@workspace/client` format/typecheck/lint/test/build (1 file, 5 tests) pass. The only lint output is the pre-existing `main.tsx` fast-refresh warning unrelated to this slice.
 
 ### Gotchas
-_(fill at end of the sub-phase, if any)_
+- Several client files (`projects-api.ts`, `projects-page.tsx`, `landing-agent.test.ts`) were already dirty from unrelated model-selection work; commits stage explicit paths only and leave those untouched.
+- `ScreenshotViewportSize` is imported into `apps/client/src/lib/landing-agent.ts` for the request event type and re-exported; the package owns the canonical definition to avoid a package → app import.
 
 ## Phase 2: Add preview diagnostics and imperative screenshot capture API
 

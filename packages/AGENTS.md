@@ -8,6 +8,7 @@
 
 - `ui/`: shared shadcn/Tailwind React component package.
 - `prompt-panel/`: landing-page prompt panel UI + conversation domain model, source-consumed by the client.
+- `landing-preview/`: shared landing-page preview iframe runtime, DOM morphing, and browser screenshot capture, source-consumed by the client and benchmark.
 - `typescript-config/`: shared strict tsgo/TypeScript configs.
 - `vite-config/`: shared Vite React config factory.
 - `vitest-preset/`: shared Vitest config factory.
@@ -36,3 +37,4 @@
 
 - `ui/AGENTS.md` — shared shadcn/Tailwind component system and globals.
 - `prompt-panel/AGENTS.md` — extracted prompt panel UI + landing conversation domain model.
+- `landing-preview/AGENTS.md` — extracted landing-page preview iframe runtime and screenshot capture.
