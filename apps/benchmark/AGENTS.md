@@ -7,7 +7,7 @@
 ## Ownership
 
 - `src/App.tsx`: benchmark shell, live progress, report, card grid, and run-detail dialog wiring.
-- `src/components/`: benchmark-only controls, result cards (with per-preview zoom + large-preview detail), detail dialog (preview, assistant text, tool calls, stats, mistakes, preview diagnostics, screenshots), report save/feedback panel, theme toggle, and aggregate report UI.
+- `src/components/`: benchmark-only controls, result cards (with per-preview zoom plus distinct report/large-preview actions), run report dialog (assistant text, tool calls, stats, mistakes, preview diagnostics, screenshots), large-preview dialog mode, report save/feedback panel, theme toggle, and aggregate report UI.
 - `src/hooks/use-benchmark.ts`: run orchestration, concurrency pool, abort/stop handling, project creation, and SSE folding.
 - `src/lib/`: server API helpers, SSE transport, result reducer, report JSON builder, domain types, and formatting helpers.
 
@@ -19,7 +19,7 @@
 - Each run creates a disposable draft project through `POST /api/projects` and streams one `POST /agent` request with `{ prompt, projectId, textModel }`.
 - Result previews render streamed `html_update` HTML through the shared `@workspace/landing-preview` `LandingPreview` (same `srcDoc` preparation, DOM morphing, sandbox, and diagnostics path as the production editor) after expanding project image URLs to absolute server URLs.
 - `screenshot_request` events are answered with real client-preview captures via the shared `captureProjectScreenshot` (the production editor path), recording `{ requestId, selector, viewportSize, status, dimensions, mediaType, dataUrlBytes }` (or `errorMessage`) on the run. `postScreenshotError` remains only as the capture-failure fallback; the benchmark no longer forces a deterministic screenshot error.
-- Each result card preview has zoom controls (0.5×–3×) that scale the preview container without mutating generated HTML, and the run detail dialog exposes a large preview plus preview diagnostics and screenshot capture records.
+- Each result card preview has zoom controls (0.5×–3×) that scale the preview container without mutating generated HTML. The eye/report action opens run evidence only (assistant text, tool calls, stats, mistakes, diagnostics, screenshots) and must not duplicate the preview; the large-preview/maximize action is the preview-focused entry point.
 - Preview runtime diagnostics (iframe load/ready/error/unhandled rejection) flow into `RunResult.previewDiagnostics` through `useBenchmark.recordPreviewDiagnostic`.
 - The benchmark app owns a local light/dark theme toggle stored in `localStorage` under `benchmark-theme`; do not import the production client theme provider.
 - The report save flow collects structured user feedback, builds a JSON report with run config, summary, model aggregates, run-level stats/tool calls/mistakes/output HTML, and posts it to `POST /api/benchmark-reports`.

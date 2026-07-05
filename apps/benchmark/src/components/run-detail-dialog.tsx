@@ -23,16 +23,19 @@ import type {
 } from '../lib/types'
 
 export interface RunDetailDialogProps {
+  mode: 'preview' | 'report'
   onOpenChange: (open: boolean) => void
   open: boolean
   result: null | RunResult
 }
 
 export function RunDetailDialog({
+  mode,
   onOpenChange,
   open,
   result,
 }: RunDetailDialogProps) {
+  const showPreview = mode === 'preview'
   return (
     <Dialog onOpenChange={onOpenChange} open={open}>
       <DialogContent
@@ -76,7 +79,7 @@ export function RunDetailDialog({
             <div className="min-h-0 overflow-auto p-4 xl:overflow-hidden">
               <div className="grid min-w-0 gap-4 xl:size-full xl:min-h-0 xl:grid-cols-[minmax(0,1fr)_20rem]">
                 <main className="flex min-w-0 flex-col gap-4 xl:min-h-0 xl:overflow-auto xl:pr-1">
-                  {result.html ? (
+                  {showPreview && result.html ? (
                     <Section title="Preview">
                       <div className="h-80 w-full min-w-0 overflow-hidden border bg-muted/30">
                         <LandingPreview

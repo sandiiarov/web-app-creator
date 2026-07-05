@@ -31,7 +31,10 @@ export function App() {
   const [prompts, setPrompts] = useState(DEFAULT_PROMPTS)
   const [models, setModels] = useState<BenchmarkModel[]>(LANDING_MODEL_OPTIONS)
   const [concurrency, setConcurrency] = useState(1)
-  const [detail, setDetail] = useState<null | RunResult>(null)
+  const [detail, setDetail] = useState<null | {
+    mode: 'preview' | 'report'
+    result: RunResult
+  }>(null)
 
   const progressPercent = useMemo(() => {
     if (!benchmark.progress.total) return 0
@@ -118,7 +121,12 @@ export function App() {
               {benchmark.results.map((result) => (
                 <ResultCard
                   key={result.id}
-                  onOpenDetail={setDetail}
+                  onOpenPreview={(entry) =>
+                    setDetail({ mode: 'preview', result: entry })
+                  }
+                  onOpenReport={(entry) =>
+                    setDetail({ mode: 'report', result: entry })
+                  }
                   onPreviewDiagnostic={(diagnostic) =>
                     benchmark.recordPreviewDiagnostic(result.id, diagnostic)
                   }
@@ -139,11 +147,12 @@ export function App() {
         </div>
       </main>
       <RunDetailDialog
+        mode={detail?.mode ?? 'report'}
         onOpenChange={(open) => {
           if (!open) setDetail(null)
         }}
         open={Boolean(detail)}
-        result={detail}
+        result={detail?.result ?? null}
       />
     </div>
   )

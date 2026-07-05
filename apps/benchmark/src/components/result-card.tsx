@@ -28,13 +28,15 @@ const PREVIEW_ZOOM_MIN = 0.5
 const PREVIEW_ZOOM_STEP = 0.25
 
 export interface ResultCardProps {
-  onOpenDetail: (result: RunResult) => void
+  onOpenPreview: (result: RunResult) => void
+  onOpenReport: (result: RunResult) => void
   onPreviewDiagnostic: (diagnostic: PreviewDiagnostic) => void
   result: RunResult
 }
 
 export function ResultCard({
-  onOpenDetail,
+  onOpenPreview,
+  onOpenReport,
   onPreviewDiagnostic,
   result,
 }: ResultCardProps) {
@@ -61,8 +63,8 @@ export function ResultCard({
           </p>
         </div>
         <Button
-          aria-label={`Open details for ${result.modelLabel}`}
-          onClick={() => onOpenDetail(result)}
+          aria-label={`Open run report for ${result.modelLabel}`}
+          onClick={() => onOpenReport(result)}
           size="icon-sm"
           type="button"
           variant="outline"
@@ -151,7 +153,7 @@ export function ResultCard({
             </Button>
             <Button
               aria-label={`Open large preview for ${result.modelLabel}`}
-              onClick={() => onOpenDetail(result)}
+              onClick={() => onOpenPreview(result)}
               size="icon-xs"
               type="button"
               variant="ghost"
