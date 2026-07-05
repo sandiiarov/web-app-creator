@@ -57,7 +57,7 @@ describe('server HTTP routes', () => {
         'https://client.test',
       )
       expect(options.headers.get('access-control-allow-methods')).toBe(
-        'GET,POST,PATCH,OPTIONS',
+        'DELETE,GET,PATCH,POST,OPTIONS',
       )
 
       const missing = await fetch(`${baseUrl}/missing`)
@@ -170,6 +170,32 @@ describe('server HTTP routes', () => {
         textModel: 'custom-model',
         visionModel: 'moonshotai/kimi-k2.7-code',
       })
+    })
+  })
+
+  it('leaves image/vision models undefined when omitted so role defaults apply', async () => {
+    // Regression: the benchmark sends only textModel. Previously the handler
+    // ran every role through resolveModelId, whose fallback is the CHAT model,
+    // so image gen and vision OCR both hit `z-ai/glm-5.2` and 404'd. The
+    // handler must forward `undefined` for omitted roles so streamLandingAgent
+    // applies the configured image/vision defaults.
+    await withServer(async ({ baseUrl, streamLandingAgent }) => {
+      const response = await postJson(`${baseUrl}/agent`, {
+        projectId: 'project-1',
+        prompt: 'Build a hero',
+        textModel: 'openrouter/custom-text-model',
+      })
+
+      expect(response.status).toBe(200)
+      await expect(response.text()).resolves.toBe('event: done\ndata: {}\n\n')
+      const call = streamLandingAgent.mock.calls[0]?.[0]
+      expect(call).toMatchObject({
+        projectId: 'project-1',
+        prompt: 'Build a hero',
+        textModel: 'custom-text-model',
+      })
+      expect(call.imageModel).toBeUndefined()
+      expect(call.visionModel).toBeUndefined()
     })
   })
 

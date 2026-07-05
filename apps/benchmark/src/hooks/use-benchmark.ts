@@ -50,55 +50,61 @@ export function useBenchmark(): UseBenchmark {
   const [progress, setProgress] = useState({ completed: 0, total: 0 })
   const abortRef = useRef<AbortController | null>(null)
 
-  const updateResult = useCallback(
+  // `resultsRef` is the synchronous source of truth for run state. SSE events
+  // for a single run arrive sequentially (one awaited `reader.read()` at a
+  // time) but faster than React re-renders. Updating this ref synchronously via
+  // `commit` keeps consecutive text deltas chained correctly; computing each
+  // event from React `results` state instead caused bursts to read the same
+  // stale snapshot and clobber earlier deltas, scrambling the recorded text.
+  const resultsRef = useRef<RunResult[]>([])
+
+  const commit = useCallback((next: RunResult[]) => {
+    resultsRef.current = next
+    setResults(next)
+  }, [])
+
+  const mutateRun = useCallback(
     (id: string, fn: (r: RunResult) => RunResult) => {
-      setResults((prev) => prev.map((r) => (r.id === id ? fn(r) : r)))
+      commit(resultsRef.current.map((r) => (r.id === id ? fn(r) : r)))
     },
-    [],
+    [commit],
+  )
+
+  const updateResult = useCallback(
+    (id: string, fn: (r: RunResult) => RunResult) => mutateRun(id, fn),
+    [mutateRun],
   )
 
   const stop = useCallback(() => {
     abortRef.current?.abort()
     setIsRunning(false)
-    setResults((prev) =>
-      prev.map((r) =>
+    commit(
+      resultsRef.current.map((r) =>
         r.status === 'running' || r.status === 'pending'
           ? { ...r, finishedAt: Date.now(), status: 'stopped' }
           : r,
       ),
     )
-  }, [])
+  }, [commit])
 
   const recordScreenshotCapture = useCallback(
     (runId: string, capture: ScreenshotCaptureRecord) => {
-      setResults((prev) =>
-        prev.map((result) =>
-          result.id === runId
-            ? {
-                ...result,
-                screenshotCaptures: [...result.screenshotCaptures, capture],
-              }
-            : result,
-        ),
-      )
+      mutateRun(runId, (r) => ({
+        ...r,
+        screenshotCaptures: [...r.screenshotCaptures, capture],
+      }))
     },
-    [],
+    [mutateRun],
   )
 
   const recordPreviewDiagnostic = useCallback(
     (runId: string, diagnostic: PreviewDiagnostic) => {
-      setResults((prev) =>
-        prev.map((result) =>
-          result.id === runId
-            ? {
-                ...result,
-                previewDiagnostics: [...result.previewDiagnostics, diagnostic],
-              }
-            : result,
-        ),
-      )
+      mutateRun(runId, (r) => ({
+        ...r,
+        previewDiagnostics: [...r.previewDiagnostics, diagnostic],
+      }))
     },
-    [],
+    [mutateRun],
   )
 
   const run = useCallback(
@@ -122,7 +128,7 @@ export function useBenchmark(): UseBenchmark {
         ...createInitialRunResult(meta),
         status: 'pending',
       }))
-      setResults(initial)
+      commit(initial)
       setIsRunning(true)
       setProgress({ completed: 0, total: matrix.length })
 
@@ -148,19 +154,23 @@ export function useBenchmark(): UseBenchmark {
             { projectId, prompt: meta.promptText, textModel: meta.modelId },
             {
               onEvent: ({ data, event }) => {
-                const { result, screenshotRequest } = applySseEvent(
+                const { result: next, screenshotRequest } = applySseEvent(
                   readResult(resultsRef.current, meta.id),
                   { data, event },
                 )
-                const withProject = { ...result, projectId }
-                setResults((prev) =>
-                  prev.map((r) => (r.id === meta.id ? withProject : r)),
+                // Commit synchronously so the next event (which may arrive
+                // before React re-renders) reads the freshly-accumulated state.
+                const nextWithProject = { ...next, projectId }
+                commit(
+                  resultsRef.current.map((r) =>
+                    r.id === meta.id ? nextWithProject : r,
+                  ),
                 )
                 if (screenshotRequest) {
                   void answerScreenshotRequest(
                     meta.id,
                     screenshotRequest,
-                    readResult(resultsRef.current, meta.id).html,
+                    nextWithProject.html,
                     recordScreenshotCapture,
                   )
                 }
@@ -195,13 +205,8 @@ export function useBenchmark(): UseBenchmark {
         abortRef.current = null
       })
     },
-    [isRunning, recordScreenshotCapture, updateResult],
+    [commit, isRunning, recordScreenshotCapture, updateResult],
   )
-
-  // Keep a live ref so the SSE callback can read the latest result without
-  // re-subscribing on every state change.
-  const resultsRef = useRef(results)
-  resultsRef.current = results
 
   return {
     isRunning,

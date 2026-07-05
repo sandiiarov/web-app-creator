@@ -163,15 +163,24 @@ async function handleAgent(request: IncomingMessage, response: ServerResponse) {
     return
   }
 
+  // Only `textModel` falls back to the chat default here. `imageModel` and
+  // `visionModel` must stay `undefined` when omitted so `streamLandingAgent`
+  // applies their own role-specific defaults (image / vision models). Routing
+  // them through `resolveModelId` would silently substitute the chat model,
+  // which is neither an image nor a vision model and 404s at the provider.
   await streamLandingAgent({
     attachments,
-    imageModel: resolveModelId(body.imageModel),
+    imageModel: body.imageModel
+      ? resolveModelId(body.imageModel)
+      : undefined,
     projectId: body.projectId,
     prompt: body.prompt,
     request,
     response,
     textModel: resolveModelId(body.textModel),
-    visionModel: resolveModelId(body.visionModel),
+    visionModel: body.visionModel
+      ? resolveModelId(body.visionModel)
+      : undefined,
   })
 }
 
@@ -504,7 +513,10 @@ async function serveProjectImage(
 
 function setCorsHeaders(response: ServerResponse) {
   response.setHeader('access-control-allow-headers', 'content-type')
-  response.setHeader('access-control-allow-methods', 'GET,POST,PATCH,OPTIONS')
+  response.setHeader(
+    'access-control-allow-methods',
+    'DELETE,GET,PATCH,POST,OPTIONS',
+  )
   response.setHeader('access-control-allow-origin', config.clientOrigin)
 }
 
