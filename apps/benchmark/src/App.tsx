@@ -119,6 +119,9 @@ export function App() {
                 <ResultCard
                   key={result.id}
                   onOpenDetail={setDetail}
+                  onPreviewDiagnostic={(diagnostic) =>
+                    benchmark.recordPreviewDiagnostic(result.id, diagnostic)
+                  }
                   result={result}
                 />
               ))}

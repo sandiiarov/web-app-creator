@@ -1,10 +1,12 @@
+import { captureProjectScreenshot } from '@workspace/landing-preview'
 import { useCallback, useRef, useState } from 'react'
 
-import { applySseEvent } from '../lib/run-reducer'
+import { applySseEvent, type ScreenshotRequest } from '../lib/run-reducer'
 import {
   createProject,
   expandProjectImageUrls,
   postScreenshotError,
+  postScreenshotResponse,
 } from '../lib/server-api'
 import { streamSSE } from '../lib/sse-client'
 import {
@@ -12,8 +14,10 @@ import {
   createInitialRunResult,
   type BenchmarkModel,
   type BenchmarkPrompt,
+  type PreviewDiagnostic,
   type RunResult,
   type RunResultMeta,
+  type ScreenshotCaptureRecord,
 } from '../lib/types'
 
 export interface RunMatrixOptions {
@@ -25,6 +29,14 @@ export interface RunMatrixOptions {
 export interface UseBenchmark {
   isRunning: boolean
   progress: { completed: number; total: number }
+  recordPreviewDiagnostic: (
+    runId: string,
+    diagnostic: PreviewDiagnostic,
+  ) => void
+  recordScreenshotCapture: (
+    runId: string,
+    capture: ScreenshotCaptureRecord,
+  ) => void
   results: RunResult[]
   run: (options: RunMatrixOptions) => void
   stop: () => void
@@ -56,6 +68,38 @@ export function useBenchmark(): UseBenchmark {
       ),
     )
   }, [])
+
+  const recordScreenshotCapture = useCallback(
+    (runId: string, capture: ScreenshotCaptureRecord) => {
+      setResults((prev) =>
+        prev.map((result) =>
+          result.id === runId
+            ? {
+                ...result,
+                screenshotCaptures: [...result.screenshotCaptures, capture],
+              }
+            : result,
+        ),
+      )
+    },
+    [],
+  )
+
+  const recordPreviewDiagnostic = useCallback(
+    (runId: string, diagnostic: PreviewDiagnostic) => {
+      setResults((prev) =>
+        prev.map((result) =>
+          result.id === runId
+            ? {
+                ...result,
+                previewDiagnostics: [...result.previewDiagnostics, diagnostic],
+              }
+            : result,
+        ),
+      )
+    },
+    [],
+  )
 
   const run = useCallback(
     ({ concurrency, models, prompts }: RunMatrixOptions) => {
@@ -113,12 +157,11 @@ export function useBenchmark(): UseBenchmark {
                   prev.map((r) => (r.id === meta.id ? withProject : r)),
                 )
                 if (screenshotRequest) {
-                  // The benchmark does not render preview captures; answer
-                  // promptly so the screenshot tool fails fast instead of
-                  // hanging on its timeout.
-                  void postScreenshotError(
-                    screenshotRequest.requestId,
-                    'Benchmark does not capture browser screenshots.',
+                  void answerScreenshotRequest(
+                    meta.id,
+                    screenshotRequest,
+                    readResult(resultsRef.current, meta.id).html,
+                    recordScreenshotCapture,
                   )
                 }
               },
@@ -152,7 +195,7 @@ export function useBenchmark(): UseBenchmark {
         abortRef.current = null
       })
     },
-    [isRunning, updateResult],
+    [isRunning, recordScreenshotCapture, updateResult],
   )
 
   // Keep a live ref so the SSE callback can read the latest result without
@@ -160,7 +203,70 @@ export function useBenchmark(): UseBenchmark {
   const resultsRef = useRef(results)
   resultsRef.current = results
 
-  return { isRunning, progress, results, run, stop }
+  return {
+    isRunning,
+    progress,
+    recordPreviewDiagnostic,
+    recordScreenshotCapture,
+    results,
+    run,
+    stop,
+  }
+}
+
+/**
+ * Answer a server screenshot request using the same client-preview capture path
+ * the production editor uses. Records the capture (or failure) via the provided
+ * callback so the saved report carries screenshot evidence instead of a forced
+ * benchmark error.
+ */
+async function answerScreenshotRequest(
+  runId: string,
+  request: ScreenshotRequest,
+  html: string,
+  record: (runId: string, capture: ScreenshotCaptureRecord) => void,
+): Promise<void> {
+  const expanded = expandProjectImageUrls(html)
+  const viewport = normalizeViewport(request.viewportSize)
+  try {
+    if (!expanded.trim()) {
+      throw new Error('No preview HTML available for screenshot capture.')
+    }
+    const capture = await captureProjectScreenshot({
+      html: expanded,
+      selector: request.selector ?? '',
+      viewportSize: viewport,
+    })
+    await postScreenshotResponse(request.requestId, {
+      dataUrl: capture.dataUrl,
+      height: capture.height,
+      mediaType: capture.mediaType,
+      width: capture.width,
+    })
+    record(runId, {
+      at: Date.now(),
+      dataUrlBytes: estimateDataUrlBytes(capture.dataUrl),
+      height: capture.height,
+      mediaType: capture.mediaType,
+      requestId: request.requestId,
+      selector: request.selector,
+      status: 'captured',
+      viewportSize: request.viewportSize,
+      width: capture.width,
+    })
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : 'Screenshot capture failed.'
+    await postScreenshotError(request.requestId, message).catch(() => undefined)
+    record(runId, {
+      at: Date.now(),
+      errorMessage: message,
+      requestId: request.requestId,
+      selector: request.selector,
+      status: 'error',
+      viewportSize: request.viewportSize,
+    })
+  }
 }
 
 function createInitialRunResultPlaceholder(id: string): RunResult {
@@ -171,16 +277,32 @@ function createInitialRunResultPlaceholder(id: string): RunResult {
     mistakes: [],
     modelId: '',
     modelLabel: '',
+    previewDiagnostics: [],
     projectId: '',
     promptId: '',
     promptText: '',
     retryCount: 0,
+    screenshotCaptures: [],
     startedAt: Date.now(),
     stats: {},
     status: 'pending',
     text: '',
     toolCalls: [],
   }
+}
+
+function estimateDataUrlBytes(dataUrl: string): number {
+  const base64 = dataUrl.split(',', 2)[1] ?? ''
+  const padding = base64.endsWith('==') ? 2 : base64.endsWith('=') ? 1 : 0
+  return Math.max(0, Math.floor((base64.length * 3) / 4) - padding)
+}
+
+function normalizeViewport(
+  value: string | undefined,
+): 'desktop' | 'mobile' | 'tablet' {
+  if (value === 'tablet') return 'tablet'
+  if (value === 'desktop') return 'desktop'
+  return 'mobile'
 }
 
 async function pool<T>(

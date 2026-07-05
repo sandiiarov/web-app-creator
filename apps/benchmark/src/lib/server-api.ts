@@ -1,3 +1,5 @@
+import { type ScreenshotMediaType } from '@workspace/prompt-panel'
+
 import { SERVER_URL, type BenchmarkReport } from './types'
 
 export interface CreateProjectInput {
@@ -14,6 +16,17 @@ export interface SavedBenchmarkReport {
 
 export interface ScreenshotErrorResponse {
   error: string
+}
+
+export type ScreenshotResponsePayload =
+  | ScreenshotErrorResponse
+  | ScreenshotSuccessResponse
+
+export interface ScreenshotSuccessResponse {
+  dataUrl: string
+  height: number
+  mediaType: ScreenshotMediaType
+  width: number
 }
 
 /** Server project shape (only the fields the benchmark uses). */
@@ -66,8 +79,8 @@ export async function getProject(id: string): Promise<ServerProject> {
 
 /**
  * Answer a screenshot request with a fast error so the server's screenshot tool
- * fails deterministically instead of waiting the full timeout. The benchmark
- * does not render preview captures; screenshot is a known controlled failure.
+ * fails deterministically instead of waiting the full timeout. Kept as a fallback
+ * for capture failures.
  */
 export async function postScreenshotError(
   requestId: string,
@@ -75,6 +88,21 @@ export async function postScreenshotError(
 ): Promise<void> {
   await fetch(`${SERVER_URL}/api/screenshot-responses/${requestId}`, {
     body: JSON.stringify({ error } satisfies ScreenshotErrorResponse),
+    headers: { 'content-type': 'application/json' },
+    method: 'POST',
+  })
+}
+
+/**
+ * Answer a screenshot request with a captured image so the server's screenshot
+ * tool receives a real client-preview capture. Mirrors the production client path.
+ */
+export async function postScreenshotResponse(
+  requestId: string,
+  payload: ScreenshotResponsePayload,
+): Promise<void> {
+  await fetch(`${SERVER_URL}/api/screenshot-responses/${requestId}`, {
+    body: JSON.stringify(payload),
     headers: { 'content-type': 'application/json' },
     method: 'POST',
   })

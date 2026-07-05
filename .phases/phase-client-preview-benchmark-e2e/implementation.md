@@ -80,16 +80,25 @@ Add opt-in preview diagnostics and an imperative preview handle in `@workspace/l
 Use the shared preview runtime in benchmark cards, answer screenshot requests with real client-side capture, and persist preview/screenshot diagnostics in run results and saved reports.
 
 ### Todo
-- [ ] Add benchmark preview registry and real screenshot response path
-- [ ] Replace result-card iframes with shared `LandingPreview`
-- [ ] Extend run/report types with preview diagnostics and screenshot captures
-- [ ] Update report tests and run focused benchmark checks
+- [x] Add benchmark preview registry and real screenshot response path
+- [x] Replace result-card iframes with shared `LandingPreview`
+- [x] Extend run/report types with preview diagnostics and screenshot captures
+- [x] Update report tests and run focused benchmark checks
 
 ### Results
-_(fill at end of the sub-phase — what was implemented, commands run, checks passed)_
+- Benchmark now depends on `@workspace/landing-preview` and answers `screenshot_request` SSE events with real client-preview captures via `captureProjectScreenshot` (the same path the production editor uses), instead of the forced `"Benchmark does not capture browser screenshots."` error.
+- Added `postScreenshotResponse` (success) alongside `postScreenshotError` (now the capture-failure fallback) in `apps/benchmark/src/lib/server-api.ts`.
+- `useBenchmark` exposes `recordScreenshotCapture` and `recordPreviewDiagnostic`; each screenshot request records `{ requestId, selector, viewportSize, status, dimensions, mediaType, dataUrlBytes }` (or `errorMessage`) on the run, and preview runtime errors/load/ready events flow into `previewDiagnostics`.
+- `RunResult` and `BenchmarkReportRun` now carry `previewDiagnostics` and `screenshotCaptures`; `BenchmarkRunConfig.screenshotCapture` moved from `'disabled-fast-error'` to `'client-preview-capture'`.
+- `run-reducer.ts` now exports `ScreenshotRequest` and forwards `selector`/`viewportSize` to the hook.
+- `ResultCard` renders the shared `LandingPreview` (new `iframeClassName` prop sizes it to the card) instead of a raw `allow-same-origin` iframe, so benchmark previews use the production iframe preparation, morphing, sandbox, and diagnostics path.
+- `LandingPreview` gained an optional `iframeClassName` prop; the client keeps its default full-viewport sizing.
+- Report builder/test updated for the new capture mode and run fields.
+- Checks: benchmark format/typecheck/lint (0 errors)/test (2 tests)/build all pass.
 
 ### Gotchas
-_(fill at end of the sub-phase, if any)_
+- `useBenchmark` screenshot handling needs `setResults`, so the capture helper accepts a `record` callback (the hook provides `recordScreenshotCapture`) rather than touching state from a module-level function.
+- Screenshot requests can arrive before the visible preview morphs; the capture path renders from the latest streamed `result.html` in an offscreen iframe at the requested viewport (matching the client), so it does not depend on the visible card preview being ready.
 
 ## Phase 4: Add zoomable benchmark previews and richer detail inspection
 

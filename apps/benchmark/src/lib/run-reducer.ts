@@ -6,6 +6,13 @@ import type {
 
 import type { Mistake, RunResult, RunStats, ToolCallSummary } from './types'
 
+export interface ScreenshotRequest {
+  projectId: string
+  requestId: string
+  selector?: string
+  viewportSize?: string
+}
+
 /**
  * SSE wire-event payloads. Mirrors `apps/server/src/mastra/route.ts` and the
  * client's `landing-agent.ts`. The benchmark consumes the same stream the
@@ -33,6 +40,8 @@ interface RetryPayload {
 interface ScreenshotRequestPayload {
   projectId: string
   requestId: string
+  selector?: string
+  viewportSize?: string
 }
 
 interface StatsPayload {
@@ -64,10 +73,10 @@ export function applySseEvent(
   { data, event }: SseEvent,
 ): {
   result: RunResult
-  screenshotRequest?: { projectId: string; requestId: string }
+  screenshotRequest?: ScreenshotRequest
 } {
   const payload = asObject(data) ?? {}
-  let screenshotRequest: undefined | { projectId: string; requestId: string }
+  let screenshotRequest: ScreenshotRequest | undefined
 
   switch (event) {
     case 'done': {
@@ -121,6 +130,8 @@ export function applySseEvent(
         screenshotRequest = {
           projectId: asString(req.projectId) ?? result.projectId,
           requestId: req.requestId,
+          selector: asString(req.selector) ?? undefined,
+          viewportSize: asString(req.viewportSize) ?? undefined,
         }
       }
       return { result, screenshotRequest }

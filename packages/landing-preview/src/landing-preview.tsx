@@ -27,6 +27,7 @@ export interface LandingPreviewHandle {
 export type LandingPreviewProps = {
   elementSelectionActive?: boolean
   html: string
+  iframeClassName?: string
   onElementSelected?: (attachment: ElementAttachmentInput) => void
   onElementSelectionCancel?: () => void
   onError?: (message: string) => void
@@ -106,6 +107,7 @@ type PickerOverlayState = 'hover' | 'selected'
 export function LandingPreview({
   elementSelectionActive = false,
   html,
+  iframeClassName,
   onElementSelected,
   onElementSelectionCancel,
   onError,
@@ -307,7 +309,7 @@ export function LandingPreview({
 
   return (
     <iframe
-      className="h-svh w-screen border-0"
+      className={iframeClassName ?? 'h-svh w-screen border-0'}
       ref={iframeRef}
       referrerPolicy="no-referrer"
       sandbox="allow-forms allow-modals allow-popups allow-same-origin allow-scripts"

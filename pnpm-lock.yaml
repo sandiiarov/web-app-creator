@@ -134,6 +134,9 @@ importers:
 
   apps/benchmark:
     dependencies:
+      '@workspace/landing-preview':
+        specifier: workspace:*
+        version: link:../../packages/landing-preview
       '@workspace/prompt-panel':
         specifier: workspace:*
         version: link:../../packages/prompt-panel

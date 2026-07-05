@@ -1,3 +1,7 @@
+import {
+  LandingPreview,
+  type PreviewDiagnostic,
+} from '@workspace/landing-preview'
 import { Badge } from '@workspace/ui/components/badge'
 import { Button } from '@workspace/ui/components/button'
 import {
@@ -13,10 +17,15 @@ import type { RunResult, RunStatus } from '../lib/types'
 
 export interface ResultCardProps {
   onOpenDetail: (result: RunResult) => void
+  onPreviewDiagnostic: (diagnostic: PreviewDiagnostic) => void
   result: RunResult
 }
 
-export function ResultCard({ onOpenDetail, result }: ResultCardProps) {
+export function ResultCard({
+  onOpenDetail,
+  onPreviewDiagnostic,
+  result,
+}: ResultCardProps) {
   const durationMs =
     result.stats.durationMs ??
     (result.finishedAt ? result.finishedAt - result.startedAt : undefined)
@@ -24,7 +33,7 @@ export function ResultCard({ onOpenDetail, result }: ResultCardProps) {
   const html = result.html ? expandProjectImageUrls(result.html) : ''
 
   return (
-    <article className="flex min-h-[28rem] min-w-0 flex-col border bg-card text-card-foreground">
+    <article className="flex min-h-112 min-w-0 flex-col border bg-card text-card-foreground">
       <div className="flex items-start justify-between gap-3 border-b p-3">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
@@ -67,11 +76,10 @@ export function ResultCard({ onOpenDetail, result }: ResultCardProps) {
       </div>
       <div className="relative min-h-0 flex-1 bg-muted/30">
         {html ? (
-          <iframe
-            className="absolute inset-0 size-full border-0 bg-white"
-            sandbox="allow-same-origin"
-            srcDoc={html}
-            title={`${result.modelLabel} benchmark preview`}
+          <LandingPreview
+            html={html}
+            iframeClassName="absolute inset-0 size-full border-0 bg-white"
+            onPreviewDiagnostic={onPreviewDiagnostic}
           />
         ) : (
           <Empty className="absolute inset-0 border-0">

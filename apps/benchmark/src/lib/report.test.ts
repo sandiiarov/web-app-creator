@@ -25,10 +25,12 @@ const RUN: RunResult = {
   ],
   modelId: 'z-ai/glm-5.2',
   modelLabel: 'GLM 5.2',
+  previewDiagnostics: [],
   projectId: 'project-1',
   promptId: 'prompt-1',
   promptText: 'Build a landing page for Orbit Notes.',
   retryCount: 1,
+  screenshotCaptures: [],
   startedAt: 1_700_000_000_000,
   stats: {
     cost: 0.0123,
@@ -63,7 +65,10 @@ describe('benchmark report', () => {
     expect(report).toMatchObject({
       app: 'benchmark',
       reportVersion: '1',
-      runConfig: { concurrency: 1, screenshotCapture: 'disabled-fast-error' },
+      runConfig: {
+        concurrency: 1,
+        screenshotCapture: 'client-preview-capture',
+      },
       summary: {
         completedRuns: 1,
         doneRuns: 1,

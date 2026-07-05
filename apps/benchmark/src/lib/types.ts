@@ -1,3 +1,4 @@
+import type { PreviewDiagnostic } from '@workspace/landing-preview'
 import type {
   CostBreakdown,
   LandingModelOption,
@@ -60,10 +61,12 @@ export interface BenchmarkReportRun {
   mistakes: Mistake[]
   modelId: string
   modelLabel: string
+  previewDiagnostics: PreviewDiagnostic[]
   projectId: string
   promptId: string
   promptText: string
   retryCount: number
+  screenshotCaptures: ScreenshotCaptureRecord[]
   startedAt: string
   stats: RunStats
   status: RunStatus
@@ -93,8 +96,12 @@ export interface BenchmarkRunConfig {
   concurrency: number
   models: BenchmarkModel[]
   prompts: BenchmarkPrompt[]
-  screenshotCapture: 'disabled-fast-error'
+  screenshotCapture: BenchmarkScreenshotCaptureMode
 }
+
+export type BenchmarkScreenshotCaptureMode =
+  | 'client-preview-capture'
+  | 'disabled-fast-error'
 
 export interface BenchmarkUserFeedback {
   notes: string
@@ -131,10 +138,12 @@ export interface RunResult {
   mistakes: Mistake[]
   modelId: string
   modelLabel: string
+  previewDiagnostics: PreviewDiagnostic[]
   projectId: string
   promptId: string
   promptText: string
   retryCount: number
+  screenshotCaptures: ScreenshotCaptureRecord[]
   startedAt: number
   stats: RunStats
   status: RunStatus
@@ -162,6 +171,21 @@ export interface RunStats {
 
 export type RunStatus = 'done' | 'error' | 'pending' | 'running' | 'stopped'
 
+export type { PreviewDiagnostic }
+
+export interface ScreenshotCaptureRecord {
+  at: number
+  dataUrlBytes?: number
+  errorMessage?: string
+  height?: number
+  mediaType?: string
+  requestId: string
+  selector?: string
+  status: 'captured' | 'error'
+  viewportSize?: string
+  width?: number
+}
+
 export interface ToolCallSummary {
   detail?: null | string
   id: string
@@ -179,10 +203,12 @@ export function createInitialRunResult(meta: RunResultMeta): RunResult {
     mistakes: [],
     modelId: meta.modelId,
     modelLabel: meta.modelLabel,
+    previewDiagnostics: [],
     projectId: meta.projectId,
     promptId: meta.promptId,
     promptText: meta.promptText,
     retryCount: 0,
+    screenshotCaptures: [],
     startedAt: Date.now(),
     stats: {},
     status: 'running',
