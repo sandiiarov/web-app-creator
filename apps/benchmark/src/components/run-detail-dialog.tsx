@@ -1,3 +1,7 @@
+import {
+  LandingPreview,
+  type PreviewDiagnostic,
+} from '@workspace/landing-preview'
 import { Badge } from '@workspace/ui/components/badge'
 import {
   Dialog,
@@ -10,7 +14,13 @@ import {
 import { Separator } from '@workspace/ui/components/separator'
 
 import { formatCost, formatDuration, formatTokenUsage } from '../lib/format'
-import type { RunResult, RunStatus, ToolCallSummary } from '../lib/types'
+import { expandProjectImageUrls } from '../lib/server-api'
+import type {
+  RunResult,
+  RunStatus,
+  ScreenshotCaptureRecord,
+  ToolCallSummary,
+} from '../lib/types'
 
 export interface RunDetailDialogProps {
   onOpenChange: (open: boolean) => void
@@ -26,7 +36,7 @@ export function RunDetailDialog({
   return (
     <Dialog onOpenChange={onOpenChange} open={open}>
       <DialogContent
-        className="h-[min(90svh,54rem)] w-[92vw] max-w-none overflow-hidden p-0 sm:max-w-none xl:w-[72rem]"
+        className="h-[min(90svh,54rem)] w-[92vw] max-w-none overflow-hidden p-0 sm:max-w-none xl:w-6xl"
         showCloseButton
       >
         {result ? (
@@ -66,8 +76,18 @@ export function RunDetailDialog({
             <div className="min-h-0 overflow-auto p-4 xl:overflow-hidden">
               <div className="grid min-w-0 gap-4 xl:size-full xl:min-h-0 xl:grid-cols-[minmax(0,1fr)_20rem]">
                 <main className="flex min-w-0 flex-col gap-4 xl:min-h-0 xl:overflow-auto xl:pr-1">
+                  {result.html ? (
+                    <Section title="Preview">
+                      <div className="h-80 w-full min-w-0 overflow-hidden border bg-muted/30">
+                        <LandingPreview
+                          html={expandProjectImageUrls(result.html)}
+                          iframeClassName="absolute inset-0 size-full border-0 bg-white"
+                        />
+                      </div>
+                    </Section>
+                  ) : null}
                   <Section title="Assistant text">
-                    <pre className="max-h-60 min-w-0 overflow-auto border bg-muted/40 p-3 text-xs/relaxed break-words whitespace-pre-wrap">
+                    <pre className="max-h-60 min-w-0 overflow-auto border bg-muted/40 p-3 text-xs/relaxed wrap-break-word whitespace-pre-wrap">
                       {result.text || 'No assistant text captured yet.'}
                     </pre>
                   </Section>
@@ -120,7 +140,7 @@ export function RunDetailDialog({
                                 </span>
                               ) : null}
                             </div>
-                            <p className="text-xs/relaxed break-words">
+                            <p className="text-xs/relaxed wrap-break-word">
                               {mistake.message}
                             </p>
                           </div>
@@ -134,11 +154,43 @@ export function RunDetailDialog({
                   </Section>
                   {result.error ? (
                     <Section title="Error">
-                      <p className="text-xs/relaxed break-words text-destructive">
+                      <p className="text-xs/relaxed wrap-break-word text-destructive">
                         {result.error}
                       </p>
                     </Section>
                   ) : null}
+                  <Section title="Preview diagnostics">
+                    {result.previewDiagnostics.length ? (
+                      <div className="flex min-w-0 flex-col gap-1">
+                        {result.previewDiagnostics.map((diagnostic, index) => (
+                          <DiagnosticRow
+                            diagnostic={diagnostic}
+                            key={`${diagnostic.at}-${index}`}
+                          />
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-xs text-muted-foreground">
+                        No preview load, runtime, or console events recorded.
+                      </p>
+                    )}
+                  </Section>
+                  <Section title="Screenshots">
+                    {result.screenshotCaptures.length ? (
+                      <div className="flex min-w-0 flex-col gap-2">
+                        {result.screenshotCaptures.map((capture, index) => (
+                          <ScreenshotRow
+                            capture={capture}
+                            key={`${capture.requestId}-${index}`}
+                          />
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-xs text-muted-foreground">
+                        No screenshot requests were captured for this run.
+                      </p>
+                    )}
+                  </Section>
                 </aside>
               </div>
             </div>
@@ -157,6 +209,37 @@ export function RunDetailDialog({
   )
 }
 
+function DiagnosticRow({ diagnostic }: { diagnostic: PreviewDiagnostic }) {
+  const isError = diagnostic.kind === 'error'
+  const isConsole = diagnostic.kind === 'console'
+  const label =
+    diagnostic.kind === 'console'
+      ? `console:${diagnostic.level}`
+      : diagnostic.kind
+  return (
+    <div className="flex min-w-0 items-start gap-2 border p-2 text-xs">
+      <Badge variant={isError ? 'destructive' : 'outline'}>{label}</Badge>
+      <div className="min-w-0">
+        <p className="text-xs/relaxed wrap-break-word">
+          {isConsole
+            ? diagnostic.message
+            : 'message' in diagnostic
+              ? diagnostic.message
+              : diagnostic.kind}
+        </p>
+        {'source' in diagnostic && diagnostic.source ? (
+          <p className="mt-1 text-[0.65rem] text-muted-foreground">
+            {diagnostic.source}
+            {'lineno' in diagnostic && diagnostic.lineno
+              ? `:${diagnostic.lineno}`
+              : ''}
+          </p>
+        ) : null}
+      </div>
+    </div>
+  )
+}
+
 function Metric({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex min-w-0 flex-col gap-1 border-r p-3 last:border-r-0">
@@ -164,6 +247,38 @@ function Metric({ label, value }: { label: string; value: string }) {
         {label}
       </span>
       <span className="truncate font-medium">{value}</span>
+    </div>
+  )
+}
+
+function ScreenshotRow({ capture }: { capture: ScreenshotCaptureRecord }) {
+  const ok = capture.status === 'captured'
+  const summary = ok
+    ? [
+        capture.width && capture.height
+          ? `${capture.width}×${capture.height}`
+          : null,
+        capture.mediaType,
+        capture.dataUrlBytes ? `${capture.dataUrlBytes} bytes` : null,
+      ]
+        .filter(Boolean)
+        .join(' · ')
+    : (capture.errorMessage ?? 'Capture failed')
+  return (
+    <div className="flex min-w-0 items-start gap-2 border p-2 text-xs">
+      <Badge variant={ok ? 'secondary' : 'destructive'}>{capture.status}</Badge>
+      <div className="min-w-0">
+        <p className="text-xs/relaxed wrap-break-word">{summary}</p>
+        <p className="mt-1 text-[0.65rem] text-muted-foreground">
+          {[
+            capture.selector,
+            capture.viewportSize,
+            capture.requestId.slice(0, 8),
+          ]
+            .filter(Boolean)
+            .join(' · ')}
+        </p>
+      </div>
     </div>
   )
 }
@@ -229,12 +344,12 @@ function ToolCallRow({ call }: { call: ToolCallSummary }) {
       </div>
       <div className="min-w-0">
         {call.intent ? (
-          <p className="text-xs/relaxed break-words text-muted-foreground">
+          <p className="text-xs/relaxed wrap-break-word text-muted-foreground">
             {call.intent}
           </p>
         ) : null}
         {call.result ? (
-          <pre className="mt-2 max-h-40 min-w-0 overflow-auto bg-muted/40 p-2 text-xs/relaxed break-words whitespace-pre-wrap">
+          <pre className="mt-2 max-h-40 min-w-0 overflow-auto bg-muted/40 p-2 text-xs/relaxed wrap-break-word whitespace-pre-wrap">
             {call.result}
           </pre>
         ) : null}

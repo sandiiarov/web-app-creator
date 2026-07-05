@@ -106,15 +106,20 @@ Use the shared preview runtime in benchmark cards, answer screenshot requests wi
 Add accessible zoom controls to each benchmark preview and expose a larger detail preview alongside the existing text/tool/stats diagnostics.
 
 ### Todo
-- [ ] Add card-level zoom controls around shared previews
-- [ ] Add large preview inspection to run details
+- [x] Add card-level zoom controls around shared previews
+- [x] Add large preview inspection to run details
 - [ ] Verify zoom UI with headed browser screenshots
 
 ### Results
-_(fill at end of the sub-phase — what was implemented, commands run, checks passed)_
+- Each result card now has a zoom control cluster (zoom out / percent / zoom in / reset / open large preview) overlaid on the preview; zoom scales the preview container (0.5×–3× in 0.25 steps) with scroll, leaving generated HTML untouched.
+- `RunDetailDialog` gained a large `Preview` pane (rendered through the shared `LandingPreview`) plus `Preview diagnostics` and `Screenshots` sections that surface captured runtime errors/console/load events and screenshot capture records (status, dimensions, media type, byte size, selector, viewport, request id, or error message).
+- `DiagnosticRow`/`ScreenshotRow` helpers added; `clampZoom` guards zoom bounds.
+- Checks: benchmark format/typecheck/lint (0 errors)/test/build pass; `@workspace/landing-preview` and `@workspace/client` checks pass. (Benchmark typecheck is intermittently flaky due to a tsgo incremental-cache race that reports transient errors in sibling packages; clearing `node_modules/.tmp/tsconfig.tsbuildinfo` yields a clean exit 0.)
+- Headed browser load confirmed the app mounts with no console/runtime errors; full zoom/detail visual verification is bundled into the Phase 5 live E2E because zoom controls only appear once a run has streamed HTML.
 
 ### Gotchas
-_(fill at end of the sub-phase, if any)_
+- Zoom controls only render when a card has HTML, so they cannot be exercised without a completed run; the live E2E in Phase 5 covers this.
+- Scaling the iframe via percentage width/height keeps layout-driven scrolling (no nested transform-scale scroll traps).
 
 ## Phase 5: DOX, final verification, and live E2E benchmark
 
