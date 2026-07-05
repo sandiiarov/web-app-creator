@@ -1,25 +1,29 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
-
-import { captureProjectScreenshot } from '../lib/browser-screenshot'
+import { captureProjectScreenshot } from '@workspace/landing-preview'
 import {
-  LANDING_AGENT_API,
-  LANDING_MODEL_OPTIONS,
-  type HtmlUpdateEvent,
-  type ImageAttachmentInput,
-  type ImageAttachmentMeta,
+  DEFAULT_LANDING_MODELS,
   type LandingAgentSendInput,
+  type LandingModels,
   type LandingTurn,
-  type RetryEvent,
-  type ScreenshotRequestEvent,
+  type PromptAttachmentInput,
+  type PromptAttachmentMeta,
+  resolveLandingModels,
   type ToolCallPart,
   type TurnPart,
+} from '@workspace/prompt-panel'
+import { useCallback, useEffect, useRef, useState } from 'react'
+
+import {
+  LANDING_AGENT_API,
+  type HtmlUpdateEvent,
+  type RetryEvent,
+  type ScreenshotRequestEvent,
 } from '../lib/landing-agent'
 import {
   ProjectNotFoundError,
   expandProjectImageUrls,
   getProject,
   postScreenshotResponse,
-  updateProjectModel,
+  updateProjectModels,
 } from '../lib/projects-api'
 import { streamSSE } from '../lib/sse-client'
 
@@ -27,9 +31,9 @@ export interface UseLandingPage {
   html: string
   isStreaming: boolean
   missing: boolean
-  model: string
+  models: LandingModels
   send: (input: LandingAgentSendInput) => void
-  setModel: (model: string) => void
+  setModels: (models: LandingModels) => void
   stop: () => void
   turns: LandingTurn[]
 }
@@ -48,7 +52,9 @@ export function useLandingPage({
 }: UseLandingPageOptions): UseLandingPage {
   const [turns, setTurns] = useState<LandingTurn[]>([])
   const [html, setHtml] = useState('')
-  const [model, setSelectedModel] = useState(LANDING_MODEL_OPTIONS[0]!.id)
+  const [models, setModelsState] = useState<LandingModels>(
+    DEFAULT_LANDING_MODELS,
+  )
   const [isStreaming, setIsStreaming] = useState(false)
   const [missing, setMissing] = useState(false)
   const controllerRef = useRef<AbortController | null>(null)
@@ -67,7 +73,13 @@ export function useLandingPage({
         if (cancelled) return
         setHtml(expandProjectImageUrls(project.indexHtml))
         setTurns(restoreProjectTurns(project.messages))
-        if (project.model) setSelectedModel(project.model)
+        setModelsState(
+          resolveLandingModels({
+            image: project.imageModel,
+            text: project.model,
+            vision: project.visionModel,
+          }),
+        )
       })
       .catch((err: unknown) => {
         if (cancelled) return
@@ -100,15 +112,15 @@ export function useLandingPage({
     [patchTurn],
   )
 
-  const persistModel = useCallback(
-    (nextModel: string) => {
-      setSelectedModel(nextModel)
+  const persistModels = useCallback(
+    (nextModels: LandingModels) => {
+      setModelsState(nextModels)
       const saveSeq = ++modelSaveSeq.current
 
-      void updateProjectModel(projectId, nextModel)
-        .then((project) => {
+      void updateProjectModels(projectId, nextModels)
+        .then(() => {
           if (saveSeq === modelSaveSeq.current) {
-            setSelectedModel(project.model || nextModel)
+            setModelsState(nextModels)
           }
         })
         .catch((err: unknown) => {
@@ -120,7 +132,7 @@ export function useLandingPage({
           onError(
             err instanceof Error
               ? err.message
-              : 'Failed to update project model',
+              : 'Failed to update project models',
           )
         })
     },
@@ -164,7 +176,7 @@ export function useLandingPage({
         htmlSwaps: 0,
         id: turnId,
         isStreaming: true,
-        model,
+        model: models.text,
         parts: [],
         prompt,
       }
@@ -178,9 +190,11 @@ export function useLandingPage({
         LANDING_AGENT_API,
         {
           attachments,
-          model,
+          imageModel: models.image,
           projectId,
           prompt,
+          textModel: models.text,
+          visionModel: models.vision,
         },
         {
           onEvent: ({ data, event }) => {
@@ -361,7 +375,7 @@ export function useLandingPage({
     [
       appendPart,
       isStreaming,
-      model,
+      models,
       patchTurn,
       projectId,
       respondToScreenshotRequest,
@@ -384,9 +398,9 @@ export function useLandingPage({
     html,
     isStreaming,
     missing,
-    model,
+    models,
     send,
-    setModel: persistModel,
+    setModels: persistModels,
     stop,
     turns,
   }
@@ -410,7 +424,7 @@ function restoreProjectTurns(turns: LandingTurn[]): LandingTurn[] {
 function stripAttachmentData({
   dataUrl: _dataUrl,
   ...metadata
-}: ImageAttachmentInput): ImageAttachmentMeta {
+}: PromptAttachmentInput): PromptAttachmentMeta {
   return metadata
 }
 

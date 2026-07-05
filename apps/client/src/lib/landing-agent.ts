@@ -1,6 +1,6 @@
+import type { ScreenshotViewportSize } from '@workspace/landing-preview'
 import {
   type CostBreakdown,
-  type ScreenshotMediaType,
   type TokenUsage,
   type ToolCallState,
 } from '@workspace/prompt-panel'
@@ -35,29 +35,12 @@ export type RetryEvent = {
   reason: string
 }
 
-export const SCREENSHOT_VIEWPORT_SIZES = [
-  'mobile',
-  'tablet',
-  'desktop',
-] as const
-
 export type ScreenshotRequestEvent = {
   projectId: string
   requestId: string
   selector: string
   viewportSize: ScreenshotViewportSize
 }
-
-export type ScreenshotResponseInput =
-  | {
-      dataUrl: string
-      height: number
-      mediaType: ScreenshotMediaType
-      width: number
-    }
-  | { error: string }
-
-export type ScreenshotViewportSize = (typeof SCREENSHOT_VIEWPORT_SIZES)[number]
 
 export type StatsEvent = {
   cost: number
@@ -81,6 +64,13 @@ export type ToolCallEvent = {
   tool: string
 }
 
+export { SCREENSHOT_VIEWPORT_SIZES } from '@workspace/landing-preview'
+export type {
+  ScreenshotMediaType,
+  ScreenshotResponseInput,
+  ScreenshotViewportSize,
+} from '@workspace/landing-preview'
+
 // ── Domain model (re-exported from @workspace/prompt-panel) ─────────
 
 export type {
@@ -98,7 +88,6 @@ export type {
   PromptAttachmentInput,
   PromptAttachmentMeta,
   RetryPart,
-  ScreenshotMediaType,
   StatsPart,
   TextPart,
   ThinkingPart,

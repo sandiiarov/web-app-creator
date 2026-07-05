@@ -1,3 +1,4 @@
+import { LandingPreview } from '@workspace/landing-preview'
 import {
   PromptPanel,
   type ElementAttachmentInput,
@@ -10,7 +11,6 @@ import { useNavigate } from 'react-router-dom'
 import { useTheme } from '#components/theme-provider'
 
 import { ErrorBanner } from './components/error-banner'
-import { LandingPreview } from './components/landing-preview'
 import { useLandingPage } from './hooks/use-landing-page'
 
 export interface EditorPageProps {
@@ -89,10 +89,10 @@ export function EditorPage({ projectId }: EditorPageProps) {
       <PromptPanel
         elementSelectionActive={elementSelectionActive}
         isStreaming={landing.isStreaming}
-        model={landing.model}
+        models={landing.models}
         onAllProjects={() => navigate('/')}
         onElementSelectionToggle={handleElementSelectionToggle}
-        onModelChange={landing.setModel}
+        onModelsChange={landing.setModels}
         onSelectedElementAttachmentConsumed={() =>
           setSelectedElementAttachment(null)
         }

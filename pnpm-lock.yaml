@@ -195,15 +195,15 @@ importers:
       '@streamdown/code':
         specifier: 'catalog:'
         version: 1.1.1(react@19.2.6)
+      '@workspace/landing-preview':
+        specifier: workspace:*
+        version: link:../../packages/landing-preview
       '@workspace/prompt-panel':
         specifier: workspace:*
         version: link:../../packages/prompt-panel
       '@workspace/ui':
         specifier: workspace:*
         version: link:../../packages/ui
-      '@zumer/snapdom':
-        specifier: 'catalog:'
-        version: 2.12.9
       bippy:
         specifier: 'catalog:'
         version: 0.5.41(react@19.2.6)

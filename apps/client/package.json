@@ -22,9 +22,9 @@
   },
   "dependencies": {
     "@streamdown/code": "catalog:",
+    "@workspace/landing-preview": "workspace:*",
     "@workspace/prompt-panel": "workspace:*",
     "@workspace/ui": "workspace:*",
-    "@zumer/snapdom": "catalog:",
     "bippy": "catalog:",
     "lucide-react": "catalog:",
     "react": "catalog:",

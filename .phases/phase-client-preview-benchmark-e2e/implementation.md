@@ -36,7 +36,7 @@ Create `@workspace/landing-preview`, move the production iframe/screenshot/morph
 
 ### Todo
 - [x] Create `@workspace/landing-preview` package and move preview/screenshot modules
-- [ ] Repoint client imports and remove/re-export obsolete app-local preview modules
+- [x] Repoint client imports and remove/re-export obsolete app-local preview modules
 - [ ] Update package DOX/workspace dependencies and run focused package/client checks
 
 ### Results
