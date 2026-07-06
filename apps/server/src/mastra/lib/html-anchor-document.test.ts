@@ -37,7 +37,7 @@ describe('html-anchor-document', () => {
       '<main>\n  <h1>Hello</h1>\n</main>\n',
     )
 
-    expect(readHtmlDocumentLines(document, { range: ['a2'] })).toMatchObject({
+    expect(readHtmlDocumentLines(document, { from: 'a2' })).toMatchObject({
       endAnchor: 'a2',
       lines: 1,
       startAnchor: 'a2',
@@ -45,7 +45,7 @@ describe('html-anchor-document', () => {
       totalLines: 3,
       truncatedLines: false,
     })
-    expect(readHtmlDocumentLines(document, { limit: 2, offset: 2 }).text).toBe(
+    expect(readHtmlDocumentLines(document, { from: 'a2', to: 'a3' }).text).toBe(
       'a2|  <h1>Hello</h1>\na3|</main>',
     )
   })
@@ -203,14 +203,8 @@ describe('html-anchor-document', () => {
     )
 
     expect(() =>
-      readHtmlDocumentLines(document, { offset: 1, range: ['a1'] }),
-    ).toThrow('mutually exclusive')
-    expect(() => readHtmlDocumentLines(document, { offset: 0 })).toThrow(
-      'positive integer',
-    )
-    expect(() =>
-      readHtmlDocumentLines(document, { range: ['a3', 'a1'] }),
-    ).toThrow('end anchor must not come before start anchor')
+      readHtmlDocumentLines(document, { from: 'missing' }),
+    ).toThrow('missing anchor')
     expect(() =>
       applyAnchorEdits(document, [
         { code: 'x', from: 'a1', insert: 'middle' as never, intent: 'edit-5' },

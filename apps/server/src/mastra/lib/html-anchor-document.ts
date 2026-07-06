@@ -2,11 +2,6 @@ import { createHash } from 'node:crypto'
 
 import { countChangedLines } from './edit-diff.ts'
 
-export type AnchorRange =
-  | []
-  | [startAnchor: string, endAnchor: string]
-  | [startAnchor: string]
-
 export interface ApplyAnchorEdit {
   code?: string
   from?: string
@@ -75,10 +70,10 @@ export interface PerEditResult {
 }
 
 export interface ReadHtmlDocumentOptions {
+  from?: string
   limit?: number
   maxLineLength?: number
-  offset?: number
-  range?: AnchorRange
+  to?: string
 }
 
 export interface ReadHtmlDocumentResult {
@@ -283,18 +278,16 @@ export function readHtmlDocumentLines(
   options: ReadHtmlDocumentOptions = {},
 ): ReadHtmlDocumentResult {
   const normalizedDocument = normalizeHtmlDocument(document)
-  if (options.range && options.offset !== undefined) {
-    throw new Error('read range and offset are mutually exclusive.')
-  }
-
   const maxLineLength = Math.max(
     1,
     options.maxLineLength ?? DEFAULT_MAX_LINE_LENGTH,
   )
   const limit = Math.max(0, options.limit ?? DEFAULT_LIMIT)
-  const { endExclusive, startIndex } = options.range
-    ? resolveSliceRange(normalizedDocument, options.range)
-    : resolveOffsetRange(normalizedDocument, options.offset)
+  const { endExclusive, startIndex } = resolveReadRange(
+    normalizedDocument,
+    options.from,
+    options.to,
+  )
   const selected = normalizedDocument.lines.slice(
     startIndex,
     Math.min(endExclusive, startIndex + limit),
@@ -750,33 +743,23 @@ function resolveMutationRange(
   return { endExclusive, startIndex }
 }
 
-function resolveOffsetRange(
+function resolveReadRange(
   document: HtmlDocumentJsonV1,
-  offset = 1,
+  from: string | undefined,
+  to: string | undefined,
 ): { endExclusive: number; startIndex: number } {
-  if (!Number.isInteger(offset) || offset < 1) {
-    throw new Error('read offset must be a positive integer.')
-  }
-  return {
-    endExclusive: document.lines.length,
-    startIndex: Math.min(offset - 1, document.lines.length),
-  }
-}
-
-function resolveSliceRange(
-  document: HtmlDocumentJsonV1,
-  range: AnchorRange,
-): { endExclusive: number; startIndex: number } {
-  if (range.length === 0) {
+  if (from === undefined) {
     return { endExclusive: document.lines.length, startIndex: 0 }
   }
-  const startIndex = resolveAnchorIndex(document, range[0])
-  const endIndex =
-    range.length === 1 ? startIndex : resolveAnchorIndex(document, range[1])
-  if (endIndex < startIndex) {
-    throw new Error('range end anchor must not come before start anchor.')
-  }
-  return { endExclusive: endIndex + 1, startIndex }
+  const fromIndex = resolveAnchorIndex(document, from, undefined, 'from')
+  const toIndex =
+    to === undefined
+      ? fromIndex
+      : resolveAnchorIndex(document, to, undefined, 'to')
+  // Order-insensitive: resolve by document position so reversed endpoints work.
+  const startIndex = Math.min(fromIndex, toIndex)
+  const endExclusive = Math.max(fromIndex, toIndex) + 1
+  return { endExclusive, startIndex }
 }
 
 function splitEditText(text: string): string[] {

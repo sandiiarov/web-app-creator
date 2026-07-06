@@ -1325,13 +1325,15 @@ function summarizeToolArgs(tool: string, args: ToolArgs): null | string {
           : null,
       ])
     case 'read': {
-      const offset = numberValue(args.offset)
+      const from = stringValue(args.from)
+      const to = stringValue(args.to)
       const limit = numberValue(args.limit)
       return compactLines([
         intent,
-        offset || limit
-          ? `Lines: ${offset ?? 1}${limit ? ` + ${limit}` : ''}`
+        from || to
+          ? `Anchors: ${from ?? 'start'}${to ? `..${to}` : ''}`
           : null,
+        limit ? `Limit: ${limit}` : null,
       ])
     }
     case 'scrape':

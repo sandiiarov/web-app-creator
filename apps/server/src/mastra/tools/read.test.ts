@@ -5,32 +5,35 @@ import { createHtmlStore } from '../lib/html-store.ts'
 import { createReadTool } from './read.ts'
 
 describe('createReadTool', () => {
-  it('emits OpenRouter-compatible JSON schema for empty anchor ranges', () => {
+  it('emits an OpenRouter-compatible JSON schema for from/to reads', () => {
     const tool = createReadTool(createHtmlStore())
     const schemaText = JSON.stringify(
       z.toJSONSchema(tool.inputSchema as z.ZodType),
     )
 
-    expect(schemaText).toContain('"maxItems":2')
+    expect(schemaText).toContain('"from"')
+    expect(schemaText).toContain('"to"')
+    expect(schemaText).toContain('"required":["intent"]')
     expect(schemaText).not.toContain('"items":[]')
+    expect(schemaText).not.toContain('"maxItems"')
   })
 
-  it('returns compact anchored text for offsets and ranges', async () => {
+  it('returns compact anchored text for from/to regions', async () => {
     const store = createHtmlStore(
       '<main>\n  <h1>Hello</h1>\n  <p>World</p>\n</main>\n',
     )
     const tool = createReadTool(store)
 
-    const offsetResult = await tool.execute?.(
-      { intent: 'Read hero anchors', limit: 2, offset: 2 },
+    const regionResult = await tool.execute?.(
+      { from: 'a2', intent: 'Read hero anchors', to: 'a3' },
       undefined as never,
     )
-    const rangeResult = await tool.execute?.(
-      { intent: 'Read paragraph anchor', range: ['a3'] },
+    const singleResult = await tool.execute?.(
+      { from: 'a3', intent: 'Read paragraph anchor' },
       undefined as never,
     )
 
-    expect(offsetResult).toMatchObject({
+    expect(regionResult).toMatchObject({
       checksum: expect.stringMatching(/^sha256:/),
       lines: 2,
       ok: true,
@@ -38,13 +41,13 @@ describe('createReadTool', () => {
       text: 'a2|  <h1>Hello</h1>\na3|  <p>World</p>',
       totalLines: 4,
     })
-    expect(rangeResult).toMatchObject({
+    expect(singleResult).toMatchObject({
       endAnchor: 'a3',
       lines: 1,
       startAnchor: 'a3',
       text: 'a3|  <p>World</p>',
     })
-    expect(offsetResult).not.toHaveProperty('rawText')
-    expect(offsetResult).not.toHaveProperty('numberedText')
+    expect(regionResult).not.toHaveProperty('rawText')
+    expect(regionResult).not.toHaveProperty('numberedText')
   })
 })

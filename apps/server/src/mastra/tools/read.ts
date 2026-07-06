@@ -1,37 +1,35 @@
 import { createTool } from '@mastra/core/tools'
 import { z } from 'zod'
 
-import {
-  readHtmlDocumentLines,
-  type AnchorRange,
-} from '../lib/html-anchor-document.ts'
+import { readHtmlDocumentLines } from '../lib/html-anchor-document.ts'
 import type { HtmlStore } from '../lib/html-store.ts'
-
-const anchorRangeSchema = z
-  .array(z.string())
-  .max(2)
-  .describe('Anchor range to read: [], [anchor], or [startAnchor, endAnchor].')
 
 /**
  * Read lines of the project HTML as compact anchored text (`anchor|text`).
- * `offset` is the first line (default 1); `limit` caps the line count
- * (default 2000). `range` targets anchors and is mutually exclusive with
- * `offset`. `intent` is surfaced to the UI as the reason for the read.
+ * `from`/`to` select an inclusive anchor region (order-insensitive); omit
+ * both to read from the start. `limit` caps the line count (default 2000).
+ * `intent` is surfaced to the UI as the reason for the read.
  */
 export function createReadTool(store: HtmlStore) {
   return createTool({
     description:
-      'Read the current project HTML as compact anchored lines in the form anchor|text. Use returned anchors in edit ranges; do not copy raw HTML snippets. Use offset/limit or range to inspect a focused section. Always pass an intent describing why you are reading.',
-    execute: async ({ limit, offset, range }) => {
+      'Read the current project HTML as compact anchored lines in the form anchor|text. Use the returned anchors in edit from/to; do not copy raw HTML snippets. Omit from/to to read from the start; set from (and optional to) to read a region (order-insensitive). limit caps the line count. Always pass an intent describing why you are reading.',
+    execute: async ({ from, limit, to }) => {
       const result = readHtmlDocumentLines(store.getDocument(), {
+        from,
         limit,
-        offset,
-        range: range as AnchorRange | undefined,
+        to,
       })
       return { ...result, ok: true as const }
     },
     id: 'read',
     inputSchema: z.object({
+      from: z
+        .string()
+        .optional()
+        .describe(
+          'Start anchor (inclusive); omit to read from the document start.',
+        ),
       intent: z
         .string()
         .describe(
@@ -43,16 +41,11 @@ export function createReadTool(store: HtmlStore) {
         .positive()
         .optional()
         .describe('Max lines to return (default 2000)'),
-      offset: z
-        .number()
-        .int()
-        .positive()
-        .optional()
-        .describe('First line number to return, 1-indexed (default 1)'),
-      range: anchorRangeSchema
+      to: z
+        .string()
         .optional()
         .describe(
-          'Anchor range to read: [], [anchor], or [startAnchor, endAnchor]. Mutually exclusive with offset.',
+          'End anchor (inclusive); omit to read only the from line. Order-insensitive.',
         ),
     }),
     outputSchema: z.object({
