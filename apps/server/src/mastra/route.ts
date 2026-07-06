@@ -1038,6 +1038,23 @@ function createRecordedTurn(
 }
 
 function defaultToolIntent(tool: string, args: ToolArgs): string | undefined {
+  if (tool === 'edit') {
+    // `edit` has no call-level intent; the model puts one on each edit
+    // object. For a single-edit call use that intent directly. A multi-edit
+    // batch is fanned out by `editIntentsFromArgs` (each edit gets its own
+    // block), so the first edit's intent here is only a fallback for the
+    // call-level display record.
+    const edits = args.edits
+    if (Array.isArray(edits) && edits.length >= 1) {
+      const first = edits[0]
+      if (first && typeof first === 'object' && !Array.isArray(first)) {
+        const intent = stringValue((first as { intent?: unknown }).intent)
+        if (intent) return intent
+      }
+    }
+    return undefined
+  }
+
   if (tool === 'screenshot') {
     const selector = stringValue(args.selector)
     const viewportSize = stringValue(args.viewportSize)

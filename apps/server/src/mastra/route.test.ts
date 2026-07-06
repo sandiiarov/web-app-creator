@@ -755,6 +755,86 @@ describe('streamLandingAgent edit fan-out', () => {
     )
     expect(editParts).toHaveLength(2)
   })
+
+  it('surfaces the per-edit intent for a single-edit edit call', async () => {
+    vi.stubEnv('OPENROUTER_API_KEY', 'test-openrouter-key')
+
+    vi.doMock('./index.ts', () => ({ mastra: {} }))
+    vi.doMock('./agents/landing-page-agent.ts', () => ({
+      createLandingPageAgent: () => ({
+        stream: async () =>
+          fakeAgentStream(
+            (async function* () {
+              yield {
+                payload: {
+                  args: {
+                    edits: [
+                      {
+                        intent: 'Set the page title',
+                        operation: 'replace',
+                        range: [],
+                      },
+                    ],
+                  },
+                  toolCallId: 'call-edit-single',
+                  toolName: 'edit',
+                },
+                type: 'tool-call',
+              }
+              yield {
+                payload: {
+                  args: {
+                    edits: [
+                      {
+                        intent: 'Set the page title',
+                        operation: 'replace',
+                        range: [],
+                      },
+                    ],
+                  },
+                  isError: false,
+                  result: { changedLines: 1, ok: true },
+                  toolCallId: 'call-edit-single',
+                  toolName: 'edit',
+                },
+                type: 'tool-result',
+              }
+            })(),
+          ),
+      }),
+    }))
+
+    const { createProject } = await import('./lib/project-store.ts')
+    const project = await createProject()
+    createdProjectIds.push(project.id)
+    const { streamLandingAgent } = await import('./route.ts')
+    const response = new FakeResponse()
+
+    await streamLandingAgent({
+      projectId: project.id,
+      prompt: 'Build it.',
+      request: fakeRequest(),
+      response: response as unknown as ServerResponse,
+      textModel: 'z-ai/glm-5.2',
+    })
+
+    const editEvents = parseSseEvents(response.body).filter(
+      (event) =>
+        event.event === 'tool_call' &&
+        !!event.data &&
+        typeof event.data === 'object' &&
+        'tool' in event.data &&
+        event.data.tool === 'edit',
+    )
+    // Single edit -> one block (start + done), no fan-out sub-ids.
+    expect(editEvents).toHaveLength(2)
+    // ...but its intent comes from the edit object, not null.
+    for (const event of editEvents) {
+      expect((event.data as { intent?: string }).intent).toBe(
+        'Set the page title',
+      )
+    }
+  })
 })
 
 describe('streamLandingAgent default tool intents', () => {
