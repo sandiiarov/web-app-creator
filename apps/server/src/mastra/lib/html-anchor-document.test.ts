@@ -230,4 +230,61 @@ describe('html-anchor-document', () => {
       ]),
     ).toThrow('end anchor must not come before start anchor')
   })
+
+  it('returns per-edit result slices for a non-adjacent multi-edit batch', () => {
+    const document = createHtmlDocumentFromString(
+      '<main>\n  <h1>Hello</h1>\n  <p>World</p>\n</main>\n',
+    )
+
+    const result = applyAnchorEdits(document, [
+      {
+        intent: 'Rewrite headline',
+        operation: 'replace',
+        range: ['a2'],
+        text: '  <h1>Hi</h1>',
+      },
+      {
+        intent: 'Rewrite paragraph',
+        operation: 'replace',
+        range: ['a3'],
+        text: '  <p>There</p>',
+      },
+    ])
+
+    expect(result.edits).toHaveLength(2)
+    // Each edit's changedText contains only its own line — not the in-between
+    // unchanged line, and not the other edit's text.
+    expect(result.edits[0]).toMatchObject({ intent: 'Rewrite headline' })
+    expect(result.edits[0]?.changedText).toContain('Hi')
+    expect(result.edits[0]?.changedText).not.toContain('There')
+    expect(result.edits[1]).toMatchObject({ intent: 'Rewrite paragraph' })
+    expect(result.edits[1]?.changedText).toContain('There')
+    expect(result.edits[1]?.changedText).not.toContain('Hi')
+    // Per-edit anchors are present and distinct.
+    expect(result.edits[0]?.firstChangedAnchor).toBeTruthy()
+    expect(result.edits[0]?.lastChangedAnchor).toBe(
+      result.edits[0]?.firstChangedAnchor,
+    )
+    expect(result.edits[1]?.firstChangedAnchor).toBeTruthy()
+    expect(result.edits[1]?.firstChangedAnchor).not.toBe(
+      result.edits[0]?.firstChangedAnchor,
+    )
+  })
+
+  it('returns an empty changedText slice for a delete edit', () => {
+    const document = createHtmlDocumentFromString(
+      '<main>\n  <h1>Hello</h1>\n</main>\n',
+    )
+
+    const result = applyAnchorEdits(document, [
+      { intent: 'Delete heading', operation: 'delete', range: ['a2'] },
+    ])
+
+    expect(result.edits).toHaveLength(1)
+    expect(result.edits[0]).toMatchObject({
+      changedLines: 0,
+      changedText: '',
+      intent: 'Delete heading',
+    })
+  })
 })

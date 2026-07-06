@@ -62,6 +62,7 @@ export function createEditTool(store: HtmlStore) {
         changedLines: result.changedLines,
         changedText: result.changedText,
         checksum: storedDocument.checksum,
+        edits: result.edits,
         firstChangedAnchor: result.firstChangedAnchor,
         firstChangedLine: result.firstChangedLine,
         lastChangedAnchor: result.lastChangedAnchor,
@@ -76,6 +77,15 @@ export function createEditTool(store: HtmlStore) {
       changedLines: z.number(),
       changedText: z.string(),
       checksum: z.string(),
+      edits: z.array(
+        z.object({
+          changedLines: z.number(),
+          changedText: z.string(),
+          firstChangedAnchor: z.string().optional(),
+          intent: z.string(),
+          lastChangedAnchor: z.string().optional(),
+        }),
+      ),
       firstChangedAnchor: z.string().optional(),
       firstChangedLine: z.number(),
       lastChangedAnchor: z.string().optional(),

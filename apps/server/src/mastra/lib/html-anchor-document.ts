@@ -20,6 +20,7 @@ export interface ApplyAnchorEditsResult {
   changedText: string
   checksum: `sha256:${string}`
   document: HtmlDocumentJsonV1
+  edits: PerEditResult[]
   firstChangedAnchor?: string
   firstChangedLine: number
   html: string
@@ -64,6 +65,14 @@ export interface HtmlDocumentJsonV1 {
 
 export type HtmlLine = [anchor: string, text: string]
 
+export interface PerEditResult {
+  changedLines: number
+  changedText: string
+  firstChangedAnchor?: string
+  intent: string
+  lastChangedAnchor?: string
+}
+
 export interface ReadHtmlDocumentOptions {
   limit?: number
   maxLineLength?: number
@@ -107,7 +116,10 @@ export function applyAnchorEdits(
   const baseDocument = cloneHtmlDocument(normalizeHtmlDocument(document))
   const baseHtml = renderHtmlDocument(baseDocument)
   const compiledEdits = compileAnchorEdits(baseDocument, edits)
-  const nextDocument = applyCompiledEdits(baseDocument, compiledEdits)
+  const { document: nextDocument, placements } = applyCompiledEdits(
+    baseDocument,
+    compiledEdits,
+  )
   const html = renderHtmlDocument(nextDocument)
 
   if (html === baseHtml) {
@@ -119,6 +131,12 @@ export function applyAnchorEdits(
     nextDocument,
     compiledEdits,
   )
+  const perEditResults = getPerEditResults(
+    nextDocument,
+    compiledEdits,
+    edits,
+    placements,
+  )
 
   return {
     bytes: Buffer.byteLength(html, 'utf8'),
@@ -126,6 +144,7 @@ export function applyAnchorEdits(
     changedText: changedRegion.text,
     checksum: nextDocument.checksum,
     document: nextDocument,
+    edits: perEditResults,
     firstChangedAnchor: changedRegion.firstChangedAnchor,
     firstChangedLine: changedRegion.firstChangedLine,
     html,
@@ -300,11 +319,12 @@ export function renderHtmlDocument(document: HtmlDocumentJsonV1): string {
 function applyCompiledEdits(
   document: HtmlDocumentJsonV1,
   compiledEdits: CompiledEdit[],
-): HtmlDocumentJsonV1 {
+): { document: HtmlDocumentJsonV1; placements: Map<number, { count: number; startNewIndex: number }> } {
   let nextAnchor = document.nextAnchor
   const mutationsByStart = new Map<number, CompiledEdit>()
   const insertionsByPosition = new Map<number, CompiledEdit[]>()
   const lines: HtmlLine[] = []
+  const placements = new Map<number, { count: number; startNewIndex: number }>()
 
   for (const edit of compiledEdits) {
     if (edit.kind === 'insert') {
@@ -316,9 +336,18 @@ function applyCompiledEdits(
     }
   }
 
+  function recordPlacement(edit: CompiledEdit, count: number) {
+    if (count <= 0) return
+    placements.set(edit.editIndex, {
+      count,
+      startNewIndex: lines.length,
+    })
+  }
+
   function appendInsertion(position: number) {
     const insertions = insertionsByPosition.get(position) ?? []
     for (const insertion of insertions) {
+      recordPlacement(insertion, insertion.lines.length)
       lines.push(...createAnchoredLines(insertion.lines, nextAnchor))
       nextAnchor += insertion.lines.length
     }
@@ -330,6 +359,7 @@ function applyCompiledEdits(
     const mutation = mutationsByStart.get(index)
     if (mutation) {
       if (mutation.operation === 'replace') {
+        recordPlacement(mutation, mutation.lines.length)
         lines.push(...createAnchoredLines(mutation.lines, nextAnchor))
         nextAnchor += mutation.lines.length
       }
@@ -359,7 +389,7 @@ function applyCompiledEdits(
     version: 1,
   }
   nextDocument.checksum = checksumHtml(renderHtmlDocument(nextDocument))
-  return nextDocument
+  return { document: nextDocument, placements }
 }
 
 function assertNoConflicts(compiledEdits: CompiledEdit[]) {
@@ -610,6 +640,34 @@ function getChangedRegion(
     lastChangedAnchor: document.lines[lastIndex]?.[0],
     text: formatted.text,
   }
+}
+
+/**
+ * Build a per-edit result slice from the placements recorded by
+ * `applyCompiledEdits`: each edit's contributed lines (with their fresh
+ * anchors) and line count. Deletes contribute zero lines and thus have an
+ * empty `changedText`; their `intent` still flows through to the UI.
+ */
+function getPerEditResults(
+  document: HtmlDocumentJsonV1,
+  compiledEdits: CompiledEdit[],
+  edits: ApplyAnchorEdit[],
+  placements: Map<number, { count: number; startNewIndex: number }>,
+): PerEditResult[] {
+  return compiledEdits.map((compiled) => {
+    const placement = placements.get(compiled.editIndex)
+    const count = placement?.count ?? 0
+    const start = placement?.startNewIndex ?? 0
+    const slice = document.lines.slice(start, start + count)
+    const formatted = formatCompactLines(slice)
+    return {
+      changedLines: count,
+      changedText: formatted.text,
+      firstChangedAnchor: slice[0]?.[0],
+      intent: edits[compiled.editIndex]!.intent,
+      lastChangedAnchor: slice[slice.length - 1]?.[0],
+    }
+  })
 }
 
 function isKnownOperation(
