@@ -8,7 +8,7 @@
 
 - `src/prompt-panel.tsx`: root `PromptPanel` component and its `PromptPanelProps`.
 - `src/`: panel UI components (`panel-header`, `panel-body`, `panel-command-menu`, `composer`, `turn-message`, `turn-metadata`, `turn-steps`, `streamdown-content`, `model-dropdown`, `status-pill`, `chat-empty-state`, icons) and helpers (`panel-constants`, `panel-status`, `format`, `keyboard-shortcut`).
-- `src/domain.ts`: landing conversation domain model — model options, attachment types, conversation model (`LandingTurn`, `TurnPart` variants, `RetryPart` inlined), cost/usage types, `LandingAgentSendInput`, and formatting helpers.
+- `src/domain.ts`: landing conversation domain model — model options (text `LANDING_MODEL_OPTIONS`, plus `LANDING_VISION_MODEL_OPTIONS` and `LANDING_IMAGE_MODEL_OPTIONS`), the per-category `LandingModels` selection + `DEFAULT_LANDING_MODELS` + `resolveLandingModels`, attachment types, conversation model (`LandingTurn`, `TurnPart` variants, `RetryPart` inlined), cost/usage types, `LandingAgentSendInput`, and formatting helpers.
 - `src/keyboard-shortcuts.ts`: `KEYBOARD_SHORTCUTS` metadata + types.
 - `src/index.ts`: public barrel (`PromptPanel`, `PromptPanelProps`, domain model, keyboard-shortcuts, panel-constants types).
 
@@ -19,11 +19,13 @@
 - The package owns the **domain model only**. It must not import app code, reference `import.meta.env`, or contain SSE/transport logic. `RetryPart` is defined inline (not extending the app's wire `RetryEvent`) to avoid a package→app dependency.
 - App behavior is injected via props, never imported: navigation through `onAllProjects`, theme through `theme: PanelTheme` + `onToggleTheme`. The package imports no `react-router-dom` and no theme context.
 - `PanelTheme = 'dark' | 'light' | 'system'` lives in `src/panel-constants.ts`.
+- Cost formatting renders USD with exactly four digits after the decimal point for zero, tiny, and larger costs; do not use less-than-cent shorthand.
 
 ## Work Guidance
 
 - Keep `PromptPanel` presentational: state belongs in hooks/consumers; the panel receives data + callbacks. Theme and navigation are passed in from the composition site.
 - When the domain model changes, update `src/domain.ts` and re-export from `src/index.ts`; transport/wire shapes stay in the consuming app.
+- `src/model-dropdown.tsx` renders one compact trigger (showing the text model label, the primary category) that opens a menu of three separated, labeled radio sections — Text, Vision, Image — each bound to its own `LandingModels` category via `onModelsChange`. Brand icons map by model id in `MODEL_ICONS`; add a per-id entry as new provider logos land.
 
 ## Verification
 

@@ -66,7 +66,7 @@ const LANDING_TOOL_DEFINITIONS = [
   ),
   tool(
     'edit',
-    'Use `edit` to change the project HTML with `edits: [{ operation, range, text }]`. Operations are `replace`, `delete`, `insert_before`, and `insert_after`; ranges are `[]`, `[anchor]`, or `[startAnchor, endAnchor]` and are inclusive. Combine related non-overlapping changes in one call. Use `read` or `find` first to get anchors, then target the smallest safe ranges. After every successful edit the project document is written and the preview updates automatically. The edit result is concise metadata, not the full file; use `read` or `find` again before follow-up edits.',
+    'Use `edit` to change the project HTML with `edits: [{ operation, range, text }]`. Operations are `replace`, `delete`, `insert_before`, and `insert_after`; ranges are `[]`, `[anchor]`, or `[startAnchor, endAnchor]` and are inclusive. For a new placeholder draft, create the page with one full-document replace: `edit({ intent, edits: [{ operation: "replace", range: [], text: "<!doctype html>..." }] })`. Combine related non-overlapping changes in one call. Use `read` or `find` first for follow-up edits, then target the smallest safe ranges. Never call `edit` with only an intent. After every successful edit the project document is written and the preview updates automatically. The edit result is concise metadata, not the full file; use `read` or `find` again before follow-up edits.',
     ({ store }) => createEditTool(store),
   ),
   tool(

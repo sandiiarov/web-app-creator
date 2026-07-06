@@ -18,6 +18,9 @@ dist-ssr
 # turbo
 .turbo
 
+# coverage
+coverage
+
 # Docker Sandbox artifacts
 apps/server/sandbox/*.tar
 
@@ -50,3 +53,8 @@ apps/server/.data
 
 # typescript
 *.tsbuildinfo
+
+# ai
+.firecrawl
+.phases
+

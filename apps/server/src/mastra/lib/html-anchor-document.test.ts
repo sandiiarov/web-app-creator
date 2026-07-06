@@ -174,9 +174,18 @@ describe('html-anchor-document', () => {
     const document = createHtmlDocumentFromString('<main></main>')
 
     expect(parseHtmlDocumentJson(document)).toEqual(document)
+    expect(() => parseHtmlDocumentJson(null)).toThrow(
+      'html.json must be an object',
+    )
     expect(() =>
       parseHtmlDocumentJson({ ...document, checksum: 'sha256:wrong' }),
     ).toThrow('checksum')
+    expect(() =>
+      parseHtmlDocumentJson({ ...document, checksum: 'wrong' }),
+    ).toThrow('checksum must start')
+    expect(() =>
+      parseHtmlDocumentJson({ ...document, finalNewline: 'yes' }),
+    ).toThrow('finalNewline')
     expect(() =>
       parseHtmlDocumentJson({
         ...document,
@@ -186,5 +195,36 @@ describe('html-anchor-document', () => {
         ],
       }),
     ).toThrow('duplicate anchor')
+  })
+
+  it('validates read ranges and edit operations', () => {
+    const document = createHtmlDocumentFromString(
+      '<main>\n  <h1>Hello</h1>\n  <p>World</p>\n</main>',
+    )
+
+    expect(() =>
+      readHtmlDocumentLines(document, { offset: 1, range: ['a1'] }),
+    ).toThrow('mutually exclusive')
+    expect(() => readHtmlDocumentLines(document, { offset: 0 })).toThrow(
+      'positive integer',
+    )
+    expect(() =>
+      readHtmlDocumentLines(document, { range: ['a3', 'a1'] }),
+    ).toThrow('end anchor must not come before start anchor')
+    expect(() =>
+      applyAnchorEdits(document, [
+        { operation: 'move' as never, range: ['a1'], text: 'x' },
+      ]),
+    ).toThrow('operation is not supported')
+    expect(() =>
+      applyAnchorEdits(document, [
+        { operation: 'delete', range: [], text: '' },
+      ]),
+    ).toThrow('range cannot be [] for delete')
+    expect(() =>
+      applyAnchorEdits(document, [
+        { operation: 'replace', range: ['a3', 'a1'], text: 'x' },
+      ]),
+    ).toThrow('end anchor must not come before start anchor')
   })
 })

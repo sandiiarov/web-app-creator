@@ -10,7 +10,7 @@ import { cn } from '@workspace/ui/lib/utils'
 import { ArrowUp, MousePointerClick, Paperclip, Square, X } from 'lucide-react'
 import { type FormEvent, type KeyboardEvent, memo, useRef } from 'react'
 
-import type { PromptAttachmentInput } from './domain'
+import type { LandingModels, PromptAttachmentInput } from './domain'
 import { KeyboardShortcut } from './keyboard-shortcut'
 import { KEYBOARD_SHORTCUTS } from './keyboard-shortcuts'
 import { ModelDropdown } from './model-dropdown'
@@ -21,12 +21,12 @@ export const Composer = memo(function Composer({
   disabled,
   elementSelectionActive,
   isStreaming,
-  model,
+  models,
   onAttachFiles,
   onChange,
   onElementSelectionToggle,
   onKeyDown,
-  onModelChange,
+  onModelsChange,
   onRemoveAttachment,
   onStop,
   onSubmit,
@@ -37,12 +37,12 @@ export const Composer = memo(function Composer({
   disabled: boolean
   elementSelectionActive: boolean
   isStreaming: boolean
-  model: string
+  models: LandingModels
   onAttachFiles: (files: FileList | null) => void
   onChange: (value: string) => void
   onElementSelectionToggle: () => void
   onKeyDown: (event: KeyboardEvent<HTMLTextAreaElement>) => void
-  onModelChange: (model: string) => void
+  onModelsChange: (models: LandingModels) => void
   onRemoveAttachment: (id: string) => void
   onStop: () => void
   onSubmit: (event: FormEvent<HTMLFormElement>) => void
@@ -156,7 +156,7 @@ export const Composer = memo(function Composer({
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
-            <ModelDropdown model={model} onModelChange={onModelChange} />
+            <ModelDropdown models={models} onModelsChange={onModelsChange} />
           </div>
           <div>
             {isStreaming ? (

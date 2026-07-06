@@ -9,17 +9,17 @@ import {
 } from './cost'
 
 describe('calculateLlmCost', () => {
-  it('calculates GLM 5.2 fallback cost from tokens when provider cost is absent', () => {
+  it('returns zero when OpenRouter cost metadata is absent', () => {
     expect(
       calculateLlmCost('z-ai/glm-5.2', {
         cachedInputTokens: 3360,
         inputTokens: 4981,
         outputTokens: 67,
       }),
-    ).toBeCloseTo(0.0034378)
+    ).toBe(0)
   })
 
-  it('prefers provider-reported LLM cost over token fallback', () => {
+  it('uses provider-reported LLM cost from response metadata', () => {
     expect(
       calculateLlmCost('z-ai/glm-5.2', {
         inputTokens: 100_000,
@@ -79,14 +79,20 @@ describe('providerReportedCost', () => {
 })
 
 describe('tool costs', () => {
-  it('calculates OpenRouter Kimi vision OCR fallback cost from tokens', () => {
+  it('calculates Firecrawl USD cost from provider-reported credits', () => {
+    expect(firecrawlCost(2, 0.002)).toBe(0.004)
+    expect(firecrawlCost(undefined, 0.002)).toBe(0)
+  })
+
+  it('returns zero for token/image usage without provider cost metadata', () => {
     expect(
       visionCost({
         cachedTokens: 200,
         completionTokens: 50,
         promptTokens: 1000,
       }),
-    ).toBeCloseTo(0.000992)
+    ).toBe(0)
+    expect(imageGenCost(2)).toBe(0)
   })
 
   it('uses provider-reported image and vision costs when available', () => {
@@ -94,10 +100,5 @@ describe('tool costs', () => {
     expect(
       visionCost({ completionTokens: 50, promptTokens: 1000 }, 0.006),
     ).toBe(0.006)
-  })
-
-  it('calculates Firecrawl and image fallback costs', () => {
-    expect(firecrawlCost(2)).toBe(0.004)
-    expect(imageGenCost(2)).toBe(0.08)
   })
 })

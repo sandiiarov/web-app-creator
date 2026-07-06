@@ -99,7 +99,7 @@ async function withServer(
   }) => Promise<void>,
 ) {
   vi.resetModules()
-  vi.stubEnv('BASETEN_API_KEY', 'test-baseten-key')
+  vi.stubEnv('OPENROUTER_API_KEY', 'test-openrouter-key')
   vi.doMock('./mastra/index.ts', () => ({ mastra: {} }))
   const [{ server }, { createPendingBrowserScreenshot }] = await Promise.all([
     import('./index.ts'),

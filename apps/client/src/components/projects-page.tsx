@@ -1,4 +1,4 @@
-import { LANDING_MODEL_OPTIONS } from '@workspace/prompt-panel'
+import { DEFAULT_LANDING_MODELS } from '@workspace/prompt-panel'
 import { Button } from '@workspace/ui/components/button'
 import { cn } from '@workspace/ui/lib/utils'
 import { ArrowRight, FileCode2, Plus, Trash2 } from 'lucide-react'
@@ -22,7 +22,7 @@ export function NewProjectPage() {
 
   useEffect(() => {
     let cancelled = false
-    void createProject({ model: LANDING_MODEL_OPTIONS[0]!.id })
+    void createProject({ textModel: DEFAULT_LANDING_MODELS.text })
       .then((project) => {
         if (!cancelled) setCreatedId(project.id)
       })

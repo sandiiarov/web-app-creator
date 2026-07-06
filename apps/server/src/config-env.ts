@@ -6,6 +6,7 @@ const DEFAULT_OPENROUTER_CHAT_MODEL = 'z-ai/glm-5.2'
 const DEFAULT_OPENROUTER_IMAGE_MODEL = 'bytedance-seed/seedream-4.5'
 const DEFAULT_OPENROUTER_VISION_MODEL = 'moonshotai/kimi-k2.7-code'
 const DEFAULT_OPENROUTER_API_URL = 'https://openrouter.ai/api/v1'
+const DEFAULT_FIRECRAWL_CREDIT_USD = 0.002
 
 export function createConfigFromEnv(source: ConfigEnvironment) {
   return {
@@ -30,6 +31,11 @@ export function createConfigFromEnv(source: ConfigEnvironment) {
     clientOrigin: optionalEnv(source, 'CLIENT_ORIGIN') ?? '*',
     firecrawl: {
       apiKey: optionalEnv(source, 'FIRECRAWL_API_KEY'),
+      creditUsd: parseNonNegativeNumber(
+        optionalEnv(source, 'FIRECRAWL_CREDIT_USD') ??
+          String(DEFAULT_FIRECRAWL_CREDIT_USD),
+        'FIRECRAWL_CREDIT_USD',
+      ),
     },
     host: optionalEnv(source, 'HOST') ?? '0.0.0.0',
     mastra: {
@@ -75,6 +81,16 @@ function parseNonNegativeInteger(value: string, name: string) {
   const parsed = Number(value)
 
   if (!Number.isInteger(parsed) || parsed < 0) {
+    throw new Error(`Invalid ${name} value: ${value}`)
+  }
+
+  return parsed
+}
+
+function parseNonNegativeNumber(value: string, name: string) {
+  const parsed = Number(value)
+
+  if (!Number.isFinite(parsed) || parsed < 0) {
     throw new Error(`Invalid ${name} value: ${value}`)
   }
 

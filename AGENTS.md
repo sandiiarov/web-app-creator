@@ -81,7 +81,7 @@ Default section order:
 - The active product path is a React client that previews generated single-file HTML and a Node/Mastra server that streams a landing-page agent over custom SSE.
 - Dependencies use the root `pnpm-workspace.yaml` catalog with `catalogMode: strict`; add catalog entries for shared dependency versions.
 - TypeScript is strict ESM via shared config packages and `tsgo`; formatting/linting use Oxfmt/Oxlint.
-- Keep generated or ignored outputs out of source edits: `node_modules`, `dist`, `.turbo`, `.fallow`, Mastra DB files, and `apps/server/.mastra/{.build,output}`.
+- Keep generated or ignored outputs out of source edits: `node_modules`, `dist`, `coverage`, `.turbo`, `.fallow`, Mastra DB files, and `apps/server/.mastra/{.build,output}`.
 - Environment files stay package-local; do not create a root `.env`.
 
 ## Verification

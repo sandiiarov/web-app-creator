@@ -132,67 +132,6 @@ importers:
         specifier: ^2.9.15
         version: 2.9.16
 
-  apps/benchmark:
-    dependencies:
-      '@workspace/landing-preview':
-        specifier: workspace:*
-        version: link:../../packages/landing-preview
-      '@workspace/prompt-panel':
-        specifier: workspace:*
-        version: link:../../packages/prompt-panel
-      '@workspace/ui':
-        specifier: workspace:*
-        version: link:../../packages/ui
-      lucide-react:
-        specifier: 'catalog:'
-        version: 1.17.0(react@19.2.6)
-      react:
-        specifier: 'catalog:'
-        version: 19.2.6
-      react-dom:
-        specifier: 'catalog:'
-        version: 19.2.6(react@19.2.6)
-    devDependencies:
-      '@types/node':
-        specifier: 'catalog:'
-        version: 24.12.4
-      '@types/react':
-        specifier: 'catalog:'
-        version: 19.2.15
-      '@types/react-dom':
-        specifier: 'catalog:'
-        version: 19.2.3(@types/react@19.2.15)
-      '@typescript/native-preview':
-        specifier: 'catalog:'
-        version: 7.0.0-dev.20260527.2
-      '@workspace/oxfmt-config':
-        specifier: workspace:*
-        version: link:../../packages/oxfmt-config
-      '@workspace/oxlint-config':
-        specifier: workspace:*
-        version: link:../../packages/oxlint-config
-      '@workspace/typescript-config':
-        specifier: workspace:*
-        version: link:../../packages/typescript-config
-      '@workspace/vite-config':
-        specifier: workspace:*
-        version: link:../../packages/vite-config
-      '@workspace/vitest-preset':
-        specifier: workspace:*
-        version: link:../../packages/vitest-preset
-      oxfmt:
-        specifier: 'catalog:'
-        version: 0.52.0
-      oxlint:
-        specifier: 'catalog:'
-        version: 1.67.0
-      vite:
-        specifier: 'catalog:'
-        version: 8.0.14(@types/node@24.12.4)(esbuild@0.28.1)(jiti@2.7.0)(yaml@2.9.0)
-      vitest:
-        specifier: 'catalog:'
-        version: 4.1.7(@types/node@24.12.4)(@vitest/coverage-v8@4.1.7)(msw@2.14.6(@types/node@24.12.4)(typescript@6.0.3))(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.1)(jiti@2.7.0)(yaml@2.9.0))
-
   apps/client:
     dependencies:
       '@streamdown/code':

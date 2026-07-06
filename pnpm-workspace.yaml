@@ -16,6 +16,7 @@ catalog:
   "@types/react": "^19.2.7"
   "@types/react-dom": "^19.2.3"
   "@typescript/native-preview": "7.0.0-dev.20260527.2"
+  "@vitest/coverage-v8": 4.1.7
   bippy: ^0.5.41
   firecrawl: ^4.28.3
   class-variance-authority: ^0.7.1

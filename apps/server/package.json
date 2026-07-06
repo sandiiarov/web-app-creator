@@ -11,7 +11,7 @@
     "lint": "oxlint .",
     "lint:fix": "oxlint --fix .",
     "start": "node --env-file-if-exists=.env dist/index.js",
-    "test": "vitest run --config vitest.config.ts",
+    "test": "vitest run --config vitest.config.ts --coverage",
     "test:watch": "vitest --config vitest.config.ts",
     "typecheck": "tsgo --noEmit -p tsconfig.json"
   },
@@ -27,6 +27,7 @@
   "devDependencies": {
     "@types/node": "catalog:",
     "@typescript/native-preview": "catalog:",
+    "@vitest/coverage-v8": "catalog:",
     "@workspace/oxfmt-config": "workspace:*",
     "@workspace/oxlint-config": "workspace:*",
     "@workspace/typescript-config": "workspace:*",

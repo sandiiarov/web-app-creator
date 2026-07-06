@@ -162,7 +162,7 @@ describe('project message storage', () => {
     })
   })
 
-  it('normalizes legacy zero-cost stats from saved token usage', async () => {
+  it('leaves legacy zero-cost stats unchanged when only token usage is saved', async () => {
     const project = await createProject()
     createdProjectIds.push(project.id)
     const turn = messageTurn(project.id)
@@ -194,10 +194,10 @@ describe('project message storage', () => {
     const saved = await getProject(project.id)
     const stats = saved?.messages[0]?.parts[0]
     expect(stats).toMatchObject({
-      cost: expect.closeTo(0.0012528, 8),
+      cost: 0,
       costBreakdown: expect.objectContaining({
-        llm: expect.closeTo(0.0012528, 8),
-        total: expect.closeTo(0.0012528, 8),
+        llm: 0,
+        total: 0,
       }),
       type: 'stats',
     })

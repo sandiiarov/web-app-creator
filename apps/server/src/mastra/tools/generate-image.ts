@@ -2,12 +2,17 @@ import { createTool } from '@mastra/core/tools'
 import { z } from 'zod'
 
 import { config } from '../../config.ts'
+import { providerReportedCost } from '../lib/cost.ts'
 import { getImage, saveImage } from '../lib/image-store.ts'
 
 interface OpenRouterImageResponse {
   created?: number
   data?: Array<{ b64_json?: string; media_type?: string }>
-  usage?: { cost?: number }
+  usage?: {
+    cost?: number
+    estimated_cost?: number
+    total_cost?: number
+  }
 }
 
 /**
@@ -44,6 +49,7 @@ export function createGenerateImageTool(
         headers: {
           Authorization: `Bearer ${config.openrouter.apiKey}`,
           'Content-Type': 'application/json',
+          'X-OpenRouter-Metadata': 'enabled',
         },
         method: 'POST',
       })
@@ -80,9 +86,9 @@ export function createGenerateImageTool(
       const extension = getImage(id)?.extension ?? 'png'
       const url = `${baseUrl}/images/${id}.${extension}`
 
+      const providerCost = providerReportedCost(json)
       return {
-        cost:
-          typeof json.usage?.cost === 'number' ? json.usage.cost : undefined,
+        cost: providerCost > 0 ? providerCost : undefined,
         imagesGenerated: 1,
         ok: true,
         prompt,

@@ -20,12 +20,13 @@ describe('createConfigFromEnv', () => {
     })
   })
 
-  it('applies server binding defaults', () => {
+  it('applies server binding and Firecrawl cost defaults', () => {
     const config = createConfigFromEnv(createEnv())
 
     expect(config.host).toBe('0.0.0.0')
     expect(config.port).toBe(3001)
     expect(config.clientOrigin).toBe('*')
+    expect(config.firecrawl.creditUsd).toBe(0.002)
   })
 
   it('parses agent retry defaults', () => {
@@ -50,6 +51,7 @@ describe('createConfigFromEnv', () => {
     const config = createConfigFromEnv(
       createEnv({
         CLIENT_ORIGIN: 'http://localhost:5173',
+        FIRECRAWL_CREDIT_USD: '0.0015',
         HOST: '127.0.0.1',
         OPENROUTER_CHAT_MODEL: 'deepseek/deepseek-v4-pro',
         PORT: '4000',
@@ -60,6 +62,7 @@ describe('createConfigFromEnv', () => {
     expect(config.clientOrigin).toBe('http://localhost:5173')
     expect(config.host).toBe('127.0.0.1')
     expect(config.port).toBe(4000)
+    expect(config.firecrawl.creditUsd).toBe(0.0015)
   })
 
   it('leaves openrouter api key unset when env is absent', () => {

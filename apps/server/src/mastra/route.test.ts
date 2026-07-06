@@ -349,7 +349,7 @@ describe('streamLandingAgent cost accounting', () => {
     )
   })
 
-  it('calculates LLM cost from tokens when provider cost is absent', async () => {
+  it('reports zero LLM cost when OpenRouter cost metadata is absent', async () => {
     vi.stubEnv('OPENROUTER_API_KEY', 'test-openrouter-key')
 
     vi.doMock('./index.ts', () => ({ mastra: {} }))
@@ -373,7 +373,7 @@ describe('streamLandingAgent cost accounting', () => {
 
     await streamLandingAgent({
       projectId: project.id,
-      prompt: 'Test calculated cost.',
+      prompt: 'Test metadata-only cost.',
       request: fakeRequest(),
       response: response as unknown as ServerResponse,
       textModel: 'z-ai/glm-5.2',
@@ -383,9 +383,9 @@ describe('streamLandingAgent cost accounting', () => {
       expect.arrayContaining([
         expect.objectContaining({
           data: expect.objectContaining({
-            cost: expect.closeTo(0.0012528, 8),
+            cost: 0,
             costBreakdown: expect.objectContaining({
-              llm: expect.closeTo(0.0012528, 8),
+              llm: 0,
             }),
           }),
           event: 'stats',
@@ -466,11 +466,16 @@ describe('streamLandingAgent stream mapping', () => {
         }),
         expect.objectContaining({
           data: expect.objectContaining({
+            cost: expect.closeTo(0.026, 8),
             costBreakdown: expect.objectContaining({
-              image: expect.objectContaining({ count: 2 }),
+              image: expect.objectContaining({ cost: 0.02, count: 2 }),
+              llm: 0,
               scrape: expect.objectContaining({
                 calls: 1,
+                cost: 0.006,
                 credits: 1,
+                firecrawlCost: 0.002,
+                ocrCost: 0.004,
                 ocrImages: 2,
               }),
             }),
@@ -646,6 +651,81 @@ describe('streamLandingAgent html updates', () => {
     })
 
     expect(htmlUpdateEvents(response.body)).toEqual([])
+  })
+
+  it('marks malformed edit results and empty draft output as errors', async () => {
+    vi.stubEnv('OPENROUTER_API_KEY', 'test-openrouter-key')
+
+    vi.doMock('./index.ts', () => ({ mastra: {} }))
+    vi.doMock('./agents/landing-page-agent.ts', () => ({
+      createLandingPageAgent: () => ({
+        stream: async () =>
+          fakeAgentStream(
+            editToolStream({ hasResultOverride: true, result: null }),
+          ),
+      }),
+    }))
+
+    const { createProject, getProject } = await import('./lib/project-store.ts')
+    const project = await createProject()
+    createdProjectIds.push(project.id)
+    const { streamLandingAgent } = await import('./route.ts')
+    const response = new FakeResponse()
+
+    await streamLandingAgent({
+      projectId: project.id,
+      prompt: 'Create a complete landing page.',
+      request: fakeRequest(),
+      response: response as unknown as ServerResponse,
+      textModel: 'nvidia/nemotron-3-ultra-550b-a55b',
+    })
+
+    const events = parseSseEvents(response.body)
+    expect(htmlUpdateEvents(response.body)).toEqual([])
+    expect(events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          data: expect.objectContaining({
+            result: expect.stringContaining('valid edits array'),
+            state: 'error',
+            tool: 'edit',
+          }),
+          event: 'tool_call',
+        }),
+        expect.objectContaining({
+          data: expect.objectContaining({
+            model: 'nvidia/nemotron-3-ultra-550b-a55b',
+          }),
+          event: 'stats',
+        }),
+        expect.objectContaining({
+          data: {
+            message: expect.stringContaining('without generating project HTML'),
+          },
+          event: 'error',
+        }),
+        { data: {}, event: 'done' },
+      ]),
+    )
+
+    const saved = await getProject(project.id)
+    expect(saved).toMatchObject({
+      hasHtml: false,
+      indexHtml: expect.stringContaining('Your landing page will appear here.'),
+    })
+    expect(saved?.messages[0]?.error).toContain(
+      'without generating project HTML',
+    )
+    expect(saved?.messages[0]?.parts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          result: expect.stringContaining('valid edits array'),
+          state: 'error',
+          tool: 'edit',
+          type: 'tool_call',
+        }),
+      ]),
+    )
   })
 
   it('does not emit html_update when successful edits leave HTML unchanged', async () => {
@@ -958,12 +1038,16 @@ class FakeResponse {
 
 async function* editToolStream({
   callId = 'call-edit-1',
+  hasResultOverride = false,
   isError = false,
   mutate,
+  result,
 }: {
   callId?: string
+  hasResultOverride?: boolean
   isError?: boolean
   mutate?: () => void
+  result?: unknown
 }) {
   yield {
     payload: {
@@ -978,9 +1062,11 @@ async function* editToolStream({
     payload: {
       args: { intent: 'Update hero copy' },
       isError,
-      result: isError
-        ? { reason: 'oldText did not match' }
-        : { changedLines: 2 },
+      result: hasResultOverride
+        ? result
+        : isError
+          ? { reason: 'oldText did not match' }
+          : { changedLines: 2, ok: true },
       toolCallId: callId,
       toolName: 'edit',
     },

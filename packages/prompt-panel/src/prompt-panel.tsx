@@ -21,6 +21,7 @@ import type {
   ImageAttachmentInput,
   ImageAttachmentMediaType,
   LandingAgentSendInput,
+  LandingModels,
   LandingTurn,
   PromptAttachmentInput,
 } from './domain'
@@ -52,10 +53,10 @@ const PANEL_POSITION_STORAGE_KEY = 'landing.promptPanel.position.v1'
 export type PromptPanelProps = {
   elementSelectionActive: boolean
   isStreaming: boolean
-  model: string
+  models: LandingModels
   onAllProjects: () => void
   onElementSelectionToggle: () => void
-  onModelChange: (model: string) => void
+  onModelsChange: (models: LandingModels) => void
   onSelectedElementAttachmentConsumed: () => void
   onSend: (input: LandingAgentSendInput) => void
   onStop: () => void
@@ -81,10 +82,10 @@ type StoredPanelState = Partial<PanelPosition> & {
 export function PromptPanel({
   elementSelectionActive,
   isStreaming,
-  model,
+  models,
   onAllProjects,
   onElementSelectionToggle,
-  onModelChange,
+  onModelsChange,
   onSelectedElementAttachmentConsumed,
   onSend,
   onStop,
@@ -444,12 +445,12 @@ export function PromptPanel({
                 }
                 elementSelectionActive={elementSelectionActive}
                 isStreaming={isStreaming}
-                model={model}
+                models={models}
                 onAttachFiles={handleAttachFiles}
                 onChange={setPrompt}
                 onElementSelectionToggle={onElementSelectionToggle}
                 onKeyDown={handleKeyDown}
-                onModelChange={onModelChange}
+                onModelsChange={onModelsChange}
                 onRemoveAttachment={handleRemoveAttachment}
                 onStop={onStop}
                 onSubmit={handleSubmit}

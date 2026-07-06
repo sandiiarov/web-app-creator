@@ -1,39 +1,11 @@
 /**
- * Cost accounting. Prefer provider/tool-reported costs when present; otherwise
- * calculate fallback costs from token/image/credit usage using the rates below.
- * OpenRouter reports costs in raw response metadata; token prices are fallbacks.
+ * OpenRouter cost accounting.
+ *
+ * OpenRouter costs are recorded only when response metadata includes a positive
+ * cost value. Token and image counts are usage metadata only. Firecrawl is the
+ * exception: Firecrawl reports credits, so scrape cost is calculated from the
+ * configured USD-per-credit rate.
  */
-
-interface TokenPricing {
-  cachedInput: number
-  input: number
-  output: number
-}
-
-const OPENROUTER_TOKEN_PRICING_USD: Record<string, TokenPricing> = {
-  'moonshotai/kimi-k2.7-code': {
-    cachedInput: perMillion(0.48),
-    input: perMillion(0.6),
-    output: perMillion(2.5),
-  },
-  'z-ai/glm-5.2': {
-    cachedInput: perMillion(0.14),
-    input: perMillion(0.4),
-    output: perMillion(2),
-  },
-}
-
-const DEFAULT_OPENROUTER_CHAT_MODEL = 'z-ai/glm-5.2'
-const DEFAULT_OPENROUTER_VISION_MODEL = 'moonshotai/kimi-k2.7-code'
-
-/**
- * Firecrawl credits → USD. Metered API rate from firecrawl.dev/pricing
- * (Growth tier, 500k credits/month ≈ $0.001998/credit). Rounded up slightly.
- */
-const FIRECRAWL_CREDIT_USD = 0.002
-
-/** OpenRouter Seedream 4.5 image generation fallback price. */
-const OPENROUTER_IMAGE_USD = 0.04
 
 export interface Usage {
   cachedInputTokens?: number
@@ -50,24 +22,23 @@ export interface VisionUsage {
   promptTokens?: number
 }
 
-export function calculateLlmCost(modelId: string, usage: Usage): number {
-  const providerCost = providerReportedCost(usage.raw)
-  if (providerCost > 0) return providerCost
-  return tokenUsageCost(modelId, usage)
+export function calculateLlmCost(_modelId: string, usage: Usage): number {
+  return providerReportedCost(usage.raw)
 }
 
-export function firecrawlCost(creditsUsed: number | undefined): number {
+export function firecrawlCost(
+  creditsUsed: number | undefined,
+  creditUsd: number,
+): number {
   if (!creditsUsed || creditsUsed <= 0) return 0
-  return creditsUsed * FIRECRAWL_CREDIT_USD
+  return creditsUsed * creditUsd
 }
 
 export function imageGenCost(
-  imagesGenerated: number,
+  _imagesGenerated: number,
   providerCost?: number,
 ): number {
-  if (typeof providerCost === 'number' && providerCost > 0) return providerCost
-  if (!imagesGenerated || imagesGenerated <= 0) return 0
-  return imagesGenerated * OPENROUTER_IMAGE_USD
+  return providerReportedCost(providerCost)
 }
 
 export function providerReportedCost(...sources: unknown[]): number {
@@ -82,13 +53,8 @@ export function providerReportedCost(...sources: unknown[]): number {
   return 0
 }
 
-export function visionCost(usage: VisionUsage, providerCost?: number): number {
-  if (typeof providerCost === 'number' && providerCost > 0) return providerCost
-  return tokenUsageCost(DEFAULT_OPENROUTER_VISION_MODEL, {
-    cachedInputTokens: usage.cachedTokens,
-    inputTokens: usage.promptTokens,
-    outputTokens: usage.completionTokens,
-  })
+export function visionCost(_usage: VisionUsage, providerCost?: number): number {
+  return providerReportedCost(providerCost)
 }
 
 /** Extract a provider-reported cost from raw response metadata if present. */
@@ -130,16 +96,6 @@ function extractProviderCost(
   return undefined
 }
 
-function modelPricing(modelId: string): TokenPricing {
-  const normalized = modelId.startsWith('openrouter/')
-    ? modelId.slice('openrouter/'.length)
-    : modelId
-  return (
-    OPENROUTER_TOKEN_PRICING_USD[normalized] ??
-    OPENROUTER_TOKEN_PRICING_USD[DEFAULT_OPENROUTER_CHAT_MODEL]!
-  )
-}
-
 function numberFrom(...values: unknown[]): number | undefined {
   for (const value of values) {
     if (typeof value === 'number' && Number.isFinite(value) && value > 0) {
@@ -151,21 +107,4 @@ function numberFrom(...values: unknown[]): number | undefined {
     }
   }
   return undefined
-}
-
-function perMillion(usd: number): number {
-  return usd / 1_000_000
-}
-
-function tokenUsageCost(modelId: string, usage: Usage): number {
-  const pricing = modelPricing(modelId)
-  const input = usage.inputTokens ?? 0
-  const output = usage.outputTokens ?? 0
-  const cached = Math.min(input, usage.cachedInputTokens ?? 0)
-  const billableInput = Math.max(0, input - cached)
-  return (
-    billableInput * pricing.input +
-    cached * pricing.cachedInput +
-    output * pricing.output
-  )
 }

@@ -1,4 +1,3 @@
-import { readFile, rm } from 'node:fs/promises'
 import type { Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
 
@@ -30,7 +29,6 @@ const SCREENSHOT = {
   width: 1440,
 }
 
-const createdBenchmarkReportPaths: string[] = []
 const createdProjectIds: string[] = []
 
 afterEach(async () => {
@@ -41,11 +39,6 @@ afterEach(async () => {
 
   const { deleteProject } = await import('./mastra/lib/project-store.ts')
   await Promise.all(createdProjectIds.splice(0).map((id) => deleteProject(id)))
-  await Promise.all(
-    createdBenchmarkReportPaths
-      .splice(0)
-      .map((path) => rm(path, { force: true })),
-  )
 })
 
 describe('server HTTP routes', () => {
@@ -174,11 +167,9 @@ describe('server HTTP routes', () => {
   })
 
   it('leaves image/vision models undefined when omitted so role defaults apply', async () => {
-    // Regression: the benchmark sends only textModel. Previously the handler
-    // ran every role through resolveModelId, whose fallback is the CHAT model,
-    // so image gen and vision OCR both hit `z-ai/glm-5.2` and 404'd. The
-    // handler must forward `undefined` for omitted roles so streamLandingAgent
-    // applies the configured image/vision defaults.
+    // Regression: callers may send only textModel. The handler must forward
+    // `undefined` for omitted roles so streamLandingAgent applies the configured
+    // image/vision defaults instead of substituting the chat model.
     await withServer(async ({ baseUrl, streamLandingAgent }) => {
       const response = await postJson(`${baseUrl}/agent`, {
         projectId: 'project-1',
@@ -278,65 +269,6 @@ describe('server HTTP routes', () => {
         `${baseUrl}/api/projects/${created.project.id}`,
       )
       expect(missing.status).toBe(404)
-    })
-  })
-
-  it('saves benchmark reports as local JSON for agent handoff', async () => {
-    await withServer(async ({ baseUrl }) => {
-      const response = await postJson(`${baseUrl}/api/benchmark-reports`, {
-        generatedAt: '2026-07-04T00:00:00.000Z',
-        reportVersion: '1',
-        runs: [
-          {
-            cost: 0.01,
-            modelId: 'z-ai/glm-5.2',
-            promptText: 'Build a landing page',
-            status: 'done',
-          },
-        ],
-        userFeedback: {
-          notes: 'CTA is vague and the tool used too many edits.',
-          rating: 'needs-work',
-        },
-      })
-
-      expect(response.status).toBe(201)
-      const saved = (await response.json()) as {
-        ok: boolean
-        report: { bytes: number; id: string; path: string; savedAt: string }
-      }
-      expect(saved.ok).toBe(true)
-      expect(saved.report).toMatchObject({
-        bytes: expect.any(Number),
-        id: expect.any(String),
-        path: expect.stringContaining('benchmark-reports'),
-        savedAt: expect.any(String),
-      })
-      createdBenchmarkReportPaths.push(saved.report.path)
-
-      const file = JSON.parse(await readFile(saved.report.path, 'utf8')) as {
-        id: string
-        report: Record<string, unknown>
-        savedAt: string
-      }
-      expect(file).toMatchObject({
-        id: saved.report.id,
-        report: {
-          reportVersion: '1',
-          userFeedback: { notes: expect.stringContaining('CTA is vague') },
-        },
-        savedAt: saved.report.savedAt,
-      })
-      expect(saved.report.bytes).toBeGreaterThan(0)
-
-      const invalid = await postJson(`${baseUrl}/api/benchmark-reports`, {
-        runs: [],
-      })
-      expect(invalid.status).toBe(400)
-      await expect(invalid.json()).resolves.toEqual({
-        error: 'Expected benchmark report with reportVersion and runs',
-        ok: false,
-      })
     })
   })
 

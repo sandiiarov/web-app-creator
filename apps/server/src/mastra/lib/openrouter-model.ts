@@ -16,6 +16,7 @@ export function openrouterModel(
 ): OpenAICompatibleConfig {
   return {
     apiKey: config.openrouter.apiKey,
+    headers: { 'X-OpenRouter-Metadata': 'enabled' },
     id: `openrouter/${modelId}`,
     url: config.openrouter.chatApiUrl,
   }

@@ -35,6 +35,10 @@ const MAX_STEPS = 30
 const READ_BEFORE_RETRY_MESSAGE =
   'Edit failed because the requested range or content did not match the current project HTML. Read or find current anchors before retrying; do not guess.'
 const REPEATED_EDIT_FAILURE_MESSAGE = `Edit failed ${MAX_EDIT_FAILURES} times in this turn. Stopping so the agent does not keep making blind edit attempts. Read/find the current project HTML and try again.`
+const INVALID_EDIT_RESULT_MESSAGE =
+  'Edit failed because the model did not provide a valid edits array. Retry with edit({ intent, edits: [{ operation, range, text }] }).'
+const NO_GENERATED_HTML_MESSAGE =
+  'Agent finished without generating project HTML. The draft still has no content because no successful edit changed the page.'
 
 export type AgentAttachmentInput =
   | AgentElementAttachmentInput
@@ -177,19 +181,19 @@ export async function streamLandingAgent({
   // absent), so we can echo it on the done/error states too.
   const callIntent = new Map<string, null | string>()
   let toolCallSeq = 0
-  // Accumulate Firecrawl credits/cost across scrape tool calls in this run.
+  // Track Firecrawl credits and calculate scrape cost from the configured rate.
   let scrapeCredits = 0
   let scrapeCalls = 0
-  // Accumulate image-generation count/cost across generate_image calls.
+  // Accumulate image-generation count and OpenRouter-reported cost.
   let imageCostUsd = 0
   let imageCount = 0
-  // Accumulate prompt-attachment/screenshot vision OCR usage.
+  // Accumulate prompt-attachment/screenshot vision OCR metadata.
   let visionCalls = 0
   let visionCostUsd = 0
   let visionImages = 0
   // Capture provider-reported LLM cost from raw response chunks when present.
   let llmProviderCostUsd = 0
-  // Accumulate bundled image-OCR usage inside scrape cost.
+  // Accumulate bundled image-OCR OpenRouter-reported cost inside scrape cost.
   let scrapeOcrCalls = 0
   let scrapeOcrCostUsd = 0
   let scrapeOcrImages = 0
@@ -383,7 +387,10 @@ export async function streamLandingAgent({
         case 'tool-result': {
           const isError =
             chunk.payload.isError === true ||
-            toolResultIndicatesFailure(chunk.payload.result)
+            toolResultIndicatesFailure(
+              chunk.payload.toolName,
+              chunk.payload.result,
+            )
           const args = asToolArgs(chunk.payload.args)
           const display = getToolCallDisplay(
             callDisplay,
@@ -449,7 +456,7 @@ export async function streamLandingAgent({
           // The agent's `edit` tool writes the project file directly (the file
           // is the source of truth). The UI morphs `html_update` events after
           // successful changed edits instead of pulling HTML on every edit-done.
-          // Accumulate Firecrawl + bundled image-OCR usage from successful scrape calls.
+          // Track Firecrawl usage and bundled OpenRouter OCR metadata from successful scrape calls.
           if (chunk.payload.toolName === 'scrape' && !isError) {
             const result = chunk.payload.result as {
               creditsUsed?: number
@@ -541,7 +548,10 @@ export async function streamLandingAgent({
         reasoningTokens: usage.reasoningTokens,
         totalTokens: usage.totalTokens,
       })
-      const firecrawlCostUsd = firecrawlCost(scrapeCredits)
+      const firecrawlCostUsd = firecrawlCost(
+        scrapeCredits,
+        config.firecrawl.creditUsd,
+      )
       const scrapeCostUsd = firecrawlCostUsd + scrapeOcrCostUsd
       const totalCost = llmCost + scrapeCostUsd + imageCostUsd + visionCostUsd
 
@@ -582,6 +592,11 @@ export async function streamLandingAgent({
       }
       recordStats(recordedTurn, statsPayload)
       sendSse(response, 'stats', statsPayload)
+
+      if (!project.hasHtml && htmlUpdateSequence === 0) {
+        recordTurnError(recordedTurn, NO_GENERATED_HTML_MESSAGE)
+        sendSse(response, 'error', { message: NO_GENERATED_HTML_MESSAGE })
+      }
     }
   } catch (error) {
     const aborted = controller.signal.aborted
@@ -896,6 +911,14 @@ function hashHtml(html: string): string {
   return createHash('sha256').update(html).digest('hex')
 }
 
+function isValidEditResult(result: unknown): boolean {
+  const data = asToolArgs(result)
+  return (
+    booleanValue(data.ok) === true &&
+    numberValue(data.changedLines) !== undefined
+  )
+}
+
 function numberValue(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) ? value : undefined
 }
@@ -1125,7 +1148,12 @@ function summarizeToolResult(
   const data = asToolArgs(result)
   const reason = stringValue(data.reason)
 
-  if (isError) return reason ?? summarizeToolError(result)
+  if (isError) {
+    if (tool === 'edit' && !isValidEditResult(result)) {
+      return reason ?? INVALID_EDIT_RESULT_MESSAGE
+    }
+    return reason ?? summarizeToolError(result)
+  }
 
   switch (tool) {
     case 'edit': {
@@ -1234,8 +1262,9 @@ function terminalizeRecordedTools(
   }
 }
 
-function toolResultIndicatesFailure(result: unknown): boolean {
+function toolResultIndicatesFailure(tool: string, result: unknown): boolean {
   const data = asToolArgs(result)
+  if (tool === 'edit') return !isValidEditResult(result)
   return booleanValue(data.ok) === false
 }
 

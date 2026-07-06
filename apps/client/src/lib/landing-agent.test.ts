@@ -6,15 +6,15 @@ import {
 import { describe, expect, it } from 'vitest'
 
 describe('formatCost', () => {
-  it('formats exact zero as zero, not less than a cent', () => {
-    expect(formatCost(0)).toBe('$0')
+  it('formats exact zero with four decimals', () => {
+    expect(formatCost(0)).toBe('$0.0000')
   })
 
-  it('formats tiny positive provider-reported costs as less than a cent', () => {
-    expect(formatCost(0.004)).toBe('<$0.01')
+  it('formats tiny positive provider-reported costs with four decimals', () => {
+    expect(formatCost(0.004)).toBe('$0.0040')
   })
 
-  it('formats costs at or above one cent with four decimals', () => {
+  it('rounds costs to four decimals', () => {
     expect(formatCost(0.01)).toBe('$0.0100')
     expect(formatCost(1.23456)).toBe('$1.2346')
   })

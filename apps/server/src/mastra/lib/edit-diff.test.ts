@@ -2,8 +2,15 @@ import { describe, expect, it } from 'vitest'
 
 import {
   applyEdits,
+  countChangedLines,
+  detectLineEnding,
+  fuzzyFindText,
   generateDiffString,
   generateUnifiedPatch,
+  normalizeForFuzzyMatch,
+  normalizeToLF,
+  restoreLineEndings,
+  stripBom,
 } from './edit-diff.ts'
 
 describe('applyEdits', () => {
@@ -104,5 +111,63 @@ describe('applyEdits', () => {
     expect(generateUnifiedPatch('/index.html', before, after)).toBe(
       '--- /index.html\n+++ /index.html\n@@ -1,4 +1,4 @@\n <main>\n-  <h1>Hello</h1>\n+  <h1>Hi</h1>\n   <p>World</p>\n </main>',
     )
+  })
+
+  it('normalizes text and finds fuzzy matches', () => {
+    expect(detectLineEnding('a\r\nb\n')).toBe('\r\n')
+    expect(detectLineEnding('a\nb')).toBe('\n')
+    expect(normalizeToLF('a\r\nb\rc')).toBe('a\nb\nc')
+    expect(restoreLineEndings('a\nb', '\r\n')).toBe('a\r\nb')
+    expect(stripBom('\uFEFF<html>')).toEqual({ bom: '\uFEFF', text: '<html>' })
+    expect(normalizeForFuzzyMatch('“Hello”—world\u00A0')).toBe('"Hello"-world')
+    expect(fuzzyFindText('Hero “Launch”\n', 'Hero "Launch"')).toMatchObject({
+      found: true,
+      usedFuzzyMatch: true,
+    })
+    expect(fuzzyFindText('Hero Launch', 'Missing')).toMatchObject({
+      found: false,
+      index: -1,
+    })
+  })
+
+  it('reports edit validation errors with single and batch messages', () => {
+    expect(() =>
+      applyEdits('<p>Hi</p>', [{ newText: 'x', oldText: '' }]),
+    ).toThrow('oldText must not be empty')
+    expect(() =>
+      applyEdits('<p>Hi</p>', [
+        { newText: '<p>Hello</p>', oldText: '<p>Hi</p>' },
+        { newText: '<p>Hey</p>', oldText: '<p>Hi</p>' },
+      ]),
+    ).toThrow('overlap')
+    expect(() =>
+      applyEdits('<p>Hi</p>', [{ newText: '<p>Hi</p>', oldText: '<p>Hi</p>' }]),
+    ).toThrow('No changes made')
+    expect(() =>
+      applyEdits('<p>Hi</p>', [
+        { newText: '<h1>Found</h1>', oldText: '<h1>Missing</h1>' },
+        { newText: '<p>Hello</p>', oldText: '<p>Hi</p>' },
+      ]),
+    ).toThrow('Could not find edits[0]')
+  })
+
+  it('counts changed lines and falls back to simple diffs for large files', () => {
+    expect(countChangedLines('a\nb', 'a\nc\nd')).toBe(2)
+
+    const before = Array.from(
+      { length: 2100 },
+      (_, index) => `old-${index}`,
+    ).join('\n')
+    const after = Array.from(
+      { length: 2100 },
+      (_, index) => `new-${index}`,
+    ).join('\n')
+    const diff = generateDiffString(before, after, 0)
+    const patch = generateUnifiedPatch('/large.html', before, after, 0)
+
+    expect(diff.firstChangedLine).toBe(1)
+    expect(diff.diff).toContain('-   1 old-0')
+    expect(diff.diff).toContain('+   1 new-0')
+    expect(patch).toContain('@@ -1,2100 +1,2100 @@')
   })
 })

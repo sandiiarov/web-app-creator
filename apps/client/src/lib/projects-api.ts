@@ -8,7 +8,7 @@ export interface Project extends ProjectMeta {
 }
 
 export interface ProjectInput {
-  model?: string
+  textModel?: string
   title?: string
 }
 
@@ -16,9 +16,11 @@ export interface ProjectMeta {
   createdAt: string
   hasHtml: boolean
   id: string
+  imageModel?: string
   model: string
   title: string
   updatedAt: string
+  visionModel?: string
 }
 
 export class ProjectNotFoundError extends Error {
@@ -34,7 +36,10 @@ export async function createProject(
   input: ProjectInput = {},
 ): Promise<Project> {
   const response = await fetch(`${SERVER_URL}/api/projects`, {
-    body: JSON.stringify(input),
+    body: JSON.stringify({
+      ...(input.textModel ? { textModel: input.textModel } : {}),
+      ...(input.title ? { title: input.title } : {}),
+    }),
     headers: { 'content-type': 'application/json' },
     method: 'POST',
   })
@@ -98,17 +103,26 @@ export async function postScreenshotResponse(
   if (!json.ok) throw new Error('Failed to post screenshot response')
 }
 
-export async function updateProjectModel(
+/**
+ * Persist the per-category model selection. Sends `textModel`, `visionModel`,
+ * and `imageModel`; the server currently persists `textModel` and accepts the
+ * rest forward-compat (ignored until project metadata stores them).
+ */
+export async function updateProjectModels(
   id: string,
-  model: string,
+  models: { image: string; text: string; vision: string },
 ): Promise<ProjectMeta> {
   const response = await fetch(`${SERVER_URL}/api/projects/${id}`, {
-    body: JSON.stringify({ model }),
+    body: JSON.stringify({
+      imageModel: models.image,
+      textModel: models.text,
+      visionModel: models.vision,
+    }),
     headers: { 'content-type': 'application/json' },
     method: 'PATCH',
   })
   if (response.status === 404) throw new ProjectNotFoundError(id)
   const json = (await response.json()) as { ok: boolean; project: ProjectMeta }
-  if (!json.ok) throw new Error('Failed to update project model')
+  if (!json.ok) throw new Error('Failed to update project models')
   return json.project
 }

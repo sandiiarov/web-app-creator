@@ -1,4 +1,5 @@
 import { config } from '../../config.ts'
+import { providerReportedCost } from './cost.ts'
 
 const DEFAULT_OCR_PROMPT =
   'Extract ALL visible text from every image (OCR). Return the text exactly as it appears, preserving headings, lists, and structure. For each image, also briefly describe brand-relevant visual details: logo marks, product UI, people/scene, color palette, layout, and any notable typography. If an image has no text, say "No text found" for that image and still describe what it shows.'
@@ -144,6 +145,7 @@ export async function ocrImageInputs(
       headers: {
         Authorization: `Bearer ${config.openrouter.apiKey}`,
         'Content-Type': 'application/json',
+        'X-OpenRouter-Metadata': 'enabled',
       },
       method: 'POST',
     },
@@ -175,8 +177,10 @@ export async function ocrImageInputs(
   const content = extractMessageText(message)
   const usage = json.usage
 
+  const providerCost = providerReportedCost(json)
+
   return {
-    cost: extractResponseCost(usage),
+    cost: providerCost > 0 ? providerCost : undefined,
     imagesAnalyzed: imageRefs.length,
     ok: true,
     text: content,
@@ -239,12 +243,6 @@ function extractMessageText(message: ChatCompletionChoice['message']): string {
     .filter((text): text is string => typeof text === 'string' && !!text.trim())
     .join('\n')
   return reasoning ?? ''
-}
-
-function extractResponseCost(
-  usage: ChatCompletionResponse['usage'],
-): number | undefined {
-  return numberFrom(usage?.cost, usage?.total_cost, usage?.estimated_cost)
 }
 
 /** Fetch an image and return a base64 data URL suitable for OpenRouter vision. */
@@ -323,17 +321,6 @@ function normalizeImageInputs(inputs: ImageOcrInput[]): ImageOcrInput[] {
   }
 
   return normalized
-}
-
-function numberFrom(...values: unknown[]): number | undefined {
-  for (const value of values) {
-    if (typeof value === 'number' && Number.isFinite(value)) return value
-    if (typeof value === 'string' && value.trim()) {
-      const parsed = Number(value)
-      if (Number.isFinite(parsed)) return parsed
-    }
-  }
-  return undefined
 }
 
 function sourceLabelForInput(input: ImageOcrInput): string {

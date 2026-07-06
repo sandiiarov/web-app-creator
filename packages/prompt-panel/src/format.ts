@@ -1,5 +1,6 @@
 export function formatCostValue(value: number) {
-  return value >= 0.01 ? `$${value.toFixed(4)}` : '<$0.01'
+  if (!Number.isFinite(value) || value <= 0) return '$0.0000'
+  return `$${value.toFixed(4)}`
 }
 
 export function formatDuration(ms: number) {

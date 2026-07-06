@@ -28,9 +28,15 @@ describe('landing agent retry helpers', () => {
     const error = Object.assign(new Error('fetch failed'), { cause })
 
     expect(isTransientNetworkError(error)).toBe(true)
+    expect(isTransientNetworkError('body timeout')).toBe(true)
+    expect(isTransientNetworkError({ name: 'Headers Timeout' })).toBe(true)
     expect(isTransientNetworkError(new Error('schema validation failed'))).toBe(
       false,
     )
+
+    const circular: { cause?: unknown; code: string } = { code: 'NOPE' }
+    circular.cause = circular
+    expect(isTransientNetworkError(circular)).toBe(false)
   })
 
   it('builds a capped retry processor that reports visible retry state', async () => {
@@ -66,6 +72,33 @@ describe('landing agent retry helpers', () => {
     ).resolves.toBeUndefined()
   })
 
+  it('retries provider-marked errors and resolves aborted waits', async () => {
+    const controller = new AbortController()
+    const retries: unknown[] = []
+    const [processor] = createLandingAgentErrorProcessors(
+      { ...retryConfig, retryBaseDelayMs: 100, retryMaxDelayMs: 100 },
+      (event) => retries.push(event),
+    )
+
+    const promise = processor!.processAPIError({
+      abortSignal: controller.signal,
+      error: { isRetryable: true, message: 'try again' },
+      retryCount: 0,
+    } as never)
+    controller.abort()
+
+    await expect(promise).resolves.toEqual({ retry: true })
+    expect(retries).toEqual([
+      {
+        attempt: 1,
+        delayMs: 100,
+        issue: 'try again',
+        maxAttempts: 2,
+        reason: 'Provider marked the error as retryable',
+      },
+    ])
+  })
+
   it('summarizes retry issues from status, code, and message', () => {
     expect(
       summarizeRetryIssue({
@@ -73,5 +106,11 @@ describe('landing agent retry helpers', () => {
         statusCode: 502,
       }),
     ).toBe('HTTP 502')
+    expect(summarizeRetryIssue({ message: 'rate limited', status: 429 })).toBe(
+      'HTTP 429',
+    )
+    expect(summarizeRetryIssue('')).toBe(
+      'The model request failed before it completed.',
+    )
   })
 })

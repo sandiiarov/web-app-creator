@@ -220,8 +220,8 @@ export type VisionCost = {
 // ── Formatting utilities ──────────────────────────────────────────
 
 export function formatCost(cost: number) {
-  if (!Number.isFinite(cost) || cost <= 0) return '$0'
-  return cost >= 0.01 ? `$${cost.toFixed(4)}` : '<$0.01'
+  if (!Number.isFinite(cost) || cost <= 0) return '$0.0000'
+  return `$${cost.toFixed(4)}`
 }
 
 export function formatDuration(ms: number) {
