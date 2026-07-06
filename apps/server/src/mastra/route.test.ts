@@ -641,6 +641,122 @@ describe('streamLandingAgent generated image persistence', () => {
   })
 })
 
+describe('streamLandingAgent edit fan-out', () => {
+  it('renders a batched edit call as one block per edit with distinct intents', async () => {
+    vi.stubEnv('OPENROUTER_API_KEY', 'test-openrouter-key')
+
+    vi.doMock('./index.ts', () => ({ mastra: {} }))
+    vi.doMock('./agents/landing-page-agent.ts', () => ({
+      createLandingPageAgent: () => ({
+        stream: async () =>
+          fakeAgentStream(
+            (async function* () {
+              yield {
+                payload: {
+                  args: {
+                    edits: [
+                      {
+                        intent: 'Rewrite headline',
+                        operation: 'replace',
+                        range: ['a2'],
+                      },
+                      {
+                        intent: 'Rewrite paragraph',
+                        operation: 'replace',
+                        range: ['a3'],
+                      },
+                    ],
+                  },
+                  toolCallId: 'call-edit-batch-1',
+                  toolName: 'edit',
+                },
+                type: 'tool-call',
+              }
+              yield {
+                payload: {
+                  args: {
+                    edits: [
+                      {
+                        intent: 'Rewrite headline',
+                        operation: 'replace',
+                        range: ['a2'],
+                      },
+                      {
+                        intent: 'Rewrite paragraph',
+                        operation: 'replace',
+                        range: ['a3'],
+                      },
+                    ],
+                  },
+                  isError: false,
+                  result: {
+                    changedLines: 2,
+                    edits: [
+                      { changedLines: 1, changedText: 'a5|  <h1>Hi</h1>', intent: 'Rewrite headline' },
+                      { changedLines: 1, changedText: 'a6|  <p>There</p>', intent: 'Rewrite paragraph' },
+                    ],
+                    ok: true,
+                  },
+                  toolCallId: 'call-edit-batch-1',
+                  toolName: 'edit',
+                },
+                type: 'tool-result',
+              }
+            })(),
+          ),
+      }),
+    }))
+
+    const { createProject, getProject } = await import('./lib/project-store.ts')
+    const project = await createProject()
+    createdProjectIds.push(project.id)
+    const { streamLandingAgent } = await import('./route.ts')
+    const response = new FakeResponse()
+
+    await streamLandingAgent({
+      projectId: project.id,
+      prompt: 'Build it.',
+      request: fakeRequest(),
+      response: response as unknown as ServerResponse,
+      textModel: 'z-ai/glm-5.2',
+    })
+
+    const editEvents = parseSseEvents(response.body).filter(
+      (event) =>
+        event.event === 'tool_call' &&
+        !!event.data &&
+        typeof event.data === 'object' &&
+        'tool' in event.data &&
+        event.data.tool === 'edit',
+    )
+    // Two running + two done — one block per edit.
+    expect(editEvents).toHaveLength(4)
+    const running = editEvents.filter(
+      (event) => (event.data as { state?: string }).state === 'running',
+    )
+    const done = editEvents.filter(
+      (event) => (event.data as { state?: string }).state === 'done',
+    )
+    expect(running).toHaveLength(2)
+    expect(done).toHaveLength(2)
+    // Distinct ids and per-edit intents.
+    const ids = editEvents.map((event) => (event.data as { id?: string }).id)
+    expect(new Set(ids).size).toBe(2)
+    const intents = done.map(
+      (event) => (event.data as { intent?: string }).intent,
+    )
+    expect(intents).toEqual(
+      expect.arrayContaining(['Rewrite headline', 'Rewrite paragraph']),
+    )
+    // The persisted turn mirrors the fan-out (one tool_call part per edit).
+    const saved = await getProject(project.id)
+    const editParts = (saved?.messages[0]?.parts ?? []).filter(
+      (part) => part.type === 'tool_call' && part.tool === 'edit',
+    )
+    expect(editParts).toHaveLength(2)
+  })
+})
+
 describe('streamLandingAgent default tool intents', () => {
   it('derives intents for skill and skill_read calls without an intent arg', async () => {
     vi.stubEnv('OPENROUTER_API_KEY', 'test-openrouter-key')

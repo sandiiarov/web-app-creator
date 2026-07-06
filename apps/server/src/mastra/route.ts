@@ -220,6 +220,9 @@ export async function streamLandingAgent({
   // Track per-call intent from the tool-call chunk (tool-result args can be
   // absent), so we can echo it on the done/error states too.
   const callIntent = new Map<string, null | string>()
+  // Fan-out: one provider `edit` call with N edits renders as N blocks. Map
+  // the provider toolCallId to the per-edit sub-ids so tool-result can match.
+  const editSubIds = new Map<string, string[]>()
   let toolCallSeq = 0
   // Track Firecrawl credits and calculate scrape cost from the configured rate.
   let scrapeCredits = 0
@@ -341,6 +344,31 @@ export async function streamLandingAgent({
           )
           callIntent.set(chunk.payload.toolCallId, display.intent)
 
+          // Edit fan-out: a batched edit call (N >= 2 edits) renders as N
+          // running blocks, each carrying its own intent, instead of one.
+          const editIntents =
+            chunk.payload.toolName === 'edit'
+              ? editIntentsFromArgs(args)
+              : null
+          if (editIntents) {
+            const subIds = editIntents.map((_, index) =>
+              editSubId(toolCallSeq, index),
+            )
+            editSubIds.set(chunk.payload.toolCallId, subIds)
+            for (const [index, intent] of editIntents.entries()) {
+              const toolPayload: RecordedToolPayload = {
+                id: subIds[index]!,
+                intent,
+                providerId: chunk.payload.toolCallId,
+                state: 'running',
+                tool: chunk.payload.toolName,
+              }
+              recordToolCall(recordedTurn, toolPayload)
+              sendSse(response, 'tool_call', toolPayload)
+            }
+            break
+          }
+
           const toolPayload: RecordedToolPayload = {
             detail: display.detail,
             id: display.id,
@@ -431,6 +459,63 @@ export async function streamLandingAgent({
             chunk.payload.result,
             isError,
           )
+          // Edit fan-out result: emit one terminal block per edit, each with
+          // its own intent and per-edit diff slice (from result.edits[i]). On
+          // a whole-call error every edit block gets the shared error reason.
+          const fanOutSubIds = editSubIds.get(chunk.payload.toolCallId)
+          if (fanOutSubIds && chunk.payload.toolName === 'edit') {
+            const perEditResults = (chunk.payload.result as { edits?: { changedLines: number; changedText: string }[] })
+              .edits
+            const editArgsIntents = editIntentsFromArgs(args) ?? []
+            for (const [index, subId] of fanOutSubIds.entries()) {
+              const perEdit = perEditResults?.[index]
+              const perResult = isError
+                ? result
+                : perEdit
+                  ? `Changed ${perEdit.changedLines} line${perEdit.changedLines === 1 ? '' : 's'}`
+                  : result
+              const toolPayload: RecordedToolPayload = {
+                id: subId!,
+                intent: editArgsIntents[index] ?? null,
+                providerId: chunk.payload.toolCallId,
+                result: perResult,
+                state: isError ? 'error' : 'done',
+                tool: chunk.payload.toolName,
+              }
+              recordToolCall(recordedTurn, toolPayload)
+              sendSse(response, 'tool_call', toolPayload)
+            }
+            editSubIds.delete(chunk.payload.toolCallId)
+            completedCallIds.add(chunk.payload.toolCallId)
+            if (chunk.payload.toolName === 'edit') {
+              if (isError) {
+                editFailures += 1
+                if (editFailures >= MAX_EDIT_FAILURES) {
+                  fatalRunError = REPEATED_EDIT_FAILURE_MESSAGE
+                  recordTurnError(recordedTurn, fatalRunError)
+                  sendSse(response, 'error', { message: fatalRunError })
+                  controller.abort()
+                  break streamLoop
+                }
+              } else {
+                recordedTurn.htmlSwaps += 1
+                const nextHtml = store.get()
+                if (nextHtml !== lastHtmlUpdate) {
+                  htmlUpdateSequence += 1
+                  const htmlUpdate = createHtmlUpdatePayload({
+                    html: nextHtml,
+                    previousHtml: lastHtmlUpdate,
+                    projectId,
+                    sequence: htmlUpdateSequence,
+                  })
+                  sendSse(response, 'html_update', htmlUpdate)
+                  lastHtmlUpdate = nextHtml
+                  checkpointTurn()
+                }
+              }
+            }
+            break
+          }
           const toolPayload: RecordedToolPayload = {
             detail: display.detail,
             id: display.id,
@@ -980,6 +1065,32 @@ function defaultToolIntent(tool: string, args: ToolArgs): string | undefined {
   }
 
   return undefined
+}
+
+/**
+ * Extract the per-edit intents from an `edit` tool-call args. Returns null
+ * when the args are not the expected `{ edits: [{ intent, ... }] }` shape or
+ * the batch has 0/1 edits (single-block fallback handles those).
+ */
+function editIntentsFromArgs(args: ToolArgs): null | string[] {
+  const edits = args.edits
+  if (!Array.isArray(edits) || edits.length < 2) return null
+  const intents: string[] = []
+  for (const edit of edits) {
+    if (!edit || typeof edit !== 'object' || Array.isArray(edit)) return null
+    const intent = (edit as { intent?: unknown }).intent
+    if (typeof intent !== 'string' || intent.length === 0) return null
+    intents.push(intent)
+  }
+  return intents
+}
+
+/**
+ * Build stable per-edit sub-ids for a fanned-out `edit` call. The seq anchors
+ * the provider call; the index distinguishes each edit within it.
+ */
+function editSubId(baseSeq: number, index: number) {
+  return `tool-${baseSeq}-edit-${index + 1}`
 }
 
 function finalizeRecordedTurn(
