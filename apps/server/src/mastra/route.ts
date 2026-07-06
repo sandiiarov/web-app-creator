@@ -953,16 +953,33 @@ function createRecordedTurn(
 }
 
 function defaultToolIntent(tool: string, args: ToolArgs): string | undefined {
-  if (tool !== 'screenshot') return undefined
-
-  const selector = stringValue(args.selector)
-  const viewportSize = stringValue(args.viewportSize)
-  if (selector && viewportSize) {
-    return `Capture ${selector} at ${viewportSize} viewport`
+  if (tool === 'screenshot') {
+    const selector = stringValue(args.selector)
+    const viewportSize = stringValue(args.viewportSize)
+    if (selector && viewportSize) {
+      return `Capture ${selector} at ${viewportSize} viewport`
+    }
+    if (selector) return `Capture ${selector}`
+    if (viewportSize) return `Capture screenshot at ${viewportSize} viewport`
+    return 'Capture screenshot'
   }
-  if (selector) return `Capture ${selector}`
-  if (viewportSize) return `Capture screenshot at ${viewportSize} viewport`
-  return 'Capture screenshot'
+
+  // `skill`/`skill_read` schemas have no `intent` arg; derive one from their
+  // other args so the UI reason column is populated instead of blank.
+  if (tool === 'skill') {
+    const name = stringValue(args.name)
+    return name ? `Load skill: ${name}` : 'Load skill'
+  }
+  if (tool === 'skill_read') {
+    const skillName = stringValue(args.skillName)
+    const path = stringValue(args.path)
+    if (skillName && path) return `Read ${skillName} reference: ${path}`
+    if (skillName) return `Read ${skillName} reference`
+    if (path) return `Read reference: ${path}`
+    return 'Read skill reference'
+  }
+
+  return undefined
 }
 
 function finalizeRecordedTurn(
