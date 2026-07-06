@@ -15,7 +15,7 @@ describe('createConfigFromEnv', () => {
       chatApiUrl: 'https://openrouter.ai/api/v1',
       defaultChatModel: 'z-ai/glm-5.2',
       defaultImageModel: 'bytedance-seed/seedream-4.5',
-      defaultVisionModel: 'moonshotai/kimi-k2.7-code',
+      defaultVisionModel: 'z-ai/glm-5v-turbo',
       imageApiUrl: 'https://openrouter.ai/api/v1/images',
     })
   })

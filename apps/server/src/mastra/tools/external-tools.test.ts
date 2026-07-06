@@ -341,7 +341,7 @@ describe('createScrapeTool', () => {
         'https://example.test/social.jpg',
       ],
       undefined,
-      'moonshotai/kimi-k2.7-code',
+      'z-ai/glm-5v-turbo',
     )
     expect(result).toMatchObject({
       branding: { colorScheme: 'dark' },
@@ -361,7 +361,11 @@ describe('createScreenshotTool', () => {
     const unavailable = createScreenshotTool()
     await expect(
       unavailable.execute?.(
-        { selector: '#hero', viewportSize: 'desktop' },
+        {
+          intent: 'Check desktop hero layout',
+          selector: '#hero',
+          viewportSize: 'desktop',
+        },
         undefined as never,
       ),
     ).resolves.toMatchObject({
@@ -376,7 +380,11 @@ describe('createScreenshotTool', () => {
     })
     await expect(
       failing.execute?.(
-        { selector: '#hero', viewportSize: 'mobile' },
+        {
+          intent: 'Check mobile hero layout',
+          selector: '#hero',
+          viewportSize: 'mobile',
+        },
         undefined as never,
       ),
     ).resolves.toMatchObject({
@@ -421,7 +429,11 @@ describe('createScreenshotTool', () => {
 
     const tool = loadTool(requestScreenshot)
     const result = await tool.execute?.(
-      { selector: '#hero', viewportSize: 'tablet' },
+      {
+        intent: 'Check hero spacing and CTA contrast',
+        selector: '#hero',
+        viewportSize: 'tablet',
+      },
       undefined as never,
     )
 
@@ -438,7 +450,7 @@ describe('createScreenshotTool', () => {
         },
       ],
       expect.stringContaining('Target selector: #hero'),
-      'moonshotai/kimi-k2.7-code',
+      'z-ai/glm-5v-turbo',
     )
     expect(result).toMatchObject({
       height: 600,

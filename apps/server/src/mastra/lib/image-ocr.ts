@@ -1,6 +1,41 @@
 import { config } from '../../config.ts'
 import { providerReportedCost } from './cost.ts'
 
+/**
+ * System prompt for vision OCR, reused from Z.AI's `ui_to_artifact` tool (the
+ * `code` artifact). Frames the model as a senior frontend engineer studying a
+ * UI screenshot to extract structure, spacing scale, hex colors, and
+ * typography with precision. Sent as the `system` message so per-call user
+ * prompts (attachment framing, screenshot intent, scrape OCR) stay focused on
+ * what the caller wants analyzed in that image.
+ */
+export const UI_TO_ARTIFACT_SYSTEM_PROMPT = `You are a senior frontend engineer who specializes in translating design mockups into pixel-perfect, production-ready code. When you examine a UI screenshot, you approach it like an architect studying blueprints—you see not just the visual surface, but the underlying structure, the spacing rhythms, the component relationships, and the interaction patterns that bring it to life.
+
+<task>
+Your task is to analyze the provided UI design image and generate complete, semantic, and well-structured frontend code that faithfully recreates the interface. This code should be immediately usable by developers, following modern best practices for accessibility, responsiveness, and maintainability.
+</task>
+
+<approach>
+Begin by carefully observing the design as a whole. Notice the layout architecture—is it a traditional grid, a flexible column system, or a more fluid arrangement? Pay attention to the visual hierarchy: which elements command attention, and how does the eye naturally flow through the interface?
+
+Examine the spacing carefully. Developers often overlook this, but consistent spacing is what separates amateur implementations from professional ones. Try to infer the spacing scale being used—perhaps it's based on 8px increments, or maybe it follows a more custom rhythm.
+
+Study the color palette with precision. When you identify colors, extract hex codes whenever possible by analyzing the visible hues.
+
+Typography deserves special attention. Identify the font families in use, estimate font sizes, observe font weights, and note line heights that affect readability.
+
+Now, translate these observations into code. Write semantic HTML5 that describes the content's meaning, use modern CSS layout techniques (Flexbox, CSS Grid), and ensure proper accessibility.
+</approach>
+
+<output_structure>
+Present your work in clear sections:
+1. **Generated Code**: Format it beautifully with proper indentation. Make this code copy-paste ready.
+2. **Structure Explanation**: Describe the overall HTML hierarchy and architectural decisions.
+3. **Styling Notes**: Highlight the key CSS techniques employed.
+4. **Assumptions and Observations**: Be honest about any design details you had to estimate.
+5. **Usage Instructions**: Mention any external dependencies and integration notes.
+</output_structure>`
+
 const DEFAULT_OCR_PROMPT =
   'Extract ALL visible text from every image (OCR). Return the text exactly as it appears, preserving headings, lists, and structure. For each image, also briefly describe brand-relevant visual details: logo marks, product UI, people/scene, color palette, layout, and any notable typography. If an image has no text, say "No text found" for that image and still describe what it shows.'
 
@@ -73,8 +108,9 @@ interface LoadedImageRef {
 
 export async function ocrImageInputs(
   inputs: ImageOcrInput[],
-  prompt: string = DEFAULT_OCR_PROMPT,
+  userPrompt: string = DEFAULT_OCR_PROMPT,
   model: string = config.openrouter.defaultVisionModel,
+  systemPrompt: string = UI_TO_ARTIFACT_SYSTEM_PROMPT,
 ): Promise<ImageOcrResult> {
   const imageInputs = normalizeImageInputs(inputs)
 
@@ -123,10 +159,14 @@ export async function ocrImageInputs(
         max_tokens: 4096,
         messages: [
           {
+            content: systemPrompt,
+            role: 'system',
+          },
+          {
             content: [
               {
-                text: buildPrompt(
-                  prompt,
+                text: buildUserMessage(
+                  userPrompt,
                   imageRefs.map((image) => image.sourceLabel),
                 ),
                 type: 'text',
@@ -195,17 +235,22 @@ export async function ocrImageInputs(
 
 export async function ocrImages(
   imageUrls: string[],
-  prompt: string = DEFAULT_OCR_PROMPT,
+  userPrompt: string = DEFAULT_OCR_PROMPT,
   model: string = config.openrouter.defaultVisionModel,
+  systemPrompt: string = UI_TO_ARTIFACT_SYSTEM_PROMPT,
 ): Promise<ImageOcrResult> {
   return ocrImageInputs(
     imageUrls.map((url) => ({ sourceLabel: url, url })),
-    prompt,
+    userPrompt,
     model,
+    systemPrompt,
   )
 }
 
-function buildPrompt(customPrompt: string, sourceLabels: string[]): string {
+function buildUserMessage(
+  customPrompt: string,
+  sourceLabels: string[],
+): string {
   const sourceList = sourceLabels
     .map((sourceLabel, index) => `${index + 1}. ${sourceLabel}`)
     .join('\n')

@@ -119,22 +119,34 @@ describe('ocrImageInputs', () => {
     )
     const body = JSON.parse((chatInit as RequestInit).body as string) as {
       messages: Array<{
-        content: Array<{
-          image_url?: { url: string }
-          text?: string
-          type: string
-        }>
+        content:
+          | Array<{
+              image_url?: { url: string }
+              text?: string
+              type: string
+            }>
+          | string
+        role: string
       }>
       model: string
     }
-    expect(body.model).toBe('moonshotai/kimi-k2.7-code')
-    expect(body.messages[0]!.content[0]).toMatchObject({
+    expect(body.model).toBe('z-ai/glm-5v-turbo')
+    const systemMessage = body.messages[0] as { content: string; role: string }
+    expect(systemMessage).toMatchObject({ role: 'system' })
+    expect(systemMessage.content).toEqual(
+      expect.stringContaining('senior frontend engineer'),
+    )
+    const userMessage = body.messages[1] as {
+      content: Array<{ text?: string; type: string }>
+      role: string
+    }
+    expect(userMessage.role).toBe('user')
+    const userContent = userMessage.content
+    expect(userContent[0]).toMatchObject({
       text: expect.stringContaining('hero.png'),
       type: 'text',
     })
-    expect(
-      body.messages[0]!.content.filter((part) => part.type === 'image_url'),
-    ).toEqual([
+    expect(userContent.filter((part) => part.type === 'image_url')).toEqual([
       {
         image_url: { url: PNG_DATA_URL },
         type: 'image_url',
@@ -231,9 +243,14 @@ describe('ocrImages', () => {
       text: 'Image 1\nNo text found',
     })
     const chatBody = JSON.parse(fetch.mock.calls[1]![1]!.body as string) as {
-      messages: Array<{ content: Array<{ image_url?: { url: string } }> }>
+      messages: Array<{
+        content: Array<{ image_url?: { url: string } }> | string
+      }>
     }
-    expect(chatBody.messages[0]!.content[1]!.image_url?.url).toBe(WEBP_DATA_URL)
+    const userContent = chatBody.messages[1]!.content as Array<{
+      image_url?: { url: string }
+    }>
+    expect(userContent[1]!.image_url?.url).toBe(WEBP_DATA_URL)
   })
 
   it('summarizes URL fetch failures when no images load', async () => {

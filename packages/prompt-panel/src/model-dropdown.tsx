@@ -38,6 +38,7 @@ const MODEL_ICONS: Record<string, ComponentType<{ className?: string }>> = {
   'x-ai/grok-imagine-image-quality': XaiIcon,
   'xiaomi/mimo-v2.5': XiaomiIcon,
   'z-ai/glm-5.2': GlmIcon,
+  'z-ai/glm-5v-turbo': GlmIcon,
 }
 
 const ROLE_ORDER: LandingModelRole[] = ['text', 'image', 'vision']

@@ -34,6 +34,7 @@ export const IMAGE_MODEL_OPTIONS: LandingModelOption[] = [
 ]
 
 export const VISION_MODEL_OPTIONS: LandingModelOption[] = [
+  { id: 'z-ai/glm-5v-turbo', label: 'GLM 5V Turbo' },
   { id: 'moonshotai/kimi-k2.7-code', label: 'Kimi K2.7 Code' },
   { id: 'minimax/minimax-m3', label: 'MiniMax M3' },
   { id: 'xiaomi/mimo-v2.5', label: 'MiMo V2.5' },
