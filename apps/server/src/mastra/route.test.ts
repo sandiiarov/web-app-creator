@@ -872,6 +872,58 @@ describe('streamLandingAgent html updates', () => {
     )
   })
 
+  it('lets the model recover from a failed edit instead of aborting the run', async () => {
+    vi.stubEnv('OPENROUTER_API_KEY', 'test-openrouter-key')
+
+    vi.doMock('./index.ts', () => ({ mastra: {} }))
+    vi.doMock('./agents/landing-page-agent.ts', () => ({
+      createLandingPageAgent: () => ({
+        stream: async () =>
+          fakeAgentStream(
+            (async function* () {
+              // First edit fails (bad range), then the model retries the edit
+              // immediately WITHOUT an intervening read. Previously this
+              // second edit tripped the editRequiresInspection guard and
+              // aborted the whole run; now it runs normally.
+              yield* editToolStream({ callId: 'call-edit-fail', isError: true })
+              yield* editToolStream({ callId: 'call-edit-retry' })
+            })(),
+          ),
+      }),
+    }))
+
+    const { createProject, getProject } = await import('./lib/project-store.ts')
+    const project = await createProject()
+    createdProjectIds.push(project.id)
+    const { streamLandingAgent } = await import('./route.ts')
+    const response = new FakeResponse()
+
+    await streamLandingAgent({
+      projectId: project.id,
+      prompt: 'Build it.',
+      request: fakeRequest(),
+      response: response as unknown as ServerResponse,
+      textModel: 'z-ai/glm-5.2',
+    })
+
+    const events = parseSseEvents(response.body)
+    // The second edit must produce a tool_call event in the running/done path,
+    // not abort the run. There must be NO fatal 'error' event from a
+    // read-before-retry guard (the only error may be the NO_GENERATED_HTML
+    // completion guard, which is absent here because html_update fires).
+    const editCalls = events.filter(
+      (event) => event.event === 'tool_call' && event.data?.tool === 'edit',
+    )
+    expect(editCalls.length).toBeGreaterThanOrEqual(3) // fail + retry start + retry done
+    const fatalErrors = events.filter(
+      (event) =>
+        event.event === 'error' &&
+        typeof event.data?.message === 'string' &&
+        /do not guess|blind edit attempts/i.test(event.data.message),
+    )
+    expect(fatalErrors).toEqual([])
+  })
+
   it('does not emit html_update when successful edits leave HTML unchanged', async () => {
     vi.stubEnv('OPENROUTER_API_KEY', 'test-openrouter-key')
 

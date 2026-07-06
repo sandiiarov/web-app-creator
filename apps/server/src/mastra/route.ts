@@ -38,8 +38,6 @@ const ATTACHMENT_OCR_PROMPT =
   'Analyze the attached image for landing-page generation. Extract all visible text exactly, then describe layout, hierarchy, colors, typography, UI components, imagery, brand cues, and any details the landing-page agent should use. If the image is a screenshot or mockup, call out sections, navigation, CTAs, spacing, and visual style.'
 const MAX_EDIT_FAILURES = 10
 const MAX_STEPS = 30
-const READ_BEFORE_RETRY_MESSAGE =
-  'Edit failed because the requested range or content did not match the current project HTML. Read or find current anchors before retrying; do not guess.'
 const REPEATED_EDIT_FAILURE_MESSAGE = `Edit failed ${MAX_EDIT_FAILURES} times in this turn. Stopping so the agent does not keep making blind edit attempts. Read/find the current project HTML and try again.`
 const INVALID_EDIT_RESULT_MESSAGE =
   'Edit failed because the model did not provide a valid edits array. Retry with edit({ intent, edits: [{ operation, range, text }] }).'
@@ -239,9 +237,8 @@ export async function streamLandingAgent({
   let scrapeOcrCalls = 0
   let scrapeOcrCostUsd = 0
   let scrapeOcrImages = 0
-  // Prevent repeated blind edit attempts after exact-text failures.
+  // Stop repeated blind edit attempts after MAX_EDIT_FAILURES consecutive failures.
   let editFailures = 0
-  let editRequiresInspection = false
   let fatalRunError: null | string = null
   let terminalToolResult: string | undefined
   // Captured from `stream.messageList` after the run so the real assistant +
@@ -344,26 +341,6 @@ export async function streamLandingAgent({
           )
           callIntent.set(chunk.payload.toolCallId, display.intent)
 
-          if (chunk.payload.toolName === 'edit' && editRequiresInspection) {
-            const toolPayload: RecordedToolPayload = {
-              detail: display.detail,
-              id: display.id,
-              intent: display.intent,
-              providerId: chunk.payload.toolCallId,
-              result: READ_BEFORE_RETRY_MESSAGE,
-              state: 'error',
-              tool: chunk.payload.toolName,
-            }
-            recordToolCall(recordedTurn, toolPayload)
-            completedCallIds.add(chunk.payload.toolCallId)
-            fatalRunError = READ_BEFORE_RETRY_MESSAGE
-            recordTurnError(recordedTurn, fatalRunError)
-            sendSse(response, 'tool_call', toolPayload)
-            sendSse(response, 'error', { message: fatalRunError })
-            controller.abort()
-            break streamLoop
-          }
-
           const toolPayload: RecordedToolPayload = {
             detail: display.detail,
             id: display.id,
@@ -384,26 +361,6 @@ export async function streamLandingAgent({
             chunk.payload.toolCallId,
             chunk.payload.toolName,
           )
-
-          if (chunk.payload.toolName === 'edit' && editRequiresInspection) {
-            const toolPayload: RecordedToolPayload = {
-              detail: display.detail,
-              id: display.id,
-              intent: display.intent,
-              providerId: chunk.payload.toolCallId,
-              result: READ_BEFORE_RETRY_MESSAGE,
-              state: 'error',
-              tool: chunk.payload.toolName,
-            }
-            recordToolCall(recordedTurn, toolPayload)
-            completedCallIds.add(chunk.payload.toolCallId)
-            fatalRunError = READ_BEFORE_RETRY_MESSAGE
-            recordTurnError(recordedTurn, fatalRunError)
-            sendSse(response, 'tool_call', toolPayload)
-            sendSse(response, 'error', { message: fatalRunError })
-            controller.abort()
-            break streamLoop
-          }
 
           const toolPayload: RecordedToolPayload = {
             detail: display.detail,
@@ -442,7 +399,6 @@ export async function streamLandingAgent({
           completedCallIds.add(chunk.payload.toolCallId)
           if (chunk.payload.toolName === 'edit') {
             editFailures += 1
-            editRequiresInspection = true
             if (editFailures >= MAX_EDIT_FAILURES) {
               fatalRunError = REPEATED_EDIT_FAILURE_MESSAGE
               recordTurnError(recordedTurn, fatalRunError)
@@ -487,17 +443,9 @@ export async function streamLandingAgent({
           recordToolCall(recordedTurn, toolPayload)
           sendSse(response, 'tool_call', toolPayload)
           completedCallIds.add(chunk.payload.toolCallId)
-          if (
-            (chunk.payload.toolName === 'read' ||
-              chunk.payload.toolName === 'find') &&
-            !isError
-          ) {
-            editRequiresInspection = false
-          }
           if (chunk.payload.toolName === 'edit') {
             if (isError) {
               editFailures += 1
-              editRequiresInspection = true
               if (editFailures >= MAX_EDIT_FAILURES) {
                 fatalRunError = REPEATED_EDIT_FAILURE_MESSAGE
                 recordTurnError(recordedTurn, fatalRunError)
@@ -506,7 +454,6 @@ export async function streamLandingAgent({
                 break streamLoop
               }
             } else {
-              editRequiresInspection = false
               recordedTurn.htmlSwaps += 1
               const nextHtml = store.get()
               if (nextHtml !== lastHtmlUpdate) {
@@ -627,9 +574,9 @@ export async function streamLandingAgent({
       cachedInputTokens?: number
       inputTokens?: number
       outputTokens?: number
+      raw?: unknown
       reasoningTokens?: number
       totalTokens?: number
-      raw?: unknown
     } = {}
     let finishReason = 'stop'
     try {
