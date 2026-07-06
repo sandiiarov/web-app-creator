@@ -97,7 +97,6 @@ When the user requests a durable behavior change, record it here or in the relev
 ## Child DOX Index
 
 - `.agents/AGENTS.md` — project-local skill source files; `.pi/skills/*` symlinks point there.
-- `.firecrawl/AGENTS.md` — scraped external research snapshots and source evidence.
 - `.scratch/AGENTS.md` — disposable experiments and reference scaffolds.
 - `apps/AGENTS.md` — runnable app workspaces.
   - `apps/client/AGENTS.md` — Vite/React browser UI, custom SSE client, and direct iframe preview.
