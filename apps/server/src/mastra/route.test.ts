@@ -892,7 +892,7 @@ describe('streamLandingAgent html updates', () => {
       }),
     }))
 
-    const { createProject, getProject } = await import('./lib/project-store.ts')
+    const { createProject } = await import('./lib/project-store.ts')
     const project = await createProject()
     createdProjectIds.push(project.id)
     const { streamLandingAgent } = await import('./route.ts')
@@ -907,18 +907,31 @@ describe('streamLandingAgent html updates', () => {
     })
 
     const events = parseSseEvents(response.body)
+    const isToolCall = (
+      event: { data: unknown; event: string },
+    ): event is { data: { tool: string }; event: 'tool_call' } =>
+      event.event === 'tool_call' &&
+      !!event.data &&
+      typeof event.data === 'object' &&
+      'tool' in event.data
+    const isError = (
+      event: { data: unknown; event: string },
+    ): event is { data: { message: string }; event: 'error' } =>
+      event.event === 'error' &&
+      !!event.data &&
+      typeof event.data === 'object' &&
+      'message' in event.data
     // The second edit must produce a tool_call event in the running/done path,
     // not abort the run. There must be NO fatal 'error' event from a
     // read-before-retry guard (the only error may be the NO_GENERATED_HTML
     // completion guard, which is absent here because html_update fires).
     const editCalls = events.filter(
-      (event) => event.event === 'tool_call' && event.data?.tool === 'edit',
+      (event) => isToolCall(event) && event.data?.tool === 'edit',
     )
     expect(editCalls.length).toBeGreaterThanOrEqual(3) // fail + retry start + retry done
     const fatalErrors = events.filter(
       (event) =>
-        event.event === 'error' &&
-        typeof event.data?.message === 'string' &&
+        isError(event) &&
         /do not guess|blind edit attempts/i.test(event.data.message),
     )
     expect(fatalErrors).toEqual([])
