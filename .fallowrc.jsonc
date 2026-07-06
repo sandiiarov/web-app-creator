@@ -1,17 +1,10 @@
 {
   "$schema": "https://raw.githubusercontent.com/fallow-rs/fallow/main/schema.json",
-  "entry": [
-    "**/oxfmt.config.ts",
-    "apps/server/sandbox/config/oxlint.config.ts",
-    "apps/server/sandbox/runner/run-agent.mjs"
-  ],
-  "ignoreUnresolvedImports": ["./src/main.tsx"],
+  "entry": ["**/oxfmt.config.ts"],
   "ignoreDependencies": [
     "@workspace/typescript-config",
-    "bippy",
     "eslint-plugin-perfectionist",
     "eslint-plugin-react-refresh",
-    "lucide-react",
     "oxlint-tailwindcss"
   ]
 }

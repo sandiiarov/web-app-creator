@@ -24,7 +24,6 @@
     "@workspace/landing-preview": "workspace:*",
     "@workspace/prompt-panel": "workspace:*",
     "@workspace/ui": "workspace:*",
-    "bippy": "catalog:",
     "lucide-react": "catalog:",
     "react": "catalog:",
     "react-dom": "catalog:",
