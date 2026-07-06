@@ -656,14 +656,14 @@ describe('streamLandingAgent edit fan-out', () => {
                   args: {
                     edits: [
                       {
+                        code: '<h1>Hi</h1>',
+                        from: 'a2',
                         intent: 'Rewrite headline',
-                        operation: 'replace',
-                        range: ['a2'],
                       },
                       {
+                        code: '<p>There</p>',
+                        from: 'a3',
                         intent: 'Rewrite paragraph',
-                        operation: 'replace',
-                        range: ['a3'],
                       },
                     ],
                   },
@@ -677,14 +677,14 @@ describe('streamLandingAgent edit fan-out', () => {
                   args: {
                     edits: [
                       {
+                        code: '<h1>Hi</h1>',
+                        from: 'a2',
                         intent: 'Rewrite headline',
-                        operation: 'replace',
-                        range: ['a2'],
                       },
                       {
+                        code: '<p>There</p>',
+                        from: 'a3',
                         intent: 'Rewrite paragraph',
-                        operation: 'replace',
-                        range: ['a3'],
                       },
                     ],
                   },
@@ -770,9 +770,8 @@ describe('streamLandingAgent edit fan-out', () => {
                   args: {
                     edits: [
                       {
+                        code: '<title>X</title>',
                         intent: 'Set the page title',
-                        operation: 'replace',
-                        range: [],
                       },
                     ],
                   },
@@ -786,9 +785,8 @@ describe('streamLandingAgent edit fan-out', () => {
                   args: {
                     edits: [
                       {
+                        code: '<title>X</title>',
                         intent: 'Set the page title',
-                        operation: 'replace',
-                        range: [],
                       },
                     ],
                   },
@@ -1646,9 +1644,9 @@ describe('streamLandingAgent raw mastra message persistence', () => {
             args: {
               edits: [
                 {
+                  code: '<h1>New</h1>',
+                  from: 'a2',
                   intent: 'Rewrite hero',
-                  operation: 'replace',
-                  range: ['a2'],
                 },
               ],
             },
@@ -1762,9 +1760,9 @@ describe('streamLandingAgent raw mastra message persistence', () => {
               args: {
                 edits: [
                   {
+                    code: '<h1>New</h1>',
+                    from: 'a2',
                     intent: 'Rewrite hero',
-                    operation: 'replace',
-                    range: ['a2'],
                   },
                 ],
               },
@@ -1869,9 +1867,9 @@ async function* editToolStream({
       args: {
         edits: [
           {
+            code: '<h1>Hi</h1>',
+            from: 'a2',
             intent: 'Update hero copy',
-            operation: 'replace',
-            range: ['a2'],
           },
         ],
       },
@@ -1886,9 +1884,9 @@ async function* editToolStream({
       args: {
         edits: [
           {
+            code: '<h1>Hi</h1>',
+            from: 'a2',
             intent: 'Update hero copy',
-            operation: 'replace',
-            range: ['a2'],
           },
         ],
       },

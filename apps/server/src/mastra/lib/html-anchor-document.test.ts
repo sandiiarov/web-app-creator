@@ -82,16 +82,15 @@ describe('html-anchor-document', () => {
     )
     const result = applyAnchorEdits(document, [
       {
+        code: '  <h1>Hi</h1>',
+        from: 'a2',
         intent: 'edit-1',
-        operation: 'replace',
-        range: ['a2'],
-        text: '  <h1>Hi</h1>',
       },
       {
+        code: '  <a href="#cta">Start</a>\n',
+        from: 'a3',
+        insert: 'after',
         intent: 'edit-2',
-        operation: 'insert_after',
-        range: ['a3'],
-        text: '  <a href="#cta">Start</a>\n',
       },
     ])
 
@@ -122,10 +121,8 @@ describe('html-anchor-document', () => {
     const document = createHtmlDocumentFromString('<main>Old</main>\n')
     const result = applyAnchorEdits(document, [
       {
+        code: '<!doctype html>\n<html></html>',
         intent: 'edit-3',
-        operation: 'replace',
-        range: [],
-        text: '<!doctype html>\n<html></html>',
       },
     ])
 
@@ -151,20 +148,20 @@ describe('html-anchor-document', () => {
 
     expect(() =>
       applyAnchorEdits(document, [
-        { intent: 'edit-1', operation: 'replace', range: ['missing'], text: '<h1>Hi</h1>' },
+        { code: '<h1>Hi</h1>', from: 'missing', intent: 'edit-1' },
       ]),
     ).toThrow('missing anchor')
 
     expect(() =>
       applyAnchorEdits(document, [
-        { intent: 'edit-2', operation: 'replace', range: ['a1', 'a3'], text: '<main>new</main>' },
-        { intent: 'edit-3', operation: 'delete', range: ['a2'] },
+        { code: '<main>new</main>', from: 'a1', intent: 'edit-2', to: 'a3' },
+        { from: 'a2', intent: 'edit-3' },
       ]),
     ).toThrow('overlap')
 
     expect(() =>
       applyAnchorEdits(document, [
-        { intent: 'edit-4', operation: 'replace', range: ['a2'], text: '  <h1>Hello</h1>' },
+        { code: '  <h1>Hello</h1>', from: 'a2', intent: 'edit-4' },
       ]),
     ).toThrow('No changes made')
 
@@ -200,7 +197,7 @@ describe('html-anchor-document', () => {
     ).toThrow('duplicate anchor')
   })
 
-  it('validates read ranges and edit operations', () => {
+  it('validates read ranges and edit inputs', () => {
     const document = createHtmlDocumentFromString(
       '<main>\n  <h1>Hello</h1>\n  <p>World</p>\n</main>',
     )
@@ -216,19 +213,30 @@ describe('html-anchor-document', () => {
     ).toThrow('end anchor must not come before start anchor')
     expect(() =>
       applyAnchorEdits(document, [
-        { intent: 'edit-5', operation: 'move' as never, range: ['a1'], text: 'x' },
+        { code: 'x', from: 'a1', insert: 'middle' as never, intent: 'edit-5' },
       ]),
-    ).toThrow('operation is not supported')
+    ).toThrow('insert must be')
+    expect(() =>
+      applyAnchorEdits(document, [{ intent: 'edit-6' }]),
+    ).toThrow('from is required for a delete')
     expect(() =>
       applyAnchorEdits(document, [
-        { intent: 'edit-6', operation: 'delete', range: [], text: '' },
+        { code: 'x', from: 'a1', insert: 'after', intent: 'edit-8', to: 'a2' },
       ]),
-    ).toThrow('range cannot be [] for delete')
-    expect(() =>
-      applyAnchorEdits(document, [
-        { intent: 'edit-7', operation: 'replace', range: ['a3', 'a1'], text: 'x' },
-      ]),
-    ).toThrow('end anchor must not come before start anchor')
+    ).toThrow('to is not allowed with insert')
+  })
+
+  it('accepts reversed from/to (order-insensitive)', () => {
+    const document = createHtmlDocumentFromString(
+      '<main>\n  <h1>Hello</h1>\n  <p>World</p>\n</main>',
+    )
+    const result = applyAnchorEdits(document, [
+      { code: '<section>new</section>', from: 'a3', intent: 'edit-7', to: 'a1' },
+    ])
+    // a1..a3 span <main>+h1+p; reversed endpoints resolve by position.
+    expect(renderHtmlDocument(result.document)).toBe(
+      '<section>new</section>\n</main>',
+    )
   })
 
   it('returns per-edit result slices for a non-adjacent multi-edit batch', () => {
@@ -238,16 +246,14 @@ describe('html-anchor-document', () => {
 
     const result = applyAnchorEdits(document, [
       {
+        code: '  <h1>Hi</h1>',
+        from: 'a2',
         intent: 'Rewrite headline',
-        operation: 'replace',
-        range: ['a2'],
-        text: '  <h1>Hi</h1>',
       },
       {
+        code: '  <p>There</p>',
+        from: 'a3',
         intent: 'Rewrite paragraph',
-        operation: 'replace',
-        range: ['a3'],
-        text: '  <p>There</p>',
       },
     ])
 
@@ -277,7 +283,7 @@ describe('html-anchor-document', () => {
     )
 
     const result = applyAnchorEdits(document, [
-      { intent: 'Delete heading', operation: 'delete', range: ['a2'] },
+      { from: 'a2', intent: 'Delete heading' },
     ])
 
     expect(result.edits).toHaveLength(1)

@@ -3,34 +3,40 @@ import { z } from 'zod'
 
 import {
   applyAnchorEdits,
-  type AnchorRange,
   type ApplyAnchorEdit,
 } from '../lib/html-anchor-document.ts'
 import type { HtmlStore } from '../lib/html-store.ts'
 
-const anchorRangeSchema = z
-  .array(z.string())
-  .max(2)
-  .describe(
-    'Anchor range: [], [anchor], or [startAnchor, endAnchor]. Ranges are inclusive.',
-  )
-
 const anchorEditSchema = z.object({
+  code: z
+    .string()
+    .optional()
+    .describe(
+      'HTML to write into the from/to region (replace) or at the insert point. Omit to delete the from/to region. Required for insert and for whole-document replace.',
+    ),
+  from: z
+    .string()
+    .optional()
+    .describe(
+      'Start anchor (inclusive). Omit for whole-document replace, or (with insert) for the document start/end boundary.',
+    ),
+  insert: z
+    .enum(['after', 'before'])
+    .optional()
+    .describe(
+      'Set to insert code instead of replacing: "before"/"after" the from anchor (or document start/end when from is omitted). Omit to replace or delete the from/to region.',
+    ),
   intent: z
     .string()
     .describe(
       'Short reason for THIS edit, shown to the user, e.g. "swap hero headline to benefit-driven copy". Each edit in the batch has its own intent.',
     ),
-  operation: z
-    .enum(['replace', 'delete', 'insert_before', 'insert_after'])
-    .describe('Edit operation to apply to the anchor range'),
-  range: anchorRangeSchema.describe(
-    'Anchor range: [], [anchor], or [startAnchor, endAnchor]. Ranges are inclusive. [] means whole document for replace, document start for insert_before, and document end for insert_after.',
-  ),
-  text: z
+  to: z
     .string()
     .optional()
-    .describe('Text for replace/insert operations. Omit for delete.'),
+    .describe(
+      'End anchor (inclusive). Omit to target only the from line. Order-insensitive: from/to are resolved by document position, so reversed endpoints are fine.',
+    ),
 })
 
 const editInputSchema = z.object({
@@ -38,7 +44,7 @@ const editInputSchema = z.object({
     .array(anchorEditSchema)
     .min(1)
     .describe(
-      'One or more anchor-range edits. All ranges resolve against the original document and apply atomically. Each edit carries its own intent so the user sees one reason per change.',
+      'One or more edits. All from/to anchors resolve against the original document and apply atomically. Each edit carries its own intent so the user sees one reason per change.',
     ),
 })
 
@@ -52,7 +58,7 @@ const editInputSchema = z.object({
 export function createEditTool(store: HtmlStore) {
   return createTool({
     description:
-      'Edit the project HTML using anchor ranges from read/find. Use edits: [{ intent, operation, range, text }]. Each edit carries its own intent (shown to the user as the reason for that change). Supported operations: replace, delete, insert_before, insert_after. Ranges are [], [anchor], or [startAnchor, endAnchor] and are inclusive; [] means whole document for replace, document start for insert_before, and document end for insert_after. Combine related non-overlapping changes in one call. The preview updates automatically after a successful edit. The result is concise metadata, not the full file.',
+      'Edit the project HTML using anchors from read/find. Each edit is { intent, from?, to?, code?, insert? }. Discriminate by field presence: omit from/to and give code to replace the whole document (initial page); give from (and optional to) plus code to replace a region, or omit code to delete it; set insert to "before"/"after" to insert code relative to from (or the document start/end when from is omitted). from/to are order-insensitive (resolved by document position). Each edit carries its own intent shown to the user. Combine related non-overlapping edits in one call. The preview updates automatically after a successful edit. The result is concise metadata, not the full file.',
     execute: async ({ edits }) => {
       const result = applyAnchorEdits(store.getDocument(), toAnchorEdits(edits))
       const bytes = store.setDocument(result.document)
@@ -95,11 +101,8 @@ export function createEditTool(store: HtmlStore) {
   })
 }
 
-function toAnchorEdits(edits: z.infer<typeof editInputSchema>['edits']) {
-  return edits.map(
-    (edit): ApplyAnchorEdit => ({
-      ...edit,
-      range: edit.range as AnchorRange,
-    }),
-  )
+function toAnchorEdits(
+  edits: z.infer<typeof editInputSchema>['edits'],
+): ApplyAnchorEdit[] {
+  return edits.map((edit) => ({ ...edit }))
 }

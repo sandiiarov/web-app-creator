@@ -5,14 +5,21 @@ import { createHtmlStore } from '../lib/html-store.ts'
 import { createEditTool } from './edit.ts'
 
 describe('createEditTool', () => {
-  it('emits OpenRouter-compatible JSON schema for empty anchor ranges', () => {
+  it('emits an OpenRouter-compatible JSON schema for from/to/code/insert edits', () => {
     const tool = createEditTool(createHtmlStore())
     const schemaText = JSON.stringify(
       z.toJSONSchema(tool.inputSchema as z.ZodType),
     )
 
-    expect(schemaText).toContain('"maxItems":2')
+    // Named optional fields, not a positional range array.
+    expect(schemaText).toContain('"from"')
+    expect(schemaText).toContain('"to"')
+    expect(schemaText).toContain('"code"')
+    expect(schemaText).toContain('"insert"')
+    expect(schemaText).toContain('"enum":["after","before"]')
+    expect(schemaText).toContain('"required":["intent"]')
     expect(schemaText).not.toContain('"items":[]')
+    expect(schemaText).not.toContain('"maxItems"')
   })
 
   it('applies anchor-range edits and returns metadata without full HTML', async () => {
@@ -23,10 +30,9 @@ describe('createEditTool', () => {
       {
         edits: [
           {
+            code: '  <h1>Hi</h1>',
+            from: 'a2',
             intent: 'Update hero heading',
-            operation: 'replace',
-            range: ['a2'],
-            text: '  <h1>Hi</h1>',
           },
         ],
       },
@@ -63,16 +69,15 @@ describe('createEditTool', () => {
       {
         edits: [
           {
+            code: '  <h1>Hi</h1>',
+            from: 'a2',
             intent: 'Update hero copy',
-            operation: 'replace',
-            range: ['a2'],
-            text: '  <h1>Hi</h1>',
           },
           {
+            code: '  <a href="#cta">Start</a>',
+            from: 'a3',
+            insert: 'after',
             intent: 'Insert CTA',
-            operation: 'insert_after',
-            range: ['a3'],
-            text: '  <a href="#cta">Start</a>',
           },
         ],
       },
@@ -99,10 +104,8 @@ describe('createEditTool', () => {
       {
         edits: [
           {
+            code: '<!doctype html>\n<html></html>',
             intent: 'Replace full document',
-            operation: 'replace',
-            range: [],
-            text: '<!doctype html>\n<html></html>',
           },
         ],
       },
@@ -121,10 +124,9 @@ describe('createEditTool', () => {
         {
           edits: [
             {
+              code: '  <h1>Hi</h1>',
+              from: 'missing',
               intent: 'Try stale edit',
-              operation: 'replace',
-              range: ['missing'],
-              text: '  <h1>Hi</h1>',
             },
           ],
         },

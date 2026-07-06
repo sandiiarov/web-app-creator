@@ -40,7 +40,7 @@ const MAX_EDIT_FAILURES = 10
 const MAX_STEPS = 30
 const REPEATED_EDIT_FAILURE_MESSAGE = `Edit failed ${MAX_EDIT_FAILURES} times in this turn. Stopping so the agent does not keep making blind edit attempts. Read/find the current project HTML and try again.`
 const INVALID_EDIT_RESULT_MESSAGE =
-  'Edit failed because the model did not provide a valid edits array. Retry with edit({ intent, edits: [{ operation, range, text }] }).'
+  'Edit failed because the model did not provide a valid edits array. Retry with edit({ edits: [{ intent, from?, to?, code?, insert? }] }).'
 const NO_GENERATED_HTML_MESSAGE =
   'Agent finished without generating project HTML. The draft still has no content because no successful edit changed the page.'
 const SCREENSHOT_UNAVAILABLE_REASON =

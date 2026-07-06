@@ -16,10 +16,9 @@ describe('createHtmlStore', () => {
 
     const result = applyAnchorEdits(store.getDocument(), [
       {
+        code: '  <h1>Hi</h1>',
+        from: 'a2',
         intent: 'edit',
-        operation: 'replace',
-        range: ['a2'],
-        text: '  <h1>Hi</h1>',
       },
     ])
 

@@ -8,10 +8,11 @@ export type AnchorRange =
   | [startAnchor: string]
 
 export interface ApplyAnchorEdit {
+  code?: string
+  from?: string
+  insert?: 'after' | 'before'
   intent: string
-  operation: HtmlAnchorEditOperation
-  range: AnchorRange
-  text?: string
+  to?: string
 }
 
 export interface ApplyAnchorEditsResult {
@@ -430,66 +431,93 @@ function compileAnchorEdit(
   edit: ApplyAnchorEdit,
   editIndex: number,
 ): CompiledEdit {
-  if (!isKnownOperation(edit.operation)) {
-    throw new Error(`edits[${editIndex}].operation is not supported.`)
+  const insertMode = edit.insert
+  if (
+    insertMode !== undefined &&
+    insertMode !== 'after' &&
+    insertMode !== 'before'
+  ) {
+    throw new Error(`edits[${editIndex}].insert must be 'before' or 'after'.`)
   }
-  if (!Array.isArray(edit.range) || edit.range.length > 2) {
-    throw new Error(
-      `edits[${editIndex}].range must be [], [anchor], or [startAnchor, endAnchor].`,
-    )
-  }
-  if (edit.operation === 'delete') {
-    if (edit.range.length === 0) {
-      throw new Error(`edits[${editIndex}].range cannot be [] for delete.`)
+
+  // Insertion: `code` required, `from` optional (anchor reference), `to` not
+  // allowed (an insertion is point-relative to `from`).
+  if (insertMode) {
+    if (edit.to !== undefined) {
+      throw new Error(
+        `edits[${editIndex}].to is not allowed with insert; insert is relative to from.`,
+      )
     }
-    return {
-      ...resolveMutationRange(document, edit.range, editIndex),
+    if (typeof edit.code !== 'string') {
+      throw new Error(`edits[${editIndex}].code is required for insert.`)
+    }
+    const lines = splitEditText(edit.code)
+    const position = resolveInsertionPosition(
+      document,
+      edit.from,
+      insertMode,
       editIndex,
-      insertPosition: -1,
-      kind: 'mutate',
-      lines: [],
-      operation: edit.operation,
+    )
+    return {
+      editIndex,
+      endExclusive: position,
+      insertPosition: position,
+      kind: 'insert',
+      lines,
+      operation: insertMode === 'before' ? 'insert_before' : 'insert_after',
+      startIndex: position,
     }
   }
 
-  if (typeof edit.text !== 'string') {
-    throw new Error(
-      `edits[${editIndex}].text is required for ${edit.operation}.`,
-    )
-  }
-
-  const lines = splitEditText(edit.text)
-  if (edit.operation === 'replace') {
-    const range =
-      edit.range.length === 0
-        ? { endExclusive: document.lines.length, startIndex: 0 }
-        : resolveMutationRange(document, edit.range, editIndex)
+  // Replace / delete of region [from, to]. No `from` => whole-document replace.
+  if (edit.from === undefined) {
+    if (typeof edit.code !== 'string') {
+      throw new Error(
+        `edits[${editIndex}].from is required for a delete; a whole-document edit needs code.`,
+      )
+    }
+    const lines = splitEditText(edit.code)
     return {
-      ...range,
       editIndex,
+      endExclusive: document.lines.length,
       insertPosition: -1,
       kind: 'mutate',
       lines,
-      operation: edit.operation,
-      rangeIsWholeDocument: edit.range.length === 0,
-      sourceText: edit.text,
+      operation: 'replace',
+      rangeIsWholeDocument: true,
+      sourceText: edit.code,
+      startIndex: 0,
     }
   }
 
-  const position = resolveInsertionPosition(
+  const { endExclusive, startIndex } = resolveMutationRange(
     document,
-    edit.range,
-    edit.operation,
+    edit.from,
+    edit.to,
     editIndex,
   )
+  if (typeof edit.code !== 'string') {
+    return {
+      editIndex,
+      endExclusive,
+      insertPosition: -1,
+      kind: 'mutate',
+      lines: [],
+      operation: 'delete',
+      startIndex,
+    }
+  }
+  const lines = splitEditText(edit.code)
   return {
     editIndex,
-    endExclusive: position,
-    insertPosition: position,
-    kind: 'insert',
+    endExclusive,
+    insertPosition: -1,
+    kind: 'mutate',
     lines,
-    operation: edit.operation,
-    startIndex: position,
+    operation: 'replace',
+    rangeIsWholeDocument: false,
+    sourceText: edit.code,
+    startIndex,
   }
 }
 
@@ -670,17 +698,6 @@ function getPerEditResults(
   })
 }
 
-function isKnownOperation(
-  operation: string,
-): operation is HtmlAnchorEditOperation {
-  return (
-    operation === 'delete' ||
-    operation === 'insert_after' ||
-    operation === 'insert_before' ||
-    operation === 'replace'
-  )
-}
-
 function normalizeLineEndings(text: string): string {
   return text.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
 }
@@ -689,13 +706,14 @@ function resolveAnchorIndex(
   document: HtmlDocumentJsonV1,
   anchor: string,
   editIndex?: number,
+  field = 'range',
 ): number {
   const index = document.lines.findIndex(
     ([lineAnchor]) => lineAnchor === anchor,
   )
   if (index === -1) {
     const prefix =
-      editIndex === undefined ? 'range' : `edits[${editIndex}].range`
+      editIndex === undefined ? field : `edits[${editIndex}].${field}`
     throw new Error(`${prefix} references missing anchor ${anchor}.`)
   }
   return index
@@ -703,41 +721,33 @@ function resolveAnchorIndex(
 
 function resolveInsertionPosition(
   document: HtmlDocumentJsonV1,
-  range: AnchorRange,
-  operation: 'insert_after' | 'insert_before',
+  from: string | undefined,
+  insertMode: 'after' | 'before',
   editIndex: number,
 ): number {
-  if (range.length === 0) {
-    return operation === 'insert_before' ? 0 : document.lines.length
+  if (from === undefined) {
+    return insertMode === 'before' ? 0 : document.lines.length
   }
 
-  const resolved = resolveMutationRange(document, range, editIndex)
-  return operation === 'insert_before'
-    ? resolved.startIndex
-    : resolved.endExclusive
+  const resolved = resolveMutationRange(document, from, undefined, editIndex)
+  return insertMode === 'before' ? resolved.startIndex : resolved.endExclusive
 }
 
 function resolveMutationRange(
   document: HtmlDocumentJsonV1,
-  range: AnchorRange,
+  from: string,
+  to: string | undefined,
   editIndex: number,
 ): { endExclusive: number; startIndex: number } {
-  if (range.length === 0) {
-    throw new Error(
-      `edits[${editIndex}].range cannot be [] for this operation.`,
-    )
-  }
-  const startIndex = resolveAnchorIndex(document, range[0], editIndex)
-  const endIndex =
-    range.length === 1
-      ? startIndex
-      : resolveAnchorIndex(document, range[1], editIndex)
-  if (endIndex < startIndex) {
-    throw new Error(
-      `edits[${editIndex}].range end anchor must not come before start anchor.`,
-    )
-  }
-  return { endExclusive: endIndex + 1, startIndex }
+  const fromIndex = resolveAnchorIndex(document, from, editIndex, 'from')
+  const toIndex =
+    to === undefined
+      ? fromIndex
+      : resolveAnchorIndex(document, to, editIndex, 'to')
+  // Order-insensitive: resolve by document position so reversed endpoints work.
+  const startIndex = Math.min(fromIndex, toIndex)
+  const endExclusive = Math.max(fromIndex, toIndex) + 1
+  return { endExclusive, startIndex }
 }
 
 function resolveOffsetRange(
