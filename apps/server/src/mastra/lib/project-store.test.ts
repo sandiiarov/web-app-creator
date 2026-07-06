@@ -14,6 +14,9 @@ import {
   getProject,
   listProjects,
   readProjectImage,
+  readProjectRawMessages,
+  saveProjectMessageTurn,
+  saveProjectRawMessages,
   setTitleIfUntitled,
   updateProjectModel,
   type ProjectMessageTurn,
@@ -126,6 +129,67 @@ describe('project message storage', () => {
       id: project.id,
       messages: [turn],
     })
+  })
+
+  it('upserts a project message turn by id for incremental checkpoints', async () => {
+    const project = await createProject()
+    createdProjectIds.push(project.id)
+    const turn = messageTurn(project.id)
+
+    await saveProjectMessageTurn(project.id, turn)
+    await expect(getProject(project.id)).resolves.toMatchObject({
+      messages: [turn],
+    })
+
+    const finalized: ProjectMessageTurn = {
+      ...turn,
+      isStreaming: false,
+      parts: [...turn.parts, { id: 'text-final', text: 'Done.', type: 'text' }],
+    }
+    await saveProjectMessageTurn(project.id, finalized)
+
+    const saved = await getProject(project.id)
+    expect(saved?.messages).toHaveLength(1)
+    expect(saved?.messages[0]).toMatchObject({
+      id: turn.id,
+      isStreaming: false,
+    })
+    expect(saved?.messages[0]?.parts).toContainEqual(
+      expect.objectContaining({ id: 'text-final', type: 'text' }),
+    )
+  })
+
+  it('upserts raw mastra messages by turn id and keeps them out of the client payload', async () => {
+    const project = await createProject()
+    createdProjectIds.push(project.id)
+    const turn = messageTurn(project.id)
+    const rawAssistant = {
+      content: { format: 2, parts: [{ text: 'Done.', type: 'text' }] },
+      id: 'mastra-1',
+      role: 'assistant',
+    }
+
+    await saveProjectRawMessages(project.id, turn.id, [rawAssistant])
+    await expect(readProjectRawMessages(project.id)).resolves.toEqual([
+      { messages: [rawAssistant], turnId: turn.id },
+    ])
+
+    // The client-facing project read must NOT carry raw messages (large,
+    // server-only replay data).
+    await expect(getProject(project.id)).resolves.not.toHaveProperty(
+      'rawMessages',
+    )
+
+    // Upsert by turn id replaces in place without duplicating.
+    const rawFinal = {
+      content: { format: 2, parts: [{ text: 'Final.', type: 'text' }] },
+      id: 'mastra-1',
+      role: 'assistant',
+    }
+    await saveProjectRawMessages(project.id, turn.id, [rawFinal])
+    await expect(readProjectRawMessages(project.id)).resolves.toEqual([
+      { messages: [rawFinal], turnId: turn.id },
+    ])
   })
 
   it('falls back to empty message history when messages.json is missing', async () => {

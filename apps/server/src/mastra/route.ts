@@ -2,6 +2,8 @@ import { Buffer } from 'node:buffer'
 import { createHash, randomUUID } from 'node:crypto'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 
+import type { MastraDBMessage } from '@mastra/core/agent/message-list'
+
 import { config } from '../config.ts'
 import { createLandingPageAgent } from './agents/landing-page-agent.ts'
 import { mastra } from './index.ts'
@@ -15,15 +17,18 @@ import {
 } from './lib/cost.ts'
 import { ocrImageInputs, type ImageOcrResult } from './lib/image-ocr.ts'
 import {
-  appendProjectMessageTurn,
+  saveProjectMessageTurn,
   createProjectHtmlStore,
   getProject,
+  readProjectRawMessages,
+  saveProjectRawMessages,
   setTitleIfUntitled,
   updateProjectModel,
   type ProjectMessageAttachment,
   type ProjectMessageStatsPart,
   type ProjectMessageToolCallPart,
   type ProjectMessageTurn,
+  type ProjectRawMessage,
 } from './lib/project-store.ts'
 import { createLandingAgentErrorProcessors } from './lib/retry.ts'
 import { sendSse, startSse } from './lib/sse.ts'
@@ -39,6 +44,8 @@ const INVALID_EDIT_RESULT_MESSAGE =
   'Edit failed because the model did not provide a valid edits array. Retry with edit({ intent, edits: [{ operation, range, text }] }).'
 const NO_GENERATED_HTML_MESSAGE =
   'Agent finished without generating project HTML. The draft still has no content because no successful edit changed the page.'
+const SCREENSHOT_UNAVAILABLE_REASON =
+  'No browser client captured the previous screenshot request (timed out). Skip the screenshot tool and review by reading the project HTML instead.'
 
 export type AgentAttachmentInput =
   | AgentElementAttachmentInput
@@ -61,6 +68,14 @@ export interface AgentImageAttachmentInput extends ProjectMessageAttachment {
 type AgentConversationMessage =
   | { content: string; role: 'assistant' }
   | { content: string; role: 'user' }
+
+/**
+ * Items fed back to `agent.stream` for history replay. Either a reconstructed
+ * `{content, role}` message (user prompt text) or a verbatim persisted
+ * `MastraDBMessage` carrying the real assistant text, tool calls, and tool
+ * results from a prior turn.
+ */
+type AgentReplayMessage = AgentConversationMessage | MastraDBMessage
 
 interface AttachmentAnalysis {
   contextBlock: string
@@ -141,17 +156,36 @@ export async function streamLandingAgent({
     textModel,
     attachments.map(stripAttachmentData),
   )
+  // Serialize incremental message checkpoints so a crash mid-run still leaves a
+  // recoverable streaming turn on disk. The finalized turn (same id) replaces
+  // the streaming checkpoints via `saveProjectMessageTurn`'s upsert-by-id.
+  let writeChain: Promise<unknown> = Promise.resolve()
+  const checkpointTurn = (turn: ProjectMessageTurn = recordedTurn) => {
+    writeChain = writeChain
+      .then(() => saveProjectMessageTurn(projectId, turn))
+      .catch((error) => {
+        console.error('Failed to checkpoint project message turn', error)
+      })
+    return writeChain
+  }
   const startedAt = Date.now()
   const store = createProjectHtmlStore(projectId)
   let lastHtmlUpdate = store.get()
   let htmlUpdateSequence = 0
   const baseUrl = `http://${request.headers.host ?? `localhost:${config.port}`}`
+  // Memoize screenshot timeouts: once a request times out (no browser client
+  // captured it), fail subsequent screenshot calls fast with an actionable
+  // reason instead of waiting through the full timeout on every retry.
+  let screenshotUnavailable = false
   const agent = createLandingPageAgent(
     store,
     mastra,
     baseUrl,
     textModel,
     async ({ selector, timeoutMs, viewportSize }) => {
+      if (screenshotUnavailable) {
+        throw new Error(SCREENSHOT_UNAVAILABLE_REASON)
+      }
       const { promise, requestId } = createPendingBrowserScreenshot({
         timeoutMs,
       })
@@ -161,7 +195,14 @@ export async function streamLandingAgent({
         selector,
         viewportSize,
       })
-      return await promise
+      try {
+        return await promise
+      } catch (error) {
+        const reason =
+          error instanceof Error ? error.message : String(error)
+        if (reason.includes('timed out')) screenshotUnavailable = true
+        throw error
+      }
     },
     { imageModel, visionModel },
   )
@@ -202,8 +243,17 @@ export async function streamLandingAgent({
   let editRequiresInspection = false
   let fatalRunError: null | string = null
   let terminalToolResult: string | undefined
+  // Captured from `stream.messageList` after the run so the real assistant +
+  // tool messages can be persisted for faithful history replay. Declared
+  // outside `try` so the `finally` block can persist whatever was captured
+  // (undefined when the stream never completed a full response).
+  let rawResponseMessages: MastraDBMessage[] | undefined
 
   try {
+    // Persist the streaming turn (prompt + isStreaming) before any work so a
+    // crash during attachment analysis or the agent run still leaves the prompt
+    // and any later checkpoints recoverable on disk.
+    await checkpointTurn()
     const attachmentAnalysis = await analyzePromptAttachments({
       attachments,
       nextToolSeq: () => ++toolCallSeq,
@@ -216,17 +266,34 @@ export async function streamLandingAgent({
       visionCostUsd += attachmentAnalysis.cost
       if (attachmentAnalysis.ok) visionCalls += 1
     }
+    checkpointTurn()
 
     const agentPrompt = attachmentAnalysis.contextBlock
       ? `${prompt}\n\n${attachmentAnalysis.contextBlock}`
       : prompt
-    const agentMessages = buildAgentMessages(project.messages, agentPrompt)
+    // Replay the real prior conversation (raw Mastra messages) when available
+    // so the model sees previous tool calls and tool results, not a prose
+    // paraphrase. `readProjectRawMessages` returns [] on a fresh project.
+    const rawByTurnId = new Map(
+      (await readProjectRawMessages(projectId)).map((entry) => [
+        entry.turnId,
+        entry.messages as MastraDBMessage[],
+      ]),
+    )
+    const agentMessages = buildAgentMessages(
+      project.messages,
+      rawByTurnId,
+      agentPrompt,
+    )
 
     const stream = await agent.stream(agentMessages, {
       abortSignal: controller.signal,
       errorProcessors: createLandingAgentErrorProcessors(
         config.agentRetry,
-        (event) => sendSse(response, 'retry', event),
+        (event) => {
+          sendSse(response, 'retry', event)
+          checkpointTurn()
+        },
       ),
       includeRawChunks: true,
       maxProcessorRetries: config.agentRetry.streamErrorMaxRetries,
@@ -246,6 +313,7 @@ export async function streamLandingAgent({
               : String(chunk.payload.error)
           recordTurnError(recordedTurn, message)
           sendSse(response, 'error', { message })
+          checkpointTurn()
           break
         }
         case 'raw': {
@@ -450,6 +518,7 @@ export async function streamLandingAgent({
                 })
                 sendSse(response, 'html_update', htmlUpdate)
                 lastHtmlUpdate = nextHtml
+                checkpointTurn()
               }
             }
           }
@@ -538,65 +607,86 @@ export async function streamLandingAgent({
       }
     }
 
-    if (!fatalRunError) {
-      const usage = await stream.usage
-      const llmCost = calculateLlmCost(textModel, {
+    // Always account for cost and capture raw response messages, even on a
+    // fatal/aborted run, so the user sees what a run actually spent and the
+    // partial response is recoverable for history replay. `stream.usage`/
+    // `finishReason` may reject on an aborted stream; fall back so accounting
+    // (image/scrape/vision cost accumulated during the loop) still records.
+    let usage: {
+      cachedInputTokens?: number
+      inputTokens?: number
+      outputTokens?: number
+      reasoningTokens?: number
+      totalTokens?: number
+      raw?: unknown
+    } = {}
+    let finishReason = 'stop'
+    try {
+      usage = await stream.usage
+      finishReason = (await stream.finishReason) ?? 'stop'
+    } catch {
+      finishReason = 'stop'
+    }
+    const llmCost = calculateLlmCost(textModel, {
+      cachedInputTokens: usage.cachedInputTokens,
+      inputTokens: usage.inputTokens,
+      outputTokens: usage.outputTokens,
+      raw: llmProviderCostUsd > 0 ? llmProviderCostUsd : usage.raw,
+      reasoningTokens: usage.reasoningTokens,
+      totalTokens: usage.totalTokens,
+    })
+    const firecrawlCostUsd = firecrawlCost(
+      scrapeCredits,
+      config.firecrawl.creditUsd,
+    )
+    const scrapeCostUsd = firecrawlCostUsd + scrapeOcrCostUsd
+    const totalCost = llmCost + scrapeCostUsd + imageCostUsd + visionCostUsd
+
+    const statsPayload: RecordedStatsPayload = {
+      cost: totalCost,
+      costBreakdown: {
+        image: {
+          cost: imageCostUsd,
+          count: imageCount,
+        },
+        llm: llmCost,
+        scrape: {
+          calls: scrapeCalls,
+          cost: scrapeCostUsd,
+          credits: scrapeCredits,
+          firecrawlCost: firecrawlCostUsd,
+          ocrCalls: scrapeOcrCalls,
+          ocrCost: scrapeOcrCostUsd,
+          ocrImages: scrapeOcrImages,
+        },
+        total: totalCost,
+        vision: {
+          calls: visionCalls,
+          cost: visionCostUsd,
+          images: visionImages,
+        },
+      },
+      durationMs: Date.now() - startedAt,
+      finishReason,
+      model: textModel,
+      usage: {
         cachedInputTokens: usage.cachedInputTokens,
         inputTokens: usage.inputTokens,
         outputTokens: usage.outputTokens,
-        raw: llmProviderCostUsd > 0 ? llmProviderCostUsd : usage.raw,
         reasoningTokens: usage.reasoningTokens,
         totalTokens: usage.totalTokens,
-      })
-      const firecrawlCostUsd = firecrawlCost(
-        scrapeCredits,
-        config.firecrawl.creditUsd,
-      )
-      const scrapeCostUsd = firecrawlCostUsd + scrapeOcrCostUsd
-      const totalCost = llmCost + scrapeCostUsd + imageCostUsd + visionCostUsd
+      },
+    }
+    recordStats(recordedTurn, statsPayload)
+    sendSse(response, 'stats', statsPayload)
 
-      const statsPayload: RecordedStatsPayload = {
-        cost: totalCost,
-        costBreakdown: {
-          image: {
-            cost: imageCostUsd,
-            count: imageCount,
-          },
-          llm: llmCost,
-          scrape: {
-            calls: scrapeCalls,
-            cost: scrapeCostUsd,
-            credits: scrapeCredits,
-            firecrawlCost: firecrawlCostUsd,
-            ocrCalls: scrapeOcrCalls,
-            ocrCost: scrapeOcrCostUsd,
-            ocrImages: scrapeOcrImages,
-          },
-          total: totalCost,
-          vision: {
-            calls: visionCalls,
-            cost: visionCostUsd,
-            images: visionImages,
-          },
-        },
-        durationMs: Date.now() - startedAt,
-        finishReason: (await stream.finishReason) ?? 'stop',
-        model: textModel,
-        usage: {
-          cachedInputTokens: usage.cachedInputTokens,
-          inputTokens: usage.inputTokens,
-          outputTokens: usage.outputTokens,
-          reasoningTokens: usage.reasoningTokens,
-          totalTokens: usage.totalTokens,
-        },
-      }
-      recordStats(recordedTurn, statsPayload)
-      sendSse(response, 'stats', statsPayload)
+    rawResponseMessages = captureResponseMessages(stream)
 
-      if (!project.hasHtml && htmlUpdateSequence === 0) {
-        recordTurnError(recordedTurn, NO_GENERATED_HTML_MESSAGE)
-        sendSse(response, 'error', { message: NO_GENERATED_HTML_MESSAGE })
-      }
+    // The empty-draft guard is a real completion error, not an accounting
+    // concern, so it only fires when the run was not already fatal.
+    if (!fatalRunError && !project.hasHtml && htmlUpdateSequence === 0) {
+      recordTurnError(recordedTurn, NO_GENERATED_HTML_MESSAGE)
+      sendSse(response, 'error', { message: NO_GENERATED_HTML_MESSAGE })
     }
   } catch (error) {
     const aborted = controller.signal.aborted
@@ -615,13 +705,19 @@ export async function streamLandingAgent({
     }
   } finally {
     request.off('close', onClose)
-    try {
-      await appendProjectMessageTurn(
-        projectId,
-        finalizeRecordedTurn(recordedTurn, terminalToolResult),
-      )
-    } catch (error) {
-      console.error('Failed to persist project message history', error)
+    await checkpointTurn(
+      finalizeRecordedTurn(recordedTurn, terminalToolResult),
+    )
+    if (rawResponseMessages && rawResponseMessages.length > 0) {
+      try {
+        await saveProjectRawMessages(
+          projectId,
+          recordedTurn.id,
+          rawResponseMessages as ProjectRawMessage[],
+        )
+      } catch (error) {
+        console.error('Failed to persist raw mastra messages', error)
+      }
     }
     sendSse(response, 'done', {})
     response.end()
@@ -743,16 +839,27 @@ function booleanValue(value: unknown): boolean | undefined {
 
 function buildAgentMessages(
   history: ProjectMessageTurn[],
+  rawByTurnId: ReadonlyMap<string, MastraDBMessage[]>,
   currentPrompt: string,
-): AgentConversationMessage[] {
+): AgentReplayMessage[] {
   return [
     ...history.flatMap((turn) => {
-      const messages: AgentConversationMessage[] = []
+      const messages: AgentReplayMessage[] = []
       const userContent = buildHistoryUserContent(turn)
       if (userContent) messages.push({ content: userContent, role: 'user' })
-      const assistantContent = buildHistoryAssistantContent(turn)
-      if (assistantContent) {
-        messages.push({ content: assistantContent, role: 'assistant' })
+
+      // Prefer the raw Mastra messages recorded for this turn (the real
+      // assistant text + tool calls + tool results) over a lossy prose
+      // reconstruction. Falls back when no raw messages were captured (e.g.
+      // legacy turns from before raw persistence, or a failed/aborted turn).
+      const rawMessages = rawByTurnId.get(turn.id)
+      if (rawMessages && rawMessages.length > 0) {
+        messages.push(...rawMessages)
+      } else {
+        const assistantContent = buildHistoryAssistantContent(turn)
+        if (assistantContent) {
+          messages.push({ content: assistantContent, role: 'assistant' })
+        }
       }
       return messages
     }),
@@ -818,6 +925,29 @@ function buildHistoryUserContent(turn: ProjectMessageTurn): null | string {
     attachmentLines.length > 0 ? 'Attachments:' : null,
     ...attachmentLines,
   ])
+}
+
+/**
+ * Defensive accessor for the response portion of a Mastra stream's message
+ * list — the real assistant text, tool calls, and tool results generated this
+ * turn. Returns `undefined` when the accessor is absent (e.g. the test fake
+ * stream) or throws, so persistence is best-effort and never breaks a run.
+ */
+function captureResponseMessages(stream: {
+  messageList?: {
+    get?: {
+      response?: {
+        db?: () => MastraDBMessage[]
+      }
+    }
+  }
+}): MastraDBMessage[] | undefined {
+  try {
+    const messages = stream.messageList?.get?.response?.db?.()
+    return messages && messages.length > 0 ? messages : undefined
+  } catch {
+    return undefined
+  }
 }
 
 function compactLines(lines: Array<null | string | undefined>): null | string {

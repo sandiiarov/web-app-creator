@@ -288,6 +288,80 @@ describe('streamLandingAgent error handling', () => {
       messages: [expect.objectContaining({ error: 'model exploded' })],
     })
   })
+
+  it('records cost/stats and raw messages even when a fatal error aborts the run', async () => {
+    vi.stubEnv('OPENROUTER_API_KEY', 'test-openrouter-key')
+
+    const ASSISTANT_RAW = {
+      content: {
+        format: 2,
+        parts: [{ text: 'partial.', type: 'text' }],
+      },
+      id: 'mastra-partial-1',
+      role: 'assistant',
+    }
+    vi.doMock('./index.ts', () => ({ mastra: {} }))
+    vi.doMock('./agents/landing-page-agent.ts', () => ({
+      createLandingPageAgent: () => ({
+        stream: async () =>
+          fakeAgentStream(
+            editToolStream({ isError: true }),
+            undefined,
+            {
+              messageList: {
+                get: { response: { db: () => [ASSISTANT_RAW] } },
+              },
+            },
+          ),
+      }),
+    }))
+
+    const {
+      createProject,
+      getProject,
+      readProjectRawMessages,
+    } = await import('./lib/project-store.ts')
+    const project = await createProject()
+    createdProjectIds.push(project.id)
+    const { streamLandingAgent } = await import('./route.ts')
+    const response = new FakeResponse()
+
+    await streamLandingAgent({
+      projectId: project.id,
+      prompt: 'Build it.',
+      request: fakeRequest(),
+      response: response as unknown as ServerResponse,
+      textModel: 'z-ai/glm-5.2',
+    })
+
+    const events = parseSseEvents(response.body)
+    // A stats event is still emitted despite the failed edit run.
+    expect(events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          data: expect.objectContaining({
+            cost: expect.any(Number),
+            costBreakdown: expect.any(Object),
+            model: 'z-ai/glm-5.2',
+          }),
+          event: 'stats',
+        }),
+      ]),
+    )
+    const saved = await getProject(project.id)
+    // The persisted failed turn carries a stats part.
+    expect(saved?.messages[0]?.parts).toContainEqual(
+      expect.objectContaining({ type: 'stats' }),
+    )
+    // Raw response messages are captured even though the run did not complete
+    // a clean success path.
+    await expect(readProjectRawMessages(project.id)).resolves.toEqual([
+      {
+        messages: [ASSISTANT_RAW],
+        turnId: expect.stringMatching(/^turn-/),
+      },
+    ])
+  })
 })
 
 describe('streamLandingAgent cost accounting', () => {
@@ -1006,6 +1080,249 @@ describe('streamLandingAgent screenshots', () => {
   })
 })
 
+describe('streamLandingAgent message persistence', () => {
+  it('persists a streaming turn before the agent stream starts', async () => {
+    vi.stubEnv('OPENROUTER_API_KEY', 'test-openrouter-key')
+
+    let capturedProjectId = ''
+    let midRunMessages: Array<{
+      isStreaming?: boolean
+      prompt?: string
+    }> = []
+    vi.doMock('./index.ts', () => ({ mastra: {} }))
+    vi.doMock('./agents/landing-page-agent.ts', () => ({
+      createLandingPageAgent: () => ({
+        stream: async () => {
+          const { getProject } = await import('./lib/project-store.ts')
+          const project = await getProject(capturedProjectId)
+          midRunMessages = (project?.messages ?? []).map((turn) => ({
+            isStreaming: turn.isStreaming,
+            prompt: turn.prompt,
+          }))
+          return fakeAgentStream()
+        },
+      }),
+    }))
+
+    const { createProject } = await import('./lib/project-store.ts')
+    const project = await createProject()
+    createdProjectIds.push(project.id)
+    capturedProjectId = project.id
+    const { streamLandingAgent } = await import('./route.ts')
+    const response = new FakeResponse()
+
+    await streamLandingAgent({
+      projectId: project.id,
+      prompt: 'Build something.',
+      request: fakeRequest(),
+      response: response as unknown as ServerResponse,
+      textModel: 'z-ai/glm-5.2',
+    })
+
+    expect(midRunMessages).toEqual([
+      { isStreaming: true, prompt: 'Build something.' },
+    ])
+
+    const { getProject } = await import('./lib/project-store.ts')
+    const saved = await getProject(project.id)
+    // The finalized turn replaces the streaming checkpoint (upsert by id), so
+    // the project ends with exactly one turn, no longer streaming.
+    expect(saved?.messages).toHaveLength(1)
+    expect(saved?.messages[0]).toMatchObject({
+      isStreaming: false,
+      prompt: 'Build something.',
+    })
+  })
+})
+
+describe('streamLandingAgent screenshot availability', () => {
+  it('fails subsequent screenshots fast after a timeout with no browser client', async () => {
+    vi.stubEnv('OPENROUTER_API_KEY', 'test-openrouter-key')
+
+    const createPending = vi.fn<
+      () => {
+        promise: Promise<{
+          dataUrl: string
+          height: number
+          mediaType: 'image/jpeg'
+          width: number
+        }>
+        requestId: string
+      }
+    >(() => ({
+      promise: Promise.reject(
+        new Error('Browser screenshot response timed out.'),
+      ),
+      requestId: '00000000-0000-0000-0000-000000000002',
+    }))
+    const screenshotResults: string[] = []
+
+    vi.doMock('./index.ts', () => ({ mastra: {} }))
+    vi.doMock('./lib/browser-screenshot.ts', () => ({
+      createPendingBrowserScreenshot: createPending,
+    }))
+    vi.doMock('./agents/landing-page-agent.ts', () => ({
+      createLandingPageAgent: (
+        _store: unknown,
+        _mastra: unknown,
+        _baseUrl: string,
+        _textModel: string,
+        requestScreenshot: (input: {
+          selector: string
+          timeoutMs: number
+          viewportSize: 'desktop' | 'mobile' | 'tablet'
+        }) => Promise<unknown>,
+      ) => ({
+        stream: async () => {
+          for (const selector of ['#a', '#b']) {
+            try {
+              await requestScreenshot({
+                selector,
+                timeoutMs: 25_000,
+                viewportSize: 'desktop',
+              })
+              screenshotResults.push('ok')
+            } catch (error) {
+              screenshotResults.push(
+                error instanceof Error ? error.message : String(error),
+              )
+            }
+          }
+          return fakeAgentStream()
+        },
+      }),
+    }))
+
+    const { createProject } = await import('./lib/project-store.ts')
+    const project = await createProject()
+    createdProjectIds.push(project.id)
+    const { streamLandingAgent } = await import('./route.ts')
+    const response = new FakeResponse()
+
+    await streamLandingAgent({
+      projectId: project.id,
+      prompt: 'Review the rendered result.',
+      request: fakeRequest(),
+      response: response as unknown as ServerResponse,
+      textModel: 'z-ai/glm-5.2',
+    })
+
+    // The first screenshot creates a pending request and times out; the second
+    // is rejected fast (no new pending request) with an actionable reason.
+    expect(createPending).toHaveBeenCalledTimes(1)
+    expect(screenshotResults[0]).toBe('Browser screenshot response timed out.')
+    expect(screenshotResults[1]).toMatch(
+      /No browser client captured the previous screenshot/i,
+    )
+  })
+})
+
+describe('streamLandingAgent raw mastra message persistence', () => {
+  const ASSISTANT_RAW = {
+    content: {
+      format: 2,
+      parts: [
+        { text: 'I edited the hero.', type: 'text' },
+        {
+          toolInvocation: {
+            args: { intent: 'Rewrite hero' },
+            state: 'result',
+            toolCallId: 'call-edit-raw-1',
+            toolName: 'edit',
+          },
+          type: 'tool-invocation',
+        },
+      ],
+    },
+    id: 'mastra-assistant-1',
+    role: 'assistant',
+  }
+  const TOOL_RAW = {
+    content: { format: 2, parts: [{ type: 'tool-result' }] },
+    id: 'mastra-tool-1',
+    role: 'assistant',
+  }
+
+  it('captures response messages after the run and replays them on the next turn', async () => {
+    vi.stubEnv('OPENROUTER_API_KEY', 'test-openrouter-key')
+
+    let capturedReplay: unknown[] = []
+    let runCount = 0
+    vi.doMock('./index.ts', () => ({ mastra: {} }))
+    vi.doMock('./agents/landing-page-agent.ts', () => ({
+      createLandingPageAgent: () => ({
+        stream: async (messages: unknown[]) => {
+          runCount += 1
+          capturedReplay = messages
+          return fakeAgentStream(undefined, undefined, {
+            messageList: {
+              get: {
+                response: {
+                  db: () =>
+                    runCount === 1 ? [ASSISTANT_RAW, TOOL_RAW] : [],
+                },
+              },
+            },
+          })
+        },
+      }),
+    }))
+
+    const { createProject } = await import('./lib/project-store.ts')
+    const project = await createProject()
+    createdProjectIds.push(project.id)
+    const { streamLandingAgent } = await import('./route.ts')
+
+    // First turn: produces the page; raw response messages are captured.
+    await streamLandingAgent({
+      projectId: project.id,
+      prompt: 'Build the page.',
+      request: fakeRequest(),
+      response: new FakeResponse() as unknown as ServerResponse,
+      textModel: 'z-ai/glm-5.2',
+    })
+
+    const { readProjectRawMessages } = await import(
+      './lib/project-store.ts'
+    )
+    await expect(readProjectRawMessages(project.id)).resolves.toEqual([
+      {
+        messages: [ASSISTANT_RAW, TOOL_RAW],
+        turnId: expect.stringMatching(/^turn-/),
+      },
+    ])
+
+    // Second turn: the prior raw assistant + tool messages must be fed back
+    // verbatim so the model sees what it actually called and got back.
+    await streamLandingAgent({
+      projectId: project.id,
+      prompt: 'Tighten the hero.',
+      request: fakeRequest(),
+      response: new FakeResponse() as unknown as ServerResponse,
+      textModel: 'z-ai/glm-5.2',
+    })
+
+    expect(capturedReplay).toEqual(
+      expect.arrayContaining([ASSISTANT_RAW, TOOL_RAW]),
+    )
+    // The lossy prose reconstruction must NOT appear once raw messages exist.
+    const replayStrings = capturedReplay.filter(
+      (message): message is { content: string; role: string } =>
+        !!message &&
+        typeof message === 'object' &&
+        typeof (message as { content?: unknown }).content === 'string',
+    )
+    expect(replayStrings.some((message) => /Tool read done|Result:/.test(message.content))).toBe(
+      false,
+    )
+    // The current prompt is still the final user message.
+    expect(capturedReplay.at(-1)).toMatchObject({
+      content: 'Tighten the hero.',
+      role: 'user',
+    })
+  })
+})
+
 class FakeResponse {
   readonly chunks: string[] = []
   headersSent = false
@@ -1084,11 +1401,13 @@ function fakeAgentStream(
     outputTokens: 0,
     totalTokens: 0,
   },
+  extras: Record<string, unknown> = {},
 ) {
   return {
     finishReason: Promise.resolve('stop'),
     fullStream,
     usage: Promise.resolve(usage),
+    ...extras,
   }
 }
 

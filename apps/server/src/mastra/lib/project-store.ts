@@ -42,7 +42,15 @@ const HTML_JSON = 'html.json'
 const INDEX_HTML = 'index.html'
 const PROJECT_JSON = 'project.json'
 const MESSAGES_JSON = 'messages.json'
+const RAW_MESSAGES_JSON = 'raw-messages.json'
 const IMAGES_DIR = 'images'
+
+/**
+ * Opaque raw Mastra message JSON (`MastraDBMessage`-shaped) persisted per turn
+ * for faithful history replay. Stored apart from `messages.json` (the UI turn)
+ * because raw tool args/results can be large and the browser never needs them —
+ * only the server-side agent replay path reads them.
+ */
 
 export interface Project extends ProjectMeta {
   indexHtml: string
@@ -124,6 +132,18 @@ export interface ProjectMeta {
   model: string
   title: string
   updatedAt: string
+}
+
+/**
+ * Opaque raw Mastra message JSON (`MastraDBMessage`-shaped) persisted per turn
+ * for faithful history replay. Stored apart from `messages.json` (the UI turn)
+ * because raw tool args/results can be large and the browser never needs them —
+ * only the server-side agent replay path reads them.
+ */
+export type ProjectRawMessage = unknown
+export interface ProjectRawTurnMessages {
+  messages: ProjectRawMessage[]
+  turnId: string
 }
 
 // ── async CRUD (HTTP handlers) ───────────────────────────────────
@@ -249,7 +269,75 @@ export async function readProjectImage(
   }
 }
 
+/**
+ * Read raw Mastra messages recorded per turn, for faithful agent history
+ * replay. Returns an empty array when the file is missing or malformed. The
+ * server-only replay path looks entries up by `turnId`.
+ */
+export async function readProjectRawMessages(
+  id: string,
+): Promise<ProjectRawTurnMessages[]> {
+  try {
+    const raw = await readFile(join(projectDir(id), RAW_MESSAGES_JSON), 'utf8')
+    const parsed = JSON.parse(raw)
+    if (!Array.isArray(parsed)) return []
+    return parsed.filter(isProjectRawTurnMessages)
+  } catch {
+    return []
+  }
+}
+
 // ── agent-facing project HTML store (sync, write-through) ─────────
+
+/**
+ * Upsert a project conversation turn by id: replace an existing turn with the
+ * same id (incremental streaming checkpoints) or append it (first write of a
+ * new turn). The route writes a streaming turn at run start, rewrites it at
+ * meaningful checkpoints (html_update, retry, error), and replaces it with the
+ * finalized turn at completion — all keyed by the stable turn id. This keeps a
+ * crash mid-run from losing the whole turn: the last successful checkpoint
+ * survives on disk instead of the run being all-or-nothing.
+ */
+export async function saveProjectMessageTurn(
+  id: string,
+  turn: ProjectMessageTurn,
+): Promise<ProjectMessageTurn[]> {
+  const messages = await readMessages(id)
+  const index = messages.findIndex((entry) => entry.id === turn.id)
+  const next =
+    index === -1
+      ? [...messages, turn]
+      : messages.map((entry, i) => (i === index ? turn : entry))
+  await writeMessages(id, next)
+  return next
+}
+
+/**
+ * Upsert raw Mastra messages for a turn by `turnId`. Called once at run
+ * completion with the captured response messages (`MastraDBMessage[]`) so the
+ * next turn's history replay sees the real assistant text, tool calls, and
+ * tool results instead of a lossy prose reconstruction.
+ */
+export async function saveProjectRawMessages(
+  id: string,
+  turnId: string,
+  messages: ProjectRawMessage[],
+): Promise<ProjectRawTurnMessages[]> {
+  const existing = await readProjectRawMessages(id)
+  const index = existing.findIndex((entry) => entry.turnId === turnId)
+  const entry: ProjectRawTurnMessages = { messages, turnId }
+  const next =
+    index === -1
+      ? [...existing, entry]
+      : existing.map((value, i) => (i === index ? entry : value))
+  await ensureProjectDir(id)
+  await writeFile(
+    join(projectDir(id), RAW_MESSAGES_JSON),
+    JSON.stringify(next, null, 2),
+    'utf8',
+  )
+  return next
+}
 
 /** Set the title from the prompt if it is still the default. Sync, server-side. */
 export function setTitleIfUntitled(id: string, title: string): void {
@@ -307,6 +395,14 @@ async function ensureProjectsRoot() {
 }
 
 // ── sync fs helpers ──────────────────────────────────────────────
+
+function isProjectRawTurnMessages(value: unknown): value is ProjectRawTurnMessages {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false
+  const data = value as Record<string, unknown>
+  return (
+    typeof data.turnId === 'string' && Array.isArray(data.messages)
+  )
+}
 
 function isSafeImageName(name: string): boolean {
   return (
