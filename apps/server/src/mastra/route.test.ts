@@ -1447,7 +1447,15 @@ describe('streamLandingAgent raw mastra message persistence', () => {
         { text: 'I edited the hero.', type: 'text' },
         {
           toolInvocation: {
-            args: { intent: 'Rewrite hero' },
+            args: {
+              edits: [
+                {
+                  intent: 'Rewrite hero',
+                  operation: 'replace',
+                  range: ['a2'],
+                },
+              ],
+            },
             state: 'result',
             toolCallId: 'call-edit-raw-1',
             toolName: 'edit',
@@ -1555,7 +1563,15 @@ describe('streamLandingAgent raw mastra message persistence', () => {
           { text: 'I edited the hero.', type: 'text' },
           {
             toolInvocation: {
-              args: { intent: 'Rewrite hero' },
+              args: {
+                edits: [
+                  {
+                    intent: 'Rewrite hero',
+                    operation: 'replace',
+                    range: ['a2'],
+                  },
+                ],
+              },
               state: 'result',
               toolCallId: 'call-edit-rr',
               toolName: 'edit',
@@ -1654,7 +1670,15 @@ async function* editToolStream({
 }) {
   yield {
     payload: {
-      args: { intent: 'Update hero copy' },
+      args: {
+        edits: [
+          {
+            intent: 'Update hero copy',
+            operation: 'replace',
+            range: ['a2'],
+          },
+        ],
+      },
       toolCallId: callId,
       toolName: 'edit',
     },
@@ -1663,7 +1687,15 @@ async function* editToolStream({
   mutate?.()
   yield {
     payload: {
-      args: { intent: 'Update hero copy' },
+      args: {
+        edits: [
+          {
+            intent: 'Update hero copy',
+            operation: 'replace',
+            range: ['a2'],
+          },
+        ],
+      },
       isError,
       result: hasResultOverride
         ? result

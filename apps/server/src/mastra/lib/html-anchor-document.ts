@@ -8,6 +8,7 @@ export type AnchorRange =
   | [startAnchor: string]
 
 export interface ApplyAnchorEdit {
+  intent: string
   operation: HtmlAnchorEditOperation
   range: AnchorRange
   text?: string

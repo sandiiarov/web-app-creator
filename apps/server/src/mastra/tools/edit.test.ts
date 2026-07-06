@@ -23,12 +23,12 @@ describe('createEditTool', () => {
       {
         edits: [
           {
+            intent: 'Update hero heading',
             operation: 'replace',
             range: ['a2'],
             text: '  <h1>Hi</h1>',
           },
         ],
-        intent: 'Update hero heading',
       },
       undefined as never,
     )
@@ -63,17 +63,18 @@ describe('createEditTool', () => {
       {
         edits: [
           {
+            intent: 'Update hero copy',
             operation: 'replace',
             range: ['a2'],
             text: '  <h1>Hi</h1>',
           },
           {
+            intent: 'Insert CTA',
             operation: 'insert_after',
             range: ['a3'],
             text: '  <a href="#cta">Start</a>',
           },
         ],
-        intent: 'Update hero copy and CTA',
       },
       undefined as never,
     )
@@ -98,12 +99,12 @@ describe('createEditTool', () => {
       {
         edits: [
           {
+            intent: 'Replace full document',
             operation: 'replace',
             range: [],
             text: '<!doctype html>\n<html></html>',
           },
         ],
-        intent: 'Replace full document',
       },
       undefined as never,
     )
@@ -120,12 +121,12 @@ describe('createEditTool', () => {
         {
           edits: [
             {
+              intent: 'Try stale edit',
               operation: 'replace',
               range: ['missing'],
               text: '  <h1>Hi</h1>',
             },
           ],
-          intent: 'Try stale edit',
         },
         undefined as never,
       ),

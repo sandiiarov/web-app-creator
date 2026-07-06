@@ -15,7 +15,12 @@ describe('createHtmlStore', () => {
     ])
 
     const result = applyAnchorEdits(store.getDocument(), [
-      { operation: 'replace', range: ['a2'], text: '  <h1>Hi</h1>' },
+      {
+        intent: 'edit',
+        operation: 'replace',
+        range: ['a2'],
+        text: '  <h1>Hi</h1>',
+      },
     ])
 
     expect(store.setDocument(result.document)).toBe(

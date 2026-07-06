@@ -82,11 +82,13 @@ describe('html-anchor-document', () => {
     )
     const result = applyAnchorEdits(document, [
       {
+        intent: 'edit-1',
         operation: 'replace',
         range: ['a2'],
         text: '  <h1>Hi</h1>',
       },
       {
+        intent: 'edit-2',
         operation: 'insert_after',
         range: ['a3'],
         text: '  <a href="#cta">Start</a>\n',
@@ -120,6 +122,7 @@ describe('html-anchor-document', () => {
     const document = createHtmlDocumentFromString('<main>Old</main>\n')
     const result = applyAnchorEdits(document, [
       {
+        intent: 'edit-3',
         operation: 'replace',
         range: [],
         text: '<!doctype html>\n<html></html>',
@@ -148,20 +151,20 @@ describe('html-anchor-document', () => {
 
     expect(() =>
       applyAnchorEdits(document, [
-        { operation: 'replace', range: ['missing'], text: '<h1>Hi</h1>' },
+        { intent: 'edit-1', operation: 'replace', range: ['missing'], text: '<h1>Hi</h1>' },
       ]),
     ).toThrow('missing anchor')
 
     expect(() =>
       applyAnchorEdits(document, [
-        { operation: 'replace', range: ['a1', 'a3'], text: '<main>new</main>' },
-        { operation: 'delete', range: ['a2'] },
+        { intent: 'edit-2', operation: 'replace', range: ['a1', 'a3'], text: '<main>new</main>' },
+        { intent: 'edit-3', operation: 'delete', range: ['a2'] },
       ]),
     ).toThrow('overlap')
 
     expect(() =>
       applyAnchorEdits(document, [
-        { operation: 'replace', range: ['a2'], text: '  <h1>Hello</h1>' },
+        { intent: 'edit-4', operation: 'replace', range: ['a2'], text: '  <h1>Hello</h1>' },
       ]),
     ).toThrow('No changes made')
 
@@ -213,17 +216,17 @@ describe('html-anchor-document', () => {
     ).toThrow('end anchor must not come before start anchor')
     expect(() =>
       applyAnchorEdits(document, [
-        { operation: 'move' as never, range: ['a1'], text: 'x' },
+        { intent: 'edit-5', operation: 'move' as never, range: ['a1'], text: 'x' },
       ]),
     ).toThrow('operation is not supported')
     expect(() =>
       applyAnchorEdits(document, [
-        { operation: 'delete', range: [], text: '' },
+        { intent: 'edit-6', operation: 'delete', range: [], text: '' },
       ]),
     ).toThrow('range cannot be [] for delete')
     expect(() =>
       applyAnchorEdits(document, [
-        { operation: 'replace', range: ['a3', 'a1'], text: 'x' },
+        { intent: 'edit-7', operation: 'replace', range: ['a3', 'a1'], text: 'x' },
       ]),
     ).toThrow('end anchor must not come before start anchor')
   })
