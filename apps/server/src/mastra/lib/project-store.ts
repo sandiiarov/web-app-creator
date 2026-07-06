@@ -254,6 +254,7 @@ export async function listProjects(): Promise<ProjectMeta[]> {
 }
 
 /** Read a persisted project image. Returns bytes + content-type, or null. */
+/** Read a persisted project image. Returns bytes + content-type, or null. */
 export async function readProjectImage(
   id: string,
   file: string,
@@ -384,6 +385,22 @@ function copyAgentImageSync(
   mkdirSync(dir, { recursive: true })
   writeFileSync(join(dir, fileName), stored.buffer)
   return `/api/projects/${projectId}/images/${fileName}`
+}
+
+/**
+ * Persist a generated image to the project folder at generation time (independent
+ * of a later successful edit) so its bytes are durable even if the run never
+ * writes HTML. `ext` should include the leading dot (e.g. `.jpg`) or be empty
+ * to infer from the stored media type. Returns the durable project-relative
+ * URL, or null when the image id is no longer in the in-memory store (e.g.
+ * after a server restart).
+ */
+export function persistGeneratedImage(
+  projectId: string,
+  imgId: string,
+  ext = '',
+): null | string {
+  return copyAgentImageSync(projectId, imgId, ext)
 }
 
 async function ensureProjectDir(id: string) {

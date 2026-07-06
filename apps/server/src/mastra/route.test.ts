@@ -571,6 +571,76 @@ describe('streamLandingAgent stream mapping', () => {
   })
 })
 
+describe('streamLandingAgent generated image persistence', () => {
+  it('persists generated image bytes to the project folder on the tool result', async () => {
+    vi.stubEnv('OPENROUTER_API_KEY', 'test-openrouter-key')
+
+    const { saveImage } = await import('./lib/image-store.ts')
+    const imageId = saveImage(
+      Buffer.from([0xff, 0xd8, 0xff, 0x00]),
+      'image/jpeg',
+    )
+
+    vi.doMock('./index.ts', () => ({ mastra: {} }))
+    vi.doMock('./agents/landing-page-agent.ts', () => ({
+      createLandingPageAgent: () => ({
+        stream: async () =>
+          fakeAgentStream(
+            (async function* () {
+              yield {
+                payload: {
+                  args: { intent: 'Hero image', prompt: 'Studio shot' },
+                  toolCallId: 'call-img-persist',
+                  toolName: 'generate_image',
+                },
+                type: 'tool-call',
+              }
+              yield {
+                payload: {
+                  args: { intent: 'Hero image' },
+                  isError: false,
+                  result: {
+                    cost: 0.04,
+                    imagesGenerated: 1,
+                    ok: true,
+                    url: `http://localhost:3001/images/${imageId}.jpg`,
+                  },
+                  toolCallId: 'call-img-persist',
+                  toolName: 'generate_image',
+                },
+                type: 'tool-result',
+              }
+            })(),
+          ),
+      }),
+    }))
+
+    const {
+      createProject,
+      readProjectImage,
+    } = await import('./lib/project-store.ts')
+    const project = await createProject()
+    createdProjectIds.push(project.id)
+    const { streamLandingAgent } = await import('./route.ts')
+
+    await streamLandingAgent({
+      projectId: project.id,
+      prompt: 'Build it.',
+      request: fakeRequest(),
+      response: new FakeResponse() as unknown as ServerResponse,
+      textModel: 'z-ai/glm-5.2',
+    })
+
+    // Image bytes are durable on disk even though no edit followed.
+    await expect(
+      readProjectImage(project.id, `${imageId}.jpg`),
+    ).resolves.toEqual({
+      buffer: Buffer.from([0xff, 0xd8, 0xff, 0x00]),
+      mediaType: 'image/jpeg',
+    })
+  })
+})
+
 describe('streamLandingAgent retries', () => {
   it('emits retry events with issue, attempt, max attempts, and delay', async () => {
     vi.stubEnv('OPENROUTER_API_KEY', 'test-openrouter-key')

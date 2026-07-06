@@ -20,6 +20,7 @@ import {
   saveProjectMessageTurn,
   createProjectHtmlStore,
   getProject,
+  persistGeneratedImage,
   readProjectRawMessages,
   saveProjectRawMessages,
   setTitleIfUntitled,
@@ -563,10 +564,20 @@ export async function streamLandingAgent({
             const result = chunk.payload.result as {
               cost?: number
               imagesGenerated?: number
+              url?: null | string
             }
             if (typeof result.imagesGenerated === 'number') {
               imageCount += result.imagesGenerated
               imageCostUsd += imageGenCost(result.imagesGenerated, result.cost)
+            }
+            // Persist generated image bytes to the project folder at
+            // generation time so they are durable even if a later edit fails
+            // (the edit path otherwise never runs persistProjectImagesSync).
+            const imgUrl =
+              typeof result.url === 'string' ? result.url : null
+            const match = imgUrl?.match(/\/images\/(img-\d+)(\.[a-z0-9]+)?$/i)
+            if (match) {
+              persistGeneratedImage(projectId, match[1]!, match[2] ?? '')
             }
           }
           // Accumulate screenshot OCR usage from successful screenshot calls.

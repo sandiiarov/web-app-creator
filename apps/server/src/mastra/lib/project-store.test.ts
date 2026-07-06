@@ -13,6 +13,7 @@ import {
   deleteProject,
   getProject,
   listProjects,
+  persistGeneratedImage,
   readProjectImage,
   readProjectRawMessages,
   saveProjectMessageTurn,
@@ -398,6 +399,35 @@ describe('project message storage', () => {
       buffer: Buffer.from([0xff, 0xd8, 0xff, 0x00]),
       mediaType: 'image/jpeg',
     })
+  })
+
+  it('persists a generated image to the project folder independent of an edit', async () => {
+    const project = await createProject()
+    createdProjectIds.push(project.id)
+    const imageId = saveImage(
+      Buffer.from([0xff, 0xd8, 0xff, 0x00]),
+      'image/jpeg',
+    )
+
+    // Persist at generation time, with no edit/store write at all.
+    const url = persistGeneratedImage(project.id, imageId, '.jpg')
+
+    expect(url).toBe(`/api/projects/${project.id}/images/${imageId}.jpg`)
+    await expect(
+      readProjectImage(project.id, `${imageId}.jpg`),
+    ).resolves.toEqual({
+      buffer: Buffer.from([0xff, 0xd8, 0xff, 0x00]),
+      mediaType: 'image/jpeg',
+    })
+  })
+
+  it('returns null when persisting an unknown image id', async () => {
+    const project = await createProject()
+    createdProjectIds.push(project.id)
+
+    expect(persistGeneratedImage(project.id, 'img-does-not-exist', '.jpg')).toBe(
+      null,
+    )
   })
 })
 
