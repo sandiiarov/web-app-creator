@@ -21,7 +21,6 @@
     "typecheck": "tsgo --noEmit -p tsconfig.json"
   },
   "dependencies": {
-    "@streamdown/code": "catalog:",
     "@workspace/landing-preview": "workspace:*",
     "@workspace/prompt-panel": "workspace:*",
     "@workspace/ui": "workspace:*",
@@ -29,7 +28,6 @@
     "lucide-react": "catalog:",
     "react": "catalog:",
     "react-dom": "catalog:",
-    "react-hotkeys-hook": "catalog:",
     "react-router-dom": "catalog:",
     "streamdown": "catalog:"
   },

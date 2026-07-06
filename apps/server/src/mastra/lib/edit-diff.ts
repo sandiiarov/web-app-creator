@@ -5,11 +5,6 @@
  * and non-overlapping; a no-op replacement is an error.
  */
 
-export interface AppliedEditsResult {
-  baseContent: string
-  newContent: string
-}
-
 export interface Edit {
   newText: string
   oldText: string
@@ -56,18 +51,6 @@ interface TextReplacement {
 }
 
 /**
- * Apply a single edit to the raw store string. Handles BOM stripping + line
- * ending normalization while preserving the file's original BOM/line endings.
- */
-export function applyEdit(
-  currentHtml: string,
-  oldText: string,
-  newText: string,
-): string {
-  return applyEdits(currentHtml, [{ newText, oldText }])
-}
-
-/**
  * Apply one or more edits to the raw store string. All oldText matches are
  * resolved against the original document content, not incrementally.
  */
@@ -77,97 +60,6 @@ export function applyEdits(currentHtml: string, edits: Edit[]): string {
   const normalizedContent = normalizeToLF(text)
   const { newContent } = applyEditsToNormalizedContent(normalizedContent, edits)
   return bom + restoreLineEndings(newContent, originalEnding)
-}
-
-/**
- * Apply one or more exact-text replacements to LF-normalized content.
- * Throws on: empty oldText, not found, non-unique match, overlap, or no-op.
- */
-export function applyEditsToNormalizedContent(
-  normalizedContent: string,
-  edits: Edit[],
-): AppliedEditsResult {
-  const normalizedEdits = edits.map((edit) => ({
-    newText: normalizeToLF(edit.newText),
-    oldText: normalizeToLF(
-      stripCopiedLinePrefixes(edit.oldText) ?? edit.oldText,
-    ),
-  }))
-
-  for (let i = 0; i < normalizedEdits.length; i++) {
-    if (normalizedEdits[i]!.oldText.length === 0) {
-      throw getEmptyOldTextError(i, normalizedEdits.length)
-    }
-  }
-
-  const initialMatches = normalizedEdits.map((edit) =>
-    findBestMatchMode(normalizedContent, edit.oldText),
-  )
-  const matchMode = chooseMatchMode(initialMatches)
-  const replacementBaseContent = normalizeForMatchMode(
-    normalizedContent,
-    matchMode,
-  )
-
-  const matchedEdits: MatchedEdit[] = []
-  for (let i = 0; i < normalizedEdits.length; i++) {
-    const edit = normalizedEdits[i]!
-    const oldTextForMode = normalizeTextForMatchMode(edit.oldText, matchMode)
-    if (oldTextForMode.length === 0) {
-      throw getEmptyOldTextError(i, normalizedEdits.length)
-    }
-    const matchIndex = replacementBaseContent.indexOf(oldTextForMode)
-    if (matchIndex === -1) {
-      throw getNotFoundError(i, normalizedEdits.length)
-    }
-
-    const occurrences = countOccurrences(replacementBaseContent, oldTextForMode)
-    if (occurrences > 1) {
-      throw getDuplicateError(i, normalizedEdits.length, occurrences)
-    }
-
-    matchedEdits.push({
-      editIndex: i,
-      matchIndex,
-      matchLength: oldTextForMode.length,
-      newText:
-        matchMode === 'indent'
-          ? reindentReplacementForIndentMatch(
-              edit.newText,
-              normalizedContent,
-              replacementBaseContent,
-              matchIndex,
-            )
-          : edit.newText,
-    })
-  }
-
-  matchedEdits.sort((a, b) => a.matchIndex - b.matchIndex)
-  for (let i = 1; i < matchedEdits.length; i++) {
-    const previous = matchedEdits[i - 1]!
-    const current = matchedEdits[i]!
-    if (previous.matchIndex + previous.matchLength > current.matchIndex) {
-      throw new Error(
-        `edits[${previous.editIndex}] and edits[${current.editIndex}] overlap. Merge them into one edit or target disjoint regions.`,
-      )
-    }
-  }
-
-  const baseContent = normalizedContent
-  const newContent =
-    matchMode === 'exact'
-      ? applyReplacements(replacementBaseContent, matchedEdits)
-      : applyReplacementsPreservingUnchangedLines(
-          normalizedContent,
-          replacementBaseContent,
-          matchedEdits,
-        )
-
-  if (baseContent === newContent) {
-    throw getNoChangeError(normalizedEdits.length)
-  }
-
-  return { baseContent, newContent }
 }
 
 /** Count changed lines between old and new content (rough). */
@@ -327,6 +219,97 @@ export function stripBom(content: string): { bom: string; text: string } {
   return content.startsWith('\uFEFF')
     ? { bom: '\uFEFF', text: content.slice(1) }
     : { bom: '', text: content }
+}
+
+/**
+ * Apply one or more exact-text replacements to LF-normalized content.
+ * Throws on: empty oldText, not found, non-unique match, overlap, or no-op.
+ */
+function applyEditsToNormalizedContent(
+  normalizedContent: string,
+  edits: Edit[],
+): { baseContent: string; newContent: string } {
+  const normalizedEdits = edits.map((edit) => ({
+    newText: normalizeToLF(edit.newText),
+    oldText: normalizeToLF(
+      stripCopiedLinePrefixes(edit.oldText) ?? edit.oldText,
+    ),
+  }))
+
+  for (let i = 0; i < normalizedEdits.length; i++) {
+    if (normalizedEdits[i]!.oldText.length === 0) {
+      throw getEmptyOldTextError(i, normalizedEdits.length)
+    }
+  }
+
+  const initialMatches = normalizedEdits.map((edit) =>
+    findBestMatchMode(normalizedContent, edit.oldText),
+  )
+  const matchMode = chooseMatchMode(initialMatches)
+  const replacementBaseContent = normalizeForMatchMode(
+    normalizedContent,
+    matchMode,
+  )
+
+  const matchedEdits: MatchedEdit[] = []
+  for (let i = 0; i < normalizedEdits.length; i++) {
+    const edit = normalizedEdits[i]!
+    const oldTextForMode = normalizeTextForMatchMode(edit.oldText, matchMode)
+    if (oldTextForMode.length === 0) {
+      throw getEmptyOldTextError(i, normalizedEdits.length)
+    }
+    const matchIndex = replacementBaseContent.indexOf(oldTextForMode)
+    if (matchIndex === -1) {
+      throw getNotFoundError(i, normalizedEdits.length)
+    }
+
+    const occurrences = countOccurrences(replacementBaseContent, oldTextForMode)
+    if (occurrences > 1) {
+      throw getDuplicateError(i, normalizedEdits.length, occurrences)
+    }
+
+    matchedEdits.push({
+      editIndex: i,
+      matchIndex,
+      matchLength: oldTextForMode.length,
+      newText:
+        matchMode === 'indent'
+          ? reindentReplacementForIndentMatch(
+              edit.newText,
+              normalizedContent,
+              replacementBaseContent,
+              matchIndex,
+            )
+          : edit.newText,
+    })
+  }
+
+  matchedEdits.sort((a, b) => a.matchIndex - b.matchIndex)
+  for (let i = 1; i < matchedEdits.length; i++) {
+    const previous = matchedEdits[i - 1]!
+    const current = matchedEdits[i]!
+    if (previous.matchIndex + previous.matchLength > current.matchIndex) {
+      throw new Error(
+        `edits[${previous.editIndex}] and edits[${current.editIndex}] overlap. Merge them into one edit or target disjoint regions.`,
+      )
+    }
+  }
+
+  const baseContent = normalizedContent
+  const newContent =
+    matchMode === 'exact'
+      ? applyReplacements(replacementBaseContent, matchedEdits)
+      : applyReplacementsPreservingUnchangedLines(
+          normalizedContent,
+          replacementBaseContent,
+          matchedEdits,
+        )
+
+  if (baseContent === newContent) {
+    throw getNoChangeError(normalizedEdits.length)
+  }
+
+  return { baseContent, newContent }
 }
 
 function applyReplacements(

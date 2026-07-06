@@ -61,16 +61,6 @@ export function createConfigFromEnv(source: ConfigEnvironment) {
   } as const
 }
 
-export function parsePort(value: string) {
-  const port = Number(value)
-
-  if (!Number.isInteger(port) || port <= 0 || port > 65_535) {
-    throw new Error(`Invalid PORT value: ${value}`)
-  }
-
-  return port
-}
-
 function optionalEnv(source: ConfigEnvironment, name: string) {
   const value = source[name]?.trim()
 
@@ -95,4 +85,14 @@ function parseNonNegativeNumber(value: string, name: string) {
   }
 
   return parsed
+}
+
+function parsePort(value: string) {
+  const port = Number(value)
+
+  if (!Number.isInteger(port) || port <= 0 || port > 65_535) {
+    throw new Error(`Invalid PORT value: ${value}`)
+  }
+
+  return port
 }

@@ -11,7 +11,6 @@
 - `src/config*.ts`: environment parsing and runtime config.
 - `src/http-body.ts`: request body reading helper.
 - `src/mastra/`: Mastra agent, tools, skills, model wiring, SSE mapping, cost accounting, and file-backed project storage.
-- `mastra-smoke.ts`: local Mastra storage/observability boot smoke script.
 - `.data/`: local-only persisted projects (gitignored) under `projects/<id>/` with `project.json`, `html.json`, `messages.json`, and `images/`; legacy project `index.html` is import-only migration input.
 - `.mastra/`: generated Mastra CLI build/studio output; do not hand-edit.
 

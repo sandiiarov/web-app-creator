@@ -1,33 +1,33 @@
-import * as React from "react"
-import { cva, type VariantProps } from "class-variance-authority"
-import { Slot } from "radix-ui"
+import { cva, type VariantProps } from 'class-variance-authority'
+import { Slot } from 'radix-ui'
+import * as React from 'react'
 
-import { cn } from "#lib/utils"
+import { cn } from '#lib/utils'
 
 const markerVariants = cva(
   "group/marker relative flex min-h-4 w-full items-center gap-2 text-left text-xs text-muted-foreground [&_svg:not([class*='size-'])]:size-3.5 [a]:underline [a]:underline-offset-3 [a]:hover:text-foreground",
   {
     variants: {
       variant: {
-        border: "border-b border-border pb-2",
-        default: "",
+        border: 'border-b border-border pb-2',
+        default: '',
         separator:
-          "before:mr-1 before:h-px before:min-w-0 before:flex-1 before:bg-border after:ml-1 after:h-px after:min-w-0 after:flex-1 after:bg-border",
+          'before:mr-1 before:h-px before:min-w-0 before:flex-1 before:bg-border after:ml-1 after:h-px after:min-w-0 after:flex-1 after:bg-border',
       },
     },
-  }
+  },
 )
 
 function Marker({
   asChild = false,
   className,
-  variant = "default",
+  variant = 'default',
   ...props
-}: React.ComponentProps<"div"> &
+}: React.ComponentProps<'div'> &
   VariantProps<typeof markerVariants> & {
     asChild?: boolean
   }) {
-  const Comp = asChild ? Slot.Root : "div"
+  const Comp = asChild ? Slot.Root : 'div'
 
   return (
     <Comp
@@ -39,12 +39,12 @@ function Marker({
   )
 }
 
-function MarkerContent({ className, ...props }: React.ComponentProps<"span">) {
+function MarkerContent({ className, ...props }: React.ComponentProps<'span'>) {
   return (
     <span
       className={cn(
-        "min-w-0 wrap-break-word group-data-[variant=separator]/marker:flex-none group-data-[variant=separator]/marker:text-center *:[a]:underline *:[a]:underline-offset-3 *:[a]:hover:text-foreground",
-        className
+        'min-w-0 wrap-break-word group-data-[variant=separator]/marker:flex-none group-data-[variant=separator]/marker:text-center *:[a]:underline *:[a]:underline-offset-3 *:[a]:hover:text-foreground',
+        className,
       )}
       data-slot="marker-content"
       {...props}
@@ -52,13 +52,13 @@ function MarkerContent({ className, ...props }: React.ComponentProps<"span">) {
   )
 }
 
-function MarkerIcon({ className, ...props }: React.ComponentProps<"span">) {
+function MarkerIcon({ className, ...props }: React.ComponentProps<'span'>) {
   return (
     <span
       aria-hidden="true"
       className={cn(
         "size-3.5 shrink-0 [&_svg:not([class*='size-'])]:size-3.5",
-        className
+        className,
       )}
       data-slot="marker-icon"
       {...props}

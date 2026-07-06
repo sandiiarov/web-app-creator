@@ -1,9 +1,4 @@
 import type { ScreenshotViewportSize } from '@workspace/landing-preview'
-import {
-  type CostBreakdown,
-  type TokenUsage,
-  type ToolCallState,
-} from '@workspace/prompt-panel'
 
 export const SERVER_URL =
   import.meta.env.VITE_SERVER_URL ?? 'http://localhost:3001'
@@ -13,10 +8,7 @@ export const LANDING_AGENT_API = `${SERVER_URL}/agent`
 // ── SSE event payloads (server → client) ──────────────────────────
 //
 // Wire types for the custom SSE stream. The domain/conversation model they
-// build into (LandingTurn, TurnPart variants, cost/usage types, formatters)
-// lives in @workspace/prompt-panel and is re-exported below.
-
-export type ErrorEvent = { message: string }
+// build into lives in @workspace/prompt-panel.
 
 export type HtmlUpdateEvent = {
   bytes: number
@@ -42,73 +34,4 @@ export type ScreenshotRequestEvent = {
   viewportSize: ScreenshotViewportSize
 }
 
-export type StatsEvent = {
-  cost: number
-  costBreakdown?: CostBreakdown
-  durationMs: number
-  finishReason: string
-  model: string
-  usage: TokenUsage
-}
-
-export type TextEvent = { delta: string }
-export type ThinkingEvent = { delta: string }
-
-export type ToolCallEvent = {
-  detail?: null | string
-  id: string
-  intent: null | string
-  providerId?: string
-  result?: null | string
-  state: ToolCallState
-  tool: string
-}
-
-export { SCREENSHOT_VIEWPORT_SIZES } from '@workspace/landing-preview'
-export type {
-  ScreenshotMediaType,
-  ScreenshotResponseInput,
-  ScreenshotViewportSize,
-} from '@workspace/landing-preview'
-
-// ── Domain model (re-exported from @workspace/prompt-panel) ─────────
-
-export type {
-  CostBreakdown,
-  ElementAttachmentInput,
-  ElementAttachmentMeta,
-  ImageAttachmentInput,
-  ImageAttachmentMediaType,
-  ImageAttachmentMeta,
-  LandingAgentSendInput,
-  LandingModelOption,
-  LandingModelRole,
-  LandingModels,
-  LandingTurn,
-  PromptAttachmentInput,
-  PromptAttachmentMeta,
-  RetryPart,
-  StatsPart,
-  TextPart,
-  ThinkingPart,
-  TokenUsage,
-  ToolCallPart,
-  ToolCallState,
-  TurnPart,
-  VisionCost,
-} from '@workspace/prompt-panel'
-
-export type { ImageCost, ScrapeCost } from '@workspace/prompt-panel'
-
-export {
-  DEFAULT_LANDING_MODELS,
-  formatCost,
-  formatDuration,
-  formatRetryDelay,
-  formatTokenCount,
-  formatTokenUsage,
-  LANDING_IMAGE_MODEL_OPTIONS,
-  LANDING_MODEL_OPTIONS,
-  LANDING_VISION_MODEL_OPTIONS,
-  resolveLandingModels,
-} from '@workspace/prompt-panel'
+export type { ScreenshotResponseInput } from '@workspace/landing-preview'

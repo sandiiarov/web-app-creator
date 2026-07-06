@@ -133,10 +133,6 @@ export function applyAnchorEdits(
   }
 }
 
-export function checksumHtml(html: string): `sha256:${string}` {
-  return `sha256:${createHash('sha256').update(html).digest('hex')}`
-}
-
 export function cloneHtmlDocument(
   document: HtmlDocumentJsonV1,
 ): HtmlDocumentJsonV1 {
@@ -229,22 +225,6 @@ export function findHtmlDocumentLines(
   }
 }
 
-export function formatCompactLines(
-  lines: HtmlLine[],
-  maxLineLength = DEFAULT_MAX_LINE_LENGTH,
-): { text: string; truncatedLines: boolean } {
-  let truncatedLines = false
-  const text = lines
-    .map(([anchor, line]) => {
-      const truncated = truncateLine(line, maxLineLength)
-      if (truncated.truncated) truncatedLines = true
-      return `${anchor}|${truncated.text}`
-    })
-    .join('\n')
-
-  return { text, truncatedLines }
-}
-
 export function normalizeHtmlDocument(
   document: HtmlDocumentJsonV1,
 ): HtmlDocumentJsonV1 {
@@ -314,14 +294,6 @@ export function readHtmlDocumentLines(
 export function renderHtmlDocument(document: HtmlDocumentJsonV1): string {
   const body = document.lines.map(([, text]) => text).join(document.lineEnding)
   return document.finalNewline ? `${body}${document.lineEnding}` : body
-}
-
-export function splitEditText(text: string): string[] {
-  const normalized = normalizeLineEndings(text)
-  if (normalized.length === 0) return []
-
-  const body = normalized.endsWith('\n') ? normalized.slice(0, -1) : normalized
-  return body.length === 0 ? [''] : body.split('\n')
 }
 
 function applyCompiledEdits(
@@ -416,6 +388,10 @@ function assertNoConflicts(compiledEdits: CompiledEdit[]) {
       )
     }
   }
+}
+
+function checksumHtml(html: string): `sha256:${string}` {
+  return `sha256:${createHash('sha256').update(html).digest('hex')}`
 }
 
 function compileAnchorEdit(
@@ -533,6 +509,22 @@ function editTextHasFinalNewline(edit: { sourceText?: string }): boolean {
     typeof edit.sourceText === 'string' &&
     normalizeLineEndings(edit.sourceText).endsWith('\n')
   )
+}
+
+function formatCompactLines(
+  lines: HtmlLine[],
+  maxLineLength = DEFAULT_MAX_LINE_LENGTH,
+): { text: string; truncatedLines: boolean } {
+  let truncatedLines = false
+  const text = lines
+    .map(([anchor, line]) => {
+      const truncated = truncateLine(line, maxLineLength)
+      if (truncated.truncated) truncatedLines = true
+      return `${anchor}|${truncated.text}`
+    })
+    .join('\n')
+
+  return { text, truncatedLines }
 }
 
 function getChangedIndexes(
@@ -716,6 +708,14 @@ function resolveSliceRange(
     throw new Error('range end anchor must not come before start anchor.')
   }
   return { endExclusive: endIndex + 1, startIndex }
+}
+
+function splitEditText(text: string): string[] {
+  const normalized = normalizeLineEndings(text)
+  if (normalized.length === 0) return []
+
+  const body = normalized.endsWith('\n') ? normalized.slice(0, -1) : normalized
+  return body.length === 0 ? [''] : body.split('\n')
 }
 
 function splitHtmlIntoDocumentLines(html: string): {

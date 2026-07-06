@@ -61,7 +61,7 @@ export function createLandingPageAgent(
  * Build a landing-page agent bound to a specific HTML store, without a Mastra
  * reference (used where the caller injects mastra after instantiation).
  */
-export function createLandingPageAgentConfig(
+function createLandingPageAgentConfig(
   store: HtmlStore,
   baseUrl: string,
   textModel: string = config.openrouter.defaultChatModel,

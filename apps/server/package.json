@@ -32,7 +32,6 @@
     "@workspace/oxlint-config": "workspace:*",
     "@workspace/typescript-config": "workspace:*",
     "@workspace/vitest-preset": "workspace:*",
-    "mastra": "^1.16.0",
     "oxfmt": "catalog:",
     "oxlint": "catalog:",
     "vitest": "catalog:"
