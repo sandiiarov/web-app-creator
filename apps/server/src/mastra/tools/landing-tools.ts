@@ -56,7 +56,7 @@ const LANDING_TOOL_DEFINITIONS = [
   ),
   tool(
     'read',
-    'Use `read` to inspect the current project HTML as compact `anchor|text` lines. Use the anchors in `edit` ranges; do not copy raw HTML snippets.',
+    'Use `read` to inspect the current project HTML as compact `anchor|text` lines. Use the returned anchors in `edit` from/to; do not copy raw HTML snippets.',
     ({ store }) => createReadTool(store),
   ),
   tool(
