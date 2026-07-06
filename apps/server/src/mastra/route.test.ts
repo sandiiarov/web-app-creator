@@ -1456,6 +1456,70 @@ describe('streamLandingAgent raw mastra message persistence', () => {
       role: 'user',
     })
   })
+
+  it('strips reasoning parts before persisting raw messages for replay', async () => {
+    vi.stubEnv('OPENROUTER_API_KEY', 'test-openrouter-key')
+
+    const WITH_REASONING = {
+      content: {
+        format: 2,
+        parts: [
+          { text: 'long private chain-of-thought', type: 'reasoning' },
+          { text: 'I edited the hero.', type: 'text' },
+          {
+            toolInvocation: {
+              args: { intent: 'Rewrite hero' },
+              state: 'result',
+              toolCallId: 'call-edit-rr',
+              toolName: 'edit',
+            },
+            type: 'tool-invocation',
+          },
+        ],
+      },
+      id: 'mastra-reasoning-1',
+      role: 'assistant',
+    }
+    vi.doMock('./index.ts', () => ({ mastra: {} }))
+    vi.doMock('./agents/landing-page-agent.ts', () => ({
+      createLandingPageAgent: () => ({
+        stream: async () =>
+          fakeAgentStream(undefined, undefined, {
+            messageList: {
+              get: { response: { db: () => [WITH_REASONING] } },
+            },
+          }),
+      }),
+    }))
+
+    const {
+      createProject,
+      readProjectRawMessages,
+    } = await import('./lib/project-store.ts')
+    const project = await createProject()
+    createdProjectIds.push(project.id)
+    const { streamLandingAgent } = await import('./route.ts')
+
+    await streamLandingAgent({
+      projectId: project.id,
+      prompt: 'Build it.',
+      request: fakeRequest(),
+      response: new FakeResponse() as unknown as ServerResponse,
+      textModel: 'z-ai/glm-5.2',
+    })
+
+    const persisted = await readProjectRawMessages(project.id)
+    const firstMsg = (
+      persisted[0]?.messages[0] as
+        | undefined
+        | { content?: { parts?: { type: string }[] } }
+    )
+    const parts = firstMsg?.content?.parts ?? []
+    const types = parts.map((part) => part.type)
+    // Reasoning is stripped; the decision-relevant content survives.
+    expect(types).not.toContain('reasoning')
+    expect(types).toEqual(['text', 'tool-invocation'])
+  })
 })
 
 class FakeResponse {

@@ -671,7 +671,7 @@ export async function streamLandingAgent({
         await saveProjectRawMessages(
           projectId,
           recordedTurn.id,
-          rawResponseMessages as ProjectRawMessage[],
+          stripReplayNoise(rawResponseMessages) as ProjectRawMessage[],
         )
       } catch (error) {
         console.error('Failed to persist raw mastra messages', error)
@@ -1128,6 +1128,28 @@ function stripAttachmentData({
   ...metadata
 }: AgentAttachmentInput): ProjectMessageAttachment {
   return metadata
+}
+
+/**
+ * Strip parts that bloat history replay without aiding the next turn's
+ * decisions. `reasoning` is the model's private chain-of-thought — every
+ * decision it informed is already captured by the `tool-invocation`
+ * calls/results and `text` we keep, so replaying the reasoning only inflates
+ * the prompt (observed +73K input tokens on a 2-line turn-2 edit) without
+ * improving fidelity. Returns a deep clone so the live stream's message list
+ * is never mutated.
+ */
+function stripReplayNoise(messages: MastraDBMessage[]): MastraDBMessage[] {
+  return messages.map((message) => {
+    const parts = message.content?.parts
+    if (!Array.isArray(parts)) return message
+    const kept = parts.filter((part) => part?.type !== 'reasoning')
+    if (kept.length === parts.length) return message
+    return {
+      ...message,
+      content: { ...message.content, parts: kept },
+    }
+  })
 }
 
 function summarizeToolArgs(tool: string, args: ToolArgs): null | string {
