@@ -2,14 +2,13 @@ import { Button } from '@workspace/ui/components/button'
 import {
   DropdownMenu,
   DropdownMenuContent,
-  DropdownMenuLabel,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@workspace/ui/components/dropdown-menu'
-import { ChevronDown } from 'lucide-react'
-import { type ComponentType } from 'react'
+import { cn } from '@workspace/ui/lib/utils'
+import { ChevronDown, Eye, Image as ImageIcon, Type } from 'lucide-react'
+import { useState, type ComponentType } from 'react'
 
 import { BytedanceIcon } from './bytedance-icon'
 import { DeepseekIcon } from './deepseek-icon'
@@ -45,66 +44,108 @@ const MODEL_ICONS: Record<string, ComponentType<{ className?: string }>> = {
 
 const ROLE_ORDER: LandingModelRole[] = ['text', 'image', 'vision']
 
+const ROLE_META: Record<
+  LandingModelRole,
+  { Icon: ComponentType<{ className?: string }>; label: string }
+> = {
+  image: { Icon: ImageIcon, label: 'Image' },
+  text: { Icon: Type, label: 'Text' },
+  vision: { Icon: Eye, label: 'Vision' },
+}
+
 export interface ModelDropdownProps {
   models: LandingModels
   onModelsChange: (models: LandingModels) => void
 }
 
 /**
- * A single dropdown listing every model the server supports, grouped by role
- * (text, image, vision). Each section is an independent selection bound to the
- * matching slot on `models`.
+ * A model picker with one trigger showing all three role selections (text,
+ * image, vision) and an in-menu segmented toggle that switches which role's
+ * model list is shown below.
  */
 export function ModelDropdown({ models, onModelsChange }: ModelDropdownProps) {
-  const textLabel =
-    LANDING_MODEL_GROUPS[0]!.options.find((option) => option.id === models.text)
-      ?.label ?? models.text
+  const [activeRole, setActiveRole] = useState<LandingModelRole>('text')
+  const activeGroup = LANDING_MODEL_GROUPS.find(
+    (entry) => entry.role === activeRole,
+  )!
 
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button
-          aria-label={`Models. Current text model ${textLabel}`}
-          className="max-w-44 justify-start"
+          aria-label="Models"
+          className="px-1"
           size="xs"
           type="button"
           variant="outline"
         >
-          <span className="truncate">{textLabel}</span>
+          {ROLE_ORDER.map((role, index) => {
+            const option = optionFor(role, models[role])
+            const Icon = option ? MODEL_ICONS[option.id] : undefined
+            return (
+              <span
+                className={cn(
+                  'flex items-center gap-1 px-1',
+                  index > 0 && 'border-l border-border',
+                )}
+                key={role}
+              >
+                {Icon ? <Icon /> : null}
+                <span className="max-w-16 truncate">
+                  {option?.label ?? models[role]}
+                </span>
+              </span>
+            )
+          })}
           <ChevronDown data-icon="inline-end" />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-60" sideOffset={6}>
-        {ROLE_ORDER.map((role, index) => {
-          const group = LANDING_MODEL_GROUPS.find(
-            (entry) => entry.role === role,
-          )!
-
-          return (
-            <div key={role}>
-              {index > 0 ? <DropdownMenuSeparator /> : null}
-              <DropdownMenuLabel>{group.title}</DropdownMenuLabel>
-              <DropdownMenuRadioGroup
-                onValueChange={(value) =>
-                  onModelsChange({ ...models, [role]: value })
-                }
-                value={models[role]}
+        <div className="flex gap-0.5 p-1 pb-2">
+          {ROLE_ORDER.map((role) => {
+            const meta = ROLE_META[role]
+            const active = role === activeRole
+            return (
+              <Button
+                aria-pressed={active}
+                className={cn(
+                  'flex-1 justify-center gap-1',
+                  active && 'bg-accent text-accent-foreground',
+                )}
+                key={role}
+                onClick={() => setActiveRole(role)}
+                size="xs"
+                type="button"
+                variant="ghost"
               >
-                {group.options.map((option) => {
-                  const Icon = MODEL_ICONS[option.id]
-
-                  return (
-                    <DropdownMenuRadioItem key={option.id} value={option.id}>
-                      {Icon ? <Icon /> : null}
-                      {option.label}
-                    </DropdownMenuRadioItem>
-                  )
-                })}
-              </DropdownMenuRadioGroup>
-            </div>
-          )
-        })}
+                <meta.Icon />
+                {meta.label}
+              </Button>
+            )
+          })}
+        </div>
+        <DropdownMenuRadioGroup
+          onValueChange={(value) =>
+            onModelsChange({ ...models, [activeRole]: value })
+          }
+          value={models[activeRole]}
+        >
+          {activeGroup.options.map((option) => {
+            const Icon = MODEL_ICONS[option.id]
+            return (
+              <DropdownMenuRadioItem key={option.id} value={option.id}>
+                {Icon ? <Icon /> : null}
+                {option.label}
+              </DropdownMenuRadioItem>
+            )
+          })}
+        </DropdownMenuRadioGroup>
       </DropdownMenuContent>
     </DropdownMenu>
   )
+}
+
+function optionFor(role: LandingModelRole, modelId: string) {
+  const group = LANDING_MODEL_GROUPS.find((entry) => entry.role === role)
+  return group?.options.find((option) => option.id === modelId)
 }
