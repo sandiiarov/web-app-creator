@@ -13,6 +13,7 @@ export interface BrowserScreenshotResult {
 }
 
 interface PendingBrowserScreenshot {
+  projectId: string
   reject: (error: Error) => void
   resolve: (result: BrowserScreenshotResult) => void
   timeout: NodeJS.Timeout
@@ -21,8 +22,10 @@ interface PendingBrowserScreenshot {
 const pendingScreenshots = new Map<string, PendingBrowserScreenshot>()
 
 export function createPendingBrowserScreenshot({
+  projectId,
   timeoutMs,
 }: {
+  projectId: string
   timeoutMs: number
 }): { promise: Promise<BrowserScreenshotResult>; requestId: string } {
   const requestId = randomUUID()
@@ -32,7 +35,7 @@ export function createPendingBrowserScreenshot({
       reject(new Error('Browser screenshot response timed out.'))
     }, timeoutMs)
 
-    pendingScreenshots.set(requestId, { reject, resolve, timeout })
+    pendingScreenshots.set(requestId, { projectId, reject, resolve, timeout })
   })
 
   return { promise, requestId }
@@ -42,28 +45,32 @@ export function pendingBrowserScreenshotCount(): number {
   return pendingScreenshots.size
 }
 
+/** Reject a pending screenshot and return its project id (so the caller can
+ *  record the inbound failure), or null if not found. */
 export function rejectPendingBrowserScreenshot(
   requestId: string,
   reason: string,
-): boolean {
+): null | string {
   const pending = pendingScreenshots.get(requestId)
-  if (!pending) return false
+  if (!pending) return null
 
   pendingScreenshots.delete(requestId)
   clearTimeout(pending.timeout)
   pending.reject(new Error(reason))
-  return true
+  return pending.projectId
 }
 
+/** Resolve a pending screenshot and return its project id (so the caller can
+ *  persist the bytes + record the inbound response), or null if not found. */
 export function resolvePendingBrowserScreenshot(
   requestId: string,
   result: BrowserScreenshotResult,
-): boolean {
+): null | string {
   const pending = pendingScreenshots.get(requestId)
-  if (!pending) return false
+  if (!pending) return null
 
   pendingScreenshots.delete(requestId)
   clearTimeout(pending.timeout)
   pending.resolve(result)
-  return true
+  return pending.projectId
 }

@@ -19,6 +19,7 @@ import { ocrImageInputs, type ImageOcrResult } from './lib/image-ocr.ts'
 import {
   appendAgentMessages,
   appendClientMessage,
+  flushProjectLogs,
   saveProjectMessageTurn,
   createProjectHtmlStore,
   getProject,
@@ -204,6 +205,7 @@ export async function streamLandingAgent({
         throw new Error(SCREENSHOT_UNAVAILABLE_REASON)
       }
       const { promise, requestId } = createPendingBrowserScreenshot({
+        projectId,
         timeoutMs,
       })
       emit('screenshot_request', {
@@ -818,6 +820,9 @@ export async function streamLandingAgent({
       }
     }
     emit('done', {})
+    // Flush any still-pending debug-log appends so they're durable before the
+    // response closes (and before callers/tests clean up the project dir).
+    await flushProjectLogs(projectId)
     response.end()
   }
 }

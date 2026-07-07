@@ -16,12 +16,15 @@ import {
 } from './mastra/lib/browser-screenshot.ts'
 import { getImage } from './mastra/lib/image-store.ts'
 import {
+  appendClientMessage,
   createProject,
   deleteProject,
   getProject,
   listProjects,
   readProjectImage,
   updateProjectModel,
+  writeProjectScreenshotSync,
+  type ClientMessageEntry,
 } from './mastra/lib/project-store.ts'
 import {
   resolveModelId,
@@ -316,13 +319,15 @@ async function handleScreenshotResponse(
   const error = stringField(body.error, 500)
 
   if (error) {
-    if (!rejectPendingBrowserScreenshot(requestId, error)) {
+    const projectId = rejectPendingBrowserScreenshot(requestId, error)
+    if (!projectId) {
       sendJson(response, 404, {
         error: 'Screenshot request not found',
         ok: false,
       })
       return
     }
+    recordScreenshotResponse(projectId, requestId, { error, ok: false })
     sendJson(response, 200, { ok: true })
     return
   }
@@ -333,13 +338,32 @@ async function handleScreenshotResponse(
     return
   }
 
-  if (!resolvePendingBrowserScreenshot(requestId, screenshot)) {
+  const projectId = resolvePendingBrowserScreenshot(requestId, screenshot)
+  if (!projectId) {
     sendJson(response, 404, {
       error: 'Screenshot request not found',
       ok: false,
     })
     return
   }
+
+  // Persist the captured bytes (single durable copy under screenshots/) and
+  // record the inbound response in client-messages.jsonl — metadata + file
+  // path only, never base64. The agent's screenshot tool still receives the
+  // live image; this is debugging persistence.
+  const shot = writeProjectScreenshotSync(
+    projectId,
+    requestId,
+    screenshot.dataUrl,
+    screenshot.mediaType,
+  )
+  recordScreenshotResponse(projectId, requestId, {
+    height: screenshot.height,
+    mediaType: screenshot.mediaType,
+    ok: true,
+    screenshotFile: shot.path,
+    width: screenshot.width,
+  })
 
   sendJson(response, 200, { ok: true })
 }
@@ -353,6 +377,21 @@ async function readJsonObject(
   return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
     ? (parsed as Record<string, unknown>)
     : {}
+}
+
+/** Record an inbound screenshot POST-back (client→server) in the client log. */
+function recordScreenshotResponse(
+  projectId: string,
+  requestId: string,
+  detail: Record<string, unknown>,
+): void {
+  void appendClientMessage(projectId, {
+    ...detail,
+    dir: 'in',
+    requestId,
+    ts: new Date().toISOString(),
+    type: 'screenshot_response',
+  } satisfies ClientMessageEntry)
 }
 
 /** REST router for project CRUD + persisted project images. Returns true if handled. */

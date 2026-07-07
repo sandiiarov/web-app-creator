@@ -13,6 +13,7 @@ const SCREENSHOT = {
   mediaType: 'image/jpeg' as const,
   width: 1440,
 }
+const PROJECT_ID = 'proj-test'
 
 afterEach(() => {
   vi.useRealTimers()
@@ -21,38 +22,45 @@ afterEach(() => {
 describe('browser screenshot registry', () => {
   it('resolves a pending screenshot request once', async () => {
     const { promise, requestId } = createPendingBrowserScreenshot({
+      projectId: PROJECT_ID,
       timeoutMs: 1_000,
     })
 
     expect(pendingBrowserScreenshotCount()).toBe(1)
-    expect(resolvePendingBrowserScreenshot(requestId, SCREENSHOT)).toBe(true)
+    expect(resolvePendingBrowserScreenshot(requestId, SCREENSHOT)).toBe(
+      PROJECT_ID,
+    )
     await expect(promise).resolves.toEqual(SCREENSHOT)
-    expect(resolvePendingBrowserScreenshot(requestId, SCREENSHOT)).toBe(false)
+    expect(resolvePendingBrowserScreenshot(requestId, SCREENSHOT)).toBe(null)
     expect(pendingBrowserScreenshotCount()).toBe(0)
   })
 
   it('rejects a pending screenshot request with a browser error', async () => {
     const { promise, requestId } = createPendingBrowserScreenshot({
+      projectId: PROJECT_ID,
       timeoutMs: 1_000,
     })
 
     const rejection = promise.catch((error: unknown) => error)
 
     expect(rejectPendingBrowserScreenshot(requestId, 'capture failed')).toBe(
-      true,
+      PROJECT_ID,
     )
     await expect(rejection).resolves.toMatchObject({
       message: 'capture failed',
     })
     expect(rejectPendingBrowserScreenshot(requestId, 'capture failed')).toBe(
-      false,
+      null,
     )
     expect(pendingBrowserScreenshotCount()).toBe(0)
   })
 
   it('rejects and cleans up when a screenshot response times out', async () => {
     vi.useFakeTimers()
-    const { promise } = createPendingBrowserScreenshot({ timeoutMs: 50 })
+    const { promise } = createPendingBrowserScreenshot({
+      projectId: PROJECT_ID,
+      timeoutMs: 50,
+    })
     const rejection = promise.catch((error: unknown) => error)
 
     await vi.advanceTimersByTimeAsync(50)

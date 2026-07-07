@@ -460,6 +460,19 @@ export async function appendVisionMessage(
   return next
 }
 
+/** Await any still-pending `.jsonl` appends for a project's client + agent logs.
+ *  Call before a run fully completes so the logs are durable (and so test
+ *  cleanup doesn't race fire-and-forget appends). */
+export async function flushProjectLogs(id: string): Promise<void> {
+  const files = [
+    join(projectDir(id), AGENT_MESSAGES_JSONL),
+    join(projectDir(id), CLIENT_MESSAGES_JSONL),
+  ]
+  await Promise.allSettled(
+    files.map((file) => jsonlChains.get(file) ?? Promise.resolve()),
+  )
+}
+
 /** Read the full agent message log (oldest first). Empty when absent. */
 export async function readAgentMessages(
   id: string,
@@ -578,11 +591,11 @@ function decodeBase64DataUrl(dataUrl: string, mediaType: string): Buffer {
   return Buffer.from(dataUrl.slice(start), 'base64')
 }
 
+// ── image URL normalization (sync) ───────────────────────────────
+
 async function ensureProjectDir(id: string) {
   await mkdir(projectDir(id), { recursive: true })
 }
-
-// ── image URL normalization (sync) ───────────────────────────────
 
 async function ensureProjectsRoot() {
   await mkdir(PROJECTS_DIR, { recursive: true })
@@ -596,6 +609,8 @@ function isProjectRawTurnMessages(value: unknown): value is ProjectRawTurnMessag
   )
 }
 
+// ── sync fs helpers ──────────────────────────────────────────────
+
 function isSafeImageName(name: string): boolean {
   return (
     /^(img-\d+|img-\d+\.[a-z0-9]+|[a-z0-9_-]+\.[a-z0-9]+)$/i.test(name) &&
@@ -603,8 +618,6 @@ function isSafeImageName(name: string): boolean {
     !name.includes('/')
   )
 }
-
-// ── sync fs helpers ──────────────────────────────────────────────
 
 function markHasHtmlSync(id: string) {
   const meta = readMetaSync(id)
@@ -706,6 +719,8 @@ function projectDir(id: string) {
   return join(PROJECTS_DIR, id)
 }
 
+// ── async fs helpers (HTTP CRUD) ─────────────────────────────────
+
 async function readDirSafe(dir: string): Promise<string[]> {
   try {
     if (!existsSync(dir)) await ensureProjectsRoot()
@@ -717,8 +732,6 @@ async function readDirSafe(dir: string): Promise<string[]> {
     return []
   }
 }
-
-// ── async fs helpers (HTTP CRUD) ─────────────────────────────────
 
 async function readHtmlDocument(
   id: string,

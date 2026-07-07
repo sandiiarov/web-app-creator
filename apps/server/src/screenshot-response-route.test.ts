@@ -3,6 +3,9 @@ import type { AddressInfo } from 'node:net'
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
+import { deleteProject } from './mastra/lib/project-store.ts'
+
+const PROJECT_ID = 'screenshot-route-test'
 const SCREENSHOT = {
   dataUrl: 'data:image/jpeg;base64,/9j/4AAQSkZJRg==',
   height: 900,
@@ -10,7 +13,8 @@ const SCREENSHOT = {
   width: 1440,
 }
 
-afterEach(() => {
+afterEach(async () => {
+  await deleteProject(PROJECT_ID)
   vi.doUnmock('./mastra/index.ts')
   vi.unstubAllEnvs()
   vi.resetModules()
@@ -20,6 +24,7 @@ describe('POST /api/screenshot-responses/:requestId', () => {
   it('resolves a pending browser screenshot response', async () => {
     await withServer(async ({ baseUrl, createPendingBrowserScreenshot }) => {
       const { promise, requestId } = createPendingBrowserScreenshot({
+        projectId: PROJECT_ID,
         timeoutMs: 1_000,
       })
 
@@ -40,6 +45,7 @@ describe('POST /api/screenshot-responses/:requestId', () => {
   it('rejects a pending browser screenshot response when the client reports an error', async () => {
     await withServer(async ({ baseUrl, createPendingBrowserScreenshot }) => {
       const { promise, requestId } = createPendingBrowserScreenshot({
+        projectId: PROJECT_ID,
         timeoutMs: 1_000,
       })
       const rejection = promise.catch((error: unknown) => error)
