@@ -269,7 +269,6 @@ export async function streamLandingAgent({
     const runCostUsd = llmProviderCostUsd + imageCostUsd + visionCostUsd
     if (runCostUsd < costCapUsd) return false
     fatalRunError = `Run exceeded the $${costCapUsd.toFixed(2)} cost cap.`
-    recordTurnError(recordedTurn, fatalRunError)
     emit('error', { message: fatalRunError })
     controller.abort()
     return true
@@ -361,7 +360,6 @@ export async function streamLandingAgent({
             chunk.payload.error instanceof Error
               ? chunk.payload.error.message
               : String(chunk.payload.error)
-          recordTurnError(recordedTurn, message)
           emit('error', { message })
           break
         }
@@ -372,12 +370,10 @@ export async function streamLandingAgent({
           break
         }
         case 'reasoning-delta': {
-          recordTextDelta(recordedTurn, 'thinking', chunk.payload.text)
           emit('thinking', { delta: chunk.payload.text })
           break
         }
         case 'text-delta': {
-          recordTextDelta(recordedTurn, 'text', chunk.payload.text)
           emit('text', { delta: chunk.payload.text })
           break
         }
@@ -404,7 +400,6 @@ export async function streamLandingAgent({
             // provisional block (display.id) for this providerId. The fan-out
             // replaces it with N per-edit blocks — drop the provisional from
             // the recorded turn and the UI so it is not orphaned as "no result".
-            removeToolCall(recordedTurn, display.id)
             emit('tool_call_drop', { id: display.id })
             const subIds = editActions.map((_, index) =>
               editSubId(toolCallSeq, index),
@@ -418,7 +413,6 @@ export async function streamLandingAgent({
                 state: 'running',
                 tool: chunk.payload.toolName,
               }
-              recordToolCall(recordedTurn, toolPayload)
               emit('tool_call', toolPayload)
             }
             break
@@ -432,7 +426,6 @@ export async function streamLandingAgent({
             state: 'running',
             tool: chunk.payload.toolName,
           }
-          recordToolCall(recordedTurn, toolPayload)
           emit('tool_call', toolPayload)
           break
         }
@@ -453,7 +446,6 @@ export async function streamLandingAgent({
             state: 'start',
             tool: chunk.payload.toolName,
           }
-          recordToolCall(recordedTurn, toolPayload)
           emit('tool_call', toolPayload)
           break
         }
@@ -477,14 +469,12 @@ export async function streamLandingAgent({
             state: 'error',
             tool: chunk.payload.toolName,
           }
-          recordToolCall(recordedTurn, toolPayload)
           emit('tool_call', toolPayload)
           completedCallIds.add(chunk.payload.toolCallId)
           if (chunk.payload.toolName === 'edit') {
             editFailures += 1
             if (editFailures >= MAX_EDIT_FAILURES) {
               fatalRunError = REPEATED_EDIT_FAILURE_MESSAGE
-              recordTurnError(recordedTurn, fatalRunError)
               emit('error', { message: fatalRunError })
               controller.abort()
               break streamLoop
@@ -537,7 +527,6 @@ export async function streamLandingAgent({
                 state: isError ? 'error' : 'done',
                 tool: chunk.payload.toolName,
               }
-              recordToolCall(recordedTurn, toolPayload)
               emit('tool_call', toolPayload)
             }
             editSubIds.delete(chunk.payload.toolCallId)
@@ -547,13 +536,11 @@ export async function streamLandingAgent({
                 editFailures += 1
                 if (editFailures >= MAX_EDIT_FAILURES) {
                   fatalRunError = REPEATED_EDIT_FAILURE_MESSAGE
-                  recordTurnError(recordedTurn, fatalRunError)
                   emit('error', { message: fatalRunError })
                   controller.abort()
                   break streamLoop
                 }
               } else {
-                recordedTurn.htmlSwaps += 1
                 const nextHtml = store.get()
                 if (nextHtml !== lastHtmlUpdate) {
                   htmlUpdateSequence += 1
@@ -579,7 +566,6 @@ export async function streamLandingAgent({
             state: isError ? 'error' : 'done',
             tool: chunk.payload.toolName,
           }
-          recordToolCall(recordedTurn, toolPayload)
           emit('tool_call', toolPayload)
           completedCallIds.add(chunk.payload.toolCallId)
           if (chunk.payload.toolName === 'edit') {
@@ -587,13 +573,11 @@ export async function streamLandingAgent({
               editFailures += 1
               if (editFailures >= MAX_EDIT_FAILURES) {
                 fatalRunError = REPEATED_EDIT_FAILURE_MESSAGE
-                recordTurnError(recordedTurn, fatalRunError)
                 emit('error', { message: fatalRunError })
                 controller.abort()
                 break streamLoop
               }
             } else {
-              recordedTurn.htmlSwaps += 1
               const nextHtml = store.get()
               if (nextHtml !== lastHtmlUpdate) {
                 htmlUpdateSequence += 1
@@ -775,7 +759,6 @@ export async function streamLandingAgent({
         totalTokens: usage.totalTokens,
       },
     }
-    recordStats(recordedTurn, statsPayload)
     emit('stats', statsPayload)
 
     // Final agent-message snapshot at run end (the last per-step snapshot via
@@ -797,7 +780,6 @@ export async function streamLandingAgent({
     // The empty-draft guard is a real completion error, not an accounting
     // concern, so it only fires when the run was not already fatal.
     if (!fatalRunError && !project.hasHtml && htmlUpdateSequence === 0) {
-      recordTurnError(recordedTurn, NO_GENERATED_HTML_MESSAGE)
       emit('error', { message: NO_GENERATED_HTML_MESSAGE })
     }
   } catch (error) {
@@ -811,7 +793,6 @@ export async function streamLandingAgent({
       if (aborted) {
         // stopped — no terminal tool result needed; the client log captures the error event.
       } else {
-        recordTurnError(recordedTurn, message)
       }
       emit('error', { message })
     }
@@ -857,7 +838,6 @@ async function analyzePromptAttachments({
     state: 'running',
     tool: 'analyze_image',
   }
-  recordToolCall(recordedTurn, runningPayload)
   emit('tool_call', runningPayload)
 
   try {
@@ -898,7 +878,6 @@ async function analyzePromptAttachments({
         state: 'error',
         tool: 'analyze_image',
       }
-      recordToolCall(recordedTurn, errorPayload)
       emit('tool_call', errorPayload)
       return {
         contextBlock: `Attached image analysis failed: ${reason}`,
@@ -916,7 +895,6 @@ async function analyzePromptAttachments({
       state: 'done',
       tool: 'analyze_image',
     }
-    recordToolCall(recordedTurn, donePayload)
     emit('tool_call', donePayload)
     return {
       contextBlock: buildAttachmentContext(attachments, result, visionModel),
@@ -934,7 +912,6 @@ async function analyzePromptAttachments({
       state: 'error',
       tool: 'analyze_image',
     }
-    recordToolCall(recordedTurn, errorPayload)
     emit('tool_call', errorPayload)
     return {
       contextBlock: `Attached image analysis failed: ${reason}`,
@@ -1214,74 +1191,6 @@ function recordAttachmentAnalysis(
     ...attachment,
     analysisText,
   }))
-}
-
-function recordStats(turn: ProjectMessageTurn, stats: RecordedStatsPayload) {
-  turn.parts.push({ ...stats, type: 'stats' })
-}
-
-function recordTextDelta(
-  turn: ProjectMessageTurn,
-  type: 'text' | 'thinking',
-  delta: string,
-) {
-  if (!delta) return
-
-  const last = turn.parts[turn.parts.length - 1]
-  if (last?.type === type) {
-    last.text += delta
-    return
-  }
-
-  turn.parts.push({
-    id: `${turn.id}-${type}-${turn.parts.length + 1}`,
-    text: delta,
-    type,
-  })
-}
-
-function recordToolCall(
-  turn: ProjectMessageTurn,
-  payload: RecordedToolPayload,
-) {
-  const next: ProjectMessageToolCallPart = {
-    action: payload.action,
-    id: payload.id,
-    state: payload.state,
-    tool: payload.tool,
-    type: 'tool_call',
-  }
-  if (payload.detail !== undefined) next.detail = payload.detail
-  if (payload.providerId !== undefined) next.providerId = payload.providerId
-  if (payload.result !== undefined) next.result = payload.result
-
-  const existing = turn.parts.findIndex(
-    (part) => part.type === 'tool_call' && part.id === payload.id,
-  )
-
-  if (existing === -1) {
-    turn.parts.push(next)
-    return
-  }
-
-  turn.parts[existing] = {
-    ...(turn.parts[existing] as ProjectMessageToolCallPart),
-    ...next,
-  }
-}
-
-function recordTurnError(turn: ProjectMessageTurn, message: string) {
-  if (message === 'stopped') return
-  turn.error = message
-}
-
-/** Remove a recorded tool-call part by id (used when a fan-out supersedes a
- * `tool-call-input-streaming-start` provisional block). */
-function removeToolCall(turn: ProjectMessageTurn, id: string) {
-  const index = turn.parts.findIndex(
-    (part) => part.type === 'tool_call' && part.id === id,
-  )
-  if (index !== -1) turn.parts.splice(index, 1)
 }
 
 function startToolCallDisplay(
