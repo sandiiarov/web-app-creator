@@ -241,7 +241,6 @@ export async function createProject(
   await ensureProjectDir(id)
   await writeMeta(id, meta)
   await writeHtmlDocument(id, document)
-  await writeMessages(id, [])
 
   return { ...meta, indexHtml: renderHtmlDocument(document), messages: [] }
 }

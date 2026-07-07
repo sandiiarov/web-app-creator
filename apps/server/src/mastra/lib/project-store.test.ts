@@ -200,10 +200,9 @@ describe('project message storage', () => {
     ])
   })
 
-  it('falls back to empty message history when messages.json is missing', async () => {
+  it('returns empty message history for a fresh project with no client log', async () => {
     const project = await createProject()
     createdProjectIds.push(project.id)
-    await rm(join(PROJECTS_DIR, project.id, 'messages.json'))
 
     await expect(getProject(project.id)).resolves.toMatchObject({
       id: project.id,

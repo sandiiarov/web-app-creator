@@ -11,7 +11,7 @@
 - `src/config*.ts`: environment parsing and runtime config.
 - `src/http-body.ts`: request body reading helper.
 - `src/mastra/`: Mastra agent, tools, skills, model wiring, SSE mapping, cost accounting, and file-backed project storage.
-- `.data/`: local-only persisted projects (gitignored) under `projects/<id>/` with `project.json`, `html.json`, `messages.json` (UI turns), `raw-messages.json` (server-only raw Mastra response messages for agent history replay), and `images/`; legacy project `index.html` is import-only migration input.
+- `.data/`: local-only persisted projects (gitignored) under `projects/<id>/` with `project.json`, `html.json`, `client-messages.jsonl` (append-only client wire: every server→client SSE event + inbound prompt/screenshot POST-back), `agent-messages.jsonl` (append-only per-step Mastra `messageList` snapshots, reasoning-stripped, for agent history replay), `vision-messages.json` (per OCR/vision call), `screenshots/<NNN>-<requestId>.<ext>` (captured screenshot bytes), and `images/`; legacy `messages.json`/`raw-messages.json` are read-only fallback for projects persisted before this refactor; legacy project `index.html` is import-only migration input. All message logs are appended per event/step (never overwritten) so the exact data at any moment is inspectable mid-run; `flushProjectLogs` awaits pending appends before a run closes.
 - `.mastra/`: generated Mastra CLI build/studio output; do not hand-edit.
 
 ## Local Contracts
