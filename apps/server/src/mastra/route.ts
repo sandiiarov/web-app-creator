@@ -19,6 +19,7 @@ import { ocrImageInputs, type ImageOcrResult } from './lib/image-ocr.ts'
 import {
   appendAgentMessages,
   appendClientMessage,
+  appendVisionMessage,
   flushProjectLogs,
   saveProjectMessageTurn,
   createProjectHtmlStore,
@@ -289,6 +290,7 @@ export async function streamLandingAgent({
       attachments,
       emit,
       nextToolSeq: () => ++toolCallSeq,
+      projectId,
       recordedTurn,
       visionModel,
     })
@@ -831,12 +833,14 @@ async function analyzePromptAttachments({
   attachments,
   emit,
   nextToolSeq,
+  projectId,
   recordedTurn,
   visionModel,
 }: {
   attachments: AgentAttachmentInput[]
   emit: (event: string, payload: unknown) => void
   nextToolSeq: () => number
+  projectId: string
   recordedTurn: ProjectMessageTurn
   visionModel: string
 }): Promise<AttachmentAnalysis> {
@@ -871,6 +875,20 @@ async function analyzePromptAttachments({
     )
     const cost = visionCost(result.usage ?? {}, result.cost)
     const images = result.imagesAnalyzed
+
+    // Record this OCR/vision call in vision-messages.json (text/usage/cost only).
+    void appendVisionMessage(projectId, {
+      costUsd: cost,
+      imagesAnalyzed: result.imagesAnalyzed,
+      model: visionModel,
+      ok: result.ok,
+      reason: result.reason,
+      source: 'attachment',
+      text: result.text,
+      ts: new Date().toISOString(),
+      turnId: recordedTurn.id,
+      usage: result.usage,
+    })
 
     recordAttachmentAnalysis(recordedTurn, result.text)
 

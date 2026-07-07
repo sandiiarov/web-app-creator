@@ -447,10 +447,10 @@ export async function appendClientMessage(
  *  OCR is infrequent so a full rewrite per call is fine). */
 export async function appendVisionMessage(
   id: string,
-  entry: VisionMessageEntry,
+  entry: Omit<VisionMessageEntry, 'seq'>,
 ): Promise<VisionMessageEntry[]> {
   const existing = await readVisionMessages(id)
-  const next = [...existing, entry]
+  const next = [...existing, { ...entry, seq: existing.length + 1 }]
   await ensureProjectDir(id)
   await writeFile(
     join(projectDir(id), VISION_MESSAGES_JSON),
