@@ -9,7 +9,6 @@ import {
 import {
   Tooltip,
   TooltipContent,
-  TooltipProvider,
   TooltipTrigger,
 } from '@workspace/ui/components/tooltip'
 import { cn } from '@workspace/ui/lib/utils'
@@ -90,24 +89,23 @@ export function ModelDropdown({ models, onModelsChange }: ModelDropdownProps) {
             const Logo = option ? MODEL_ICONS[option.id] : undefined
             const RoleIcon = ROLE_META[role].Icon
             return (
-              <TooltipProvider key={role}>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <span
-                      className={cn(
-                        'flex items-center gap-1 px-1',
-                        index > 0 && 'border-l border-border',
-                      )}
-                    >
-                      <RoleIcon />
-                      {Logo ? <Logo /> : null}
-                    </span>
-                  </TooltipTrigger>
-                  <TooltipContent side="top">
-                    {ROLE_META[role].label}: {option?.label ?? models[role]}
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
+              <Tooltip key={role}>
+                <TooltipTrigger asChild>
+                  <span
+                    className={cn(
+                      'flex items-center gap-1 px-1',
+                      index > 0 && 'border-l border-border',
+                    )}
+                  >
+                    <RoleIcon />
+                    {Logo ? <Logo /> : null}
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent side="top">
+                  {Logo ? <Logo /> : null}
+                  {option?.label ?? models[role]}
+                </TooltipContent>
+              </Tooltip>
             )
           })}
           <ChevronDown data-icon="inline-end" />
