@@ -84,4 +84,14 @@ describe('design skill browser runtime prompt', () => {
   it('stays compact', () => {
     expect(skill.instructions.length).toBeLessThan(5_000)
   })
+
+  it('teaches incremental page building, not one-shot whole-document creation', () => {
+    // The create workflow must scaffold empty sections, then tokens, then fill
+    // each section — never emit a full finished page in one edit (that hits
+    // the output-token cap and truncates). See .phases/phase-edit-tool-fixes.
+    expect(skill.instructions).toMatch(
+      /incrementally|EMPTY named section shells|Fill sections/iu,
+    )
+    expect(promptPayload).not.toMatch(/whole-document edit/iu)
+  })
 })
