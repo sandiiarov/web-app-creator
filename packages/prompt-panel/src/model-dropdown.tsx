@@ -81,7 +81,8 @@ export function ModelDropdown({ models, onModelsChange }: ModelDropdownProps) {
         >
           {ROLE_ORDER.map((role, index) => {
             const option = optionFor(role, models[role])
-            const Icon = option ? MODEL_ICONS[option.id] : undefined
+            const Logo = option ? MODEL_ICONS[option.id] : undefined
+            const RoleIcon = ROLE_META[role].Icon
             return (
               <span
                 className={cn(
@@ -89,11 +90,10 @@ export function ModelDropdown({ models, onModelsChange }: ModelDropdownProps) {
                   index > 0 && 'border-l border-border',
                 )}
                 key={role}
+                title={`${ROLE_META[role].label}: ${option?.label ?? models[role]}`}
               >
-                {Icon ? <Icon /> : null}
-                <span className="max-w-16 truncate">
-                  {option?.label ?? models[role]}
-                </span>
+                <RoleIcon />
+                {Logo ? <Logo /> : null}
               </span>
             )
           })}

@@ -25,7 +25,7 @@
 
 - Keep `PromptPanel` presentational: state belongs in hooks/consumers; the panel receives data + callbacks. Theme and navigation are passed in from the composition site.
 - When the domain model changes, update `src/domain.ts` and re-export from `src/index.ts`; transport/wire shapes stay in the consuming app.
-- `src/model-dropdown.tsx` renders one outline trigger showing all three role selections side by side (text, image, vision) as icon + truncated label segments, and opens a menu whose top is a segmented toggle (`[Icon] Text | [Icon] Image | [Icon] Vision`, lucide role icons) that switches which role's single radio list shows below. Only the active role's model list renders. Brand icons map by model id in `MODEL_ICONS`; add a per-id entry as new provider logos land.
+- `src/model-dropdown.tsx` renders one outline trigger showing all three role selections side by side (text, image, vision) as two-icon segments — a lucide role icon plus the selected model's provider logo — separated by dividers, with a `title` per segment for hover context. It opens a menu whose top is a segmented toggle (`[Icon] Text | [Icon] Image | [Icon] Vision`, lucide role icons) that switches which role's single radio list shows below. Only the active role's model list renders. Brand icons map by model id in `MODEL_ICONS`; add a per-id entry as new provider logos land.
 
 ## Verification
 
