@@ -22,6 +22,15 @@ describe('createEditTool', () => {
     expect(schemaText).not.toContain('"maxItems"')
   })
 
+  it('coerces a stringified edits array into a real array', () => {
+    const tool = createEditTool(createHtmlStore())
+    const parsed = tool.inputSchema.parse({
+      edits: JSON.stringify([{ code: '<p>y</p>', intent: 'x' }]),
+    })
+    expect(Array.isArray(parsed.edits)).toBe(true)
+    expect(parsed.edits[0]).toMatchObject({ code: '<p>y</p>', intent: 'x' })
+  })
+
   it('applies anchor-range edits and returns metadata without full HTML', async () => {
     const store = createHtmlStore('<main>\n  <h1>Hello</h1>\n</main>\n')
     const tool = createEditTool(store)
