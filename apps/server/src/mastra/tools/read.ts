@@ -28,7 +28,7 @@ export function createReadTool(store: HtmlStore) {
         .string()
         .optional()
         .describe(
-          'Start anchor (inclusive); omit to read from the document start.',
+          'Start of the region (inclusive): a real anchor from read/find, or "start" for the document beginning. Omit to read from the start.',
         ),
       intent: z
         .string()
@@ -45,7 +45,7 @@ export function createReadTool(store: HtmlStore) {
         .string()
         .optional()
         .describe(
-          'End anchor (inclusive); omit to read only the from line. Order-insensitive.',
+          'End of the region (inclusive): a real anchor from read/find, or "end" for the document end. Omit to read only the from line. Order-insensitive.',
         ),
     }),
     outputSchema: z.object({

@@ -98,6 +98,8 @@ interface CompiledEdit {
   startIndex: number
 }
 
+const ANCHOR_END_SENTINEL = 'end'
+const ANCHOR_START_SENTINEL = 'start'
 const DEFAULT_LIMIT = 2000
 const DEFAULT_MAX_LINE_LENGTH = 500
 
@@ -508,7 +510,8 @@ function compileAnchorEdit(
     kind: 'mutate',
     lines,
     operation: 'replace',
-    rangeIsWholeDocument: false,
+    rangeIsWholeDocument:
+      startIndex === 0 && endExclusive === document.lines.length,
     sourceText: edit.code,
     startIndex,
   }
@@ -712,6 +715,22 @@ function resolveAnchorIndex(
   return index
 }
 
+/** Resolve a `from`/`to` value that may be a real anchor or a `start`/`end`
+ * document-boundary sentinel. Any other string still throws "missing anchor"
+ * so invented anchors (e.g. `a1v__2`) fail loudly. */
+function resolveAnchorOrBoundary(
+  document: HtmlDocumentJsonV1,
+  anchor: string,
+  field: string,
+  editIndex?: number,
+): number {
+  if (anchor === ANCHOR_END_SENTINEL) {
+    return Math.max(0, document.lines.length - 1)
+  }
+  if (anchor === ANCHOR_START_SENTINEL) return 0
+  return resolveAnchorIndex(document, anchor, editIndex, field)
+}
+
 function resolveInsertionPosition(
   document: HtmlDocumentJsonV1,
   from: string | undefined,
@@ -732,11 +751,11 @@ function resolveMutationRange(
   to: string | undefined,
   editIndex: number,
 ): { endExclusive: number; startIndex: number } {
-  const fromIndex = resolveAnchorIndex(document, from, editIndex, 'from')
+  const fromIndex = resolveAnchorOrBoundary(document, from, 'from', editIndex)
   const toIndex =
     to === undefined
       ? fromIndex
-      : resolveAnchorIndex(document, to, editIndex, 'to')
+      : resolveAnchorOrBoundary(document, to, 'to', editIndex)
   // Order-insensitive: resolve by document position so reversed endpoints work.
   const startIndex = Math.min(fromIndex, toIndex)
   const endExclusive = Math.max(fromIndex, toIndex) + 1
@@ -751,11 +770,11 @@ function resolveReadRange(
   if (from === undefined) {
     return { endExclusive: document.lines.length, startIndex: 0 }
   }
-  const fromIndex = resolveAnchorIndex(document, from, undefined, 'from')
+  const fromIndex = resolveAnchorOrBoundary(document, from, 'from')
   const toIndex =
     to === undefined
       ? fromIndex
-      : resolveAnchorIndex(document, to, undefined, 'to')
+      : resolveAnchorOrBoundary(document, to, 'to')
   // Order-insensitive: resolve by document position so reversed endpoints work.
   const startIndex = Math.min(fromIndex, toIndex)
   const endExclusive = Math.max(fromIndex, toIndex) + 1

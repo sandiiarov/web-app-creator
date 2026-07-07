@@ -233,6 +233,32 @@ describe('html-anchor-document', () => {
     )
   })
 
+  it('resolves "start" and "end" sentinels as document boundaries', () => {
+    const document = createHtmlDocumentFromString(
+      '<main>\n  <h1>Hello</h1>\n  <p>World</p>\n</main>\n',
+    )
+    const full = applyAnchorEdits(document, [
+      { code: '<div>all</div>', from: 'start', intent: 'whole via sentinels', to: 'end' },
+    ])
+    expect(renderHtmlDocument(full.document)).toBe('<div>all</div>')
+    const tail = applyAnchorEdits(document, [
+      { code: '  <p>new</p>', from: 'a3', intent: 'a3 to end', to: 'end' },
+    ])
+    // a3..<end> covers <p>World</p> + </main>; the document's final newline is kept.
+    expect(renderHtmlDocument(tail.document)).toBe(
+      '<main>\n  <h1>Hello</h1>\n  <p>new</p>\n',
+    )
+  })
+
+  it('still rejects invented (non-sentinel) anchors', () => {
+    const document = createHtmlDocumentFromString('<main></main>')
+    expect(() =>
+      applyAnchorEdits(document, [
+        { code: 'y', from: 'a1v__2', intent: 'invented' },
+      ]),
+    ).toThrow('missing anchor')
+  })
+
   it('returns per-edit result slices for a non-adjacent multi-edit batch', () => {
     const document = createHtmlDocumentFromString(
       '<main>\n  <h1>Hello</h1>\n  <p>World</p>\n</main>\n',

@@ -18,13 +18,13 @@ const anchorEditSchema = z.object({
     .string()
     .optional()
     .describe(
-      'Start anchor (inclusive). Omit for whole-document replace, or (with insert) for the document start/end boundary.',
+      'Start of the region (inclusive): a real anchor from read/find, or "start" for the document beginning. Omit (with code) for whole-document replace.',
     ),
   insert: z
     .enum(['after', 'before'])
     .optional()
     .describe(
-      'Set to insert code instead of replacing: "before"/"after" the from anchor (or document start/end when from is omitted). Omit to replace or delete the from/to region.',
+      'Set to insert code instead of replacing: "before"/"after" the from anchor (or a document boundary when from is omitted). Omit to replace or delete the from/to region.',
     ),
   intent: z
     .string()
@@ -35,14 +35,13 @@ const anchorEditSchema = z.object({
     .string()
     .optional()
     .describe(
-      'End anchor (inclusive). Omit to target only the from line. Order-insensitive: from/to are resolved by document position, so reversed endpoints are fine.',
+      'End of the region (inclusive): a real anchor from read/find, or "end" for the document end. Omit to target only the from line. Order-insensitive.',
     ),
 })
 
 const editInputSchema = z.object({
   edits: z
-    .array(anchorEditSchema)
-    .min(1)
+    .preprocess(parseStringifiedEdits, z.array(anchorEditSchema).min(1))
     .describe(
       'One or more edits. All from/to anchors resolve against the original document and apply atomically. Each edit carries its own intent so the user sees one reason per change.',
     ),
@@ -58,7 +57,7 @@ const editInputSchema = z.object({
 export function createEditTool(store: HtmlStore) {
   return createTool({
     description:
-      'Edit the project HTML using anchors from read/find. Each edit is { intent, from?, to?, code?, insert? }. Discriminate by field presence: omit from/to and give code to replace the whole document (initial page); give from (and optional to) plus code to replace a region, or omit code to delete it; set insert to "before"/"after" to insert code relative to from (or the document start/end when from is omitted). from/to are order-insensitive (resolved by document position). Each edit carries its own intent shown to the user. Combine related non-overlapping edits in one call. The preview updates automatically after a successful edit. The result is concise metadata, not the full file.',
+      'Edit the project HTML using anchors from read/find. Each edit is { intent, from?, to?, code?, insert? }. from/to accept a real anchor or the "start"/"end" sentinels for document boundaries; omit both from and to (with code) to replace the whole document (initial page). Discriminate by field presence: give from (and optional to) plus code to replace a region, or omit code to delete it; set insert to "before"/"after" to insert code relative to from (or a document boundary when from is omitted). from/to are order-insensitive (resolved by document position). Each edit carries its own intent shown to the user. Combine related non-overlapping edits in one call. The preview updates automatically after a successful edit. The result is concise metadata, not the full file.',
     execute: async ({ edits }) => {
       const result = applyAnchorEdits(store.getDocument(), toAnchorEdits(edits))
       const bytes = store.setDocument(result.document)
@@ -101,8 +100,18 @@ export function createEditTool(store: HtmlStore) {
   })
 }
 
-function toAnchorEdits(
-  edits: z.infer<typeof editInputSchema>['edits'],
-): ApplyAnchorEdit[] {
-  return edits.map((edit) => ({ ...edit }))
+function parseStringifiedEdits(value: unknown): unknown {
+  // Models occasionally pass the `edits` array as a JSON string. Parse it so
+  // the array validation can proceed; a malformed string falls through and
+  // fails validation with the usual array-type error.
+  if (typeof value !== 'string') return value
+  try {
+    return JSON.parse(value)
+  } catch {
+    return value
+  }
+}
+
+function toAnchorEdits(edits: unknown): ApplyAnchorEdit[] {
+  return (edits as ApplyAnchorEdit[]).map((edit) => ({ ...edit }))
 }
