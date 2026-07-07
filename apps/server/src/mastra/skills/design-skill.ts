@@ -52,7 +52,7 @@ export const designSkill = createSkill({
     '',
     '## Turn shape',
     '1. Extract the prompt invariants: exact name, category, audience, user pressure, job, domain artifact, proof, constraints, and visual drift to avoid.',
-    '2. For a new placeholder draft, create the first page with one whole-document edit: `edit({ edits: [{ intent: "Create initial page", code: "<!doctype html>..." }] })` (omit from/to). For follow-up changes, read the current project HTML with `read` or `find` before edits. Use `skill_read` for the compact reference that matches the design problem.',
+    '2. For a new placeholder draft, create the first page with one whole-document edit: `edit({ edits: [{ action: "Create initial page", code: "<!doctype html>..." }] })` (omit from/to). For follow-up changes, read the current project HTML with `read` or `find` before edits. Use `skill_read` for the compact reference that matches the design problem.',
     '3. Apply related changes with one batched `edit` call when practical. Every `edit` call must include a non-empty `edits` array. Set `from`/`to` to target a region (order-insensitive), give `code` to replace it or omit `code` to delete it, or set `insert: "before"/"after"` to add code relative to `from`. Keep regions small and avoid stale anchors.',
     '4. Re-check the changed region and continue until the browser page is more specific, accessible, responsive, and visually intentional.',
     '',

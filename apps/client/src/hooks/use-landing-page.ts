@@ -330,7 +330,7 @@ export function useLandingPage({
                       ...previous,
                       ...payload,
                       detail: payload.detail ?? previous.detail,
-                      intent: payload.intent ?? previous.intent,
+                      action: payload.action ?? previous.action,
                       result: payload.result ?? previous.result,
                     }
                     return { ...turn, parts: updated }

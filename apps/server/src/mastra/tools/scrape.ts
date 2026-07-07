@@ -82,7 +82,7 @@ const BrandingSchema = z
  * Scrape a URL into markdown + links + images + a branding profile (palette,
  * fonts, logo). Also OCRs every scraped image URL with the configured OpenRouter vision model and
  * returns the transcript as `imageOcr`. Use to pull a brand's identity before
- * building or refining a landing page. `intent` is surfaced to the UI.
+ * building or refining a landing page. `action` is surfaced to the UI.
  */
 interface CollectImageUrlsOptions {
   baseUrl: string
@@ -97,7 +97,7 @@ export function createScrapeTool(
 ) {
   return createTool({
     description:
-      'Scrape a URL into markdown + links + images + branding (palette, fonts, logo), then OCR all scraped image URLs and return the OCR/visual transcript in `imageOcr`. Handles JavaScript-rendered pages. Use to pull a brand identity before building or refining a landing page. Always pass an intent describing what you are scraping and why.',
+      'Scrape a URL into markdown + links + images + branding (palette, fonts, logo), then OCR all scraped image URLs and return the OCR/visual transcript in `imageOcr`. Handles JavaScript-rendered pages. Use to pull a brand identity before building or refining a landing page. Always pass an action: one short imperative line on what you are scraping (shown to the user as the label for this step).',
     execute: async ({
       excludeTags,
       includeTags,
@@ -173,6 +173,11 @@ export function createScrapeTool(
     },
     id: 'scrape',
     inputSchema: z.object({
+      action: z
+        .string()
+        .describe(
+          'Short reason for scraping (shown to the user), e.g. "pull acme.com brand palette + voice before redesigning"',
+        ),
       excludeTags: z
         .array(z.string())
         .optional()
@@ -181,11 +186,6 @@ export function createScrapeTool(
         .array(z.string())
         .optional()
         .describe('HTML tags to include, e.g. ["main","article"]'),
-      intent: z
-        .string()
-        .describe(
-          'Short reason for scraping (shown to the user), e.g. "pull acme.com brand palette + voice before redesigning"',
-        ),
       onlyMainContent: z
         .boolean()
         .optional()

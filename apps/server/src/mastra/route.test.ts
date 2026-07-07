@@ -589,7 +589,7 @@ describe('streamLandingAgent generated image persistence', () => {
             (async function* () {
               yield {
                 payload: {
-                  args: { intent: 'Hero image', prompt: 'Studio shot' },
+                  args: { action: 'Hero image', prompt: 'Studio shot' },
                   toolCallId: 'call-img-persist',
                   toolName: 'generate_image',
                 },
@@ -597,7 +597,7 @@ describe('streamLandingAgent generated image persistence', () => {
               }
               yield {
                 payload: {
-                  args: { intent: 'Hero image' },
+                  args: { action: 'Hero image' },
                   isError: false,
                   result: {
                     cost: 0.04,
@@ -656,14 +656,14 @@ describe('streamLandingAgent edit fan-out', () => {
                   args: {
                     edits: [
                       {
+                        action: 'Rewrite headline',
                         code: '<h1>Hi</h1>',
                         from: 'a2',
-                        intent: 'Rewrite headline',
                       },
                       {
+                        action: 'Rewrite paragraph',
                         code: '<p>There</p>',
                         from: 'a3',
-                        intent: 'Rewrite paragraph',
                       },
                     ],
                   },
@@ -677,14 +677,14 @@ describe('streamLandingAgent edit fan-out', () => {
                   args: {
                     edits: [
                       {
+                        action: 'Rewrite headline',
                         code: '<h1>Hi</h1>',
                         from: 'a2',
-                        intent: 'Rewrite headline',
                       },
                       {
+                        action: 'Rewrite paragraph',
                         code: '<p>There</p>',
                         from: 'a3',
-                        intent: 'Rewrite paragraph',
                       },
                     ],
                   },
@@ -692,8 +692,8 @@ describe('streamLandingAgent edit fan-out', () => {
                   result: {
                     changedLines: 2,
                     edits: [
-                      { changedLines: 1, changedText: 'a5|  <h1>Hi</h1>', intent: 'Rewrite headline' },
-                      { changedLines: 1, changedText: 'a6|  <p>There</p>', intent: 'Rewrite paragraph' },
+                      { action: 'Rewrite headline', changedLines: 1, changedText: 'a5|  <h1>Hi</h1>' },
+                      { action: 'Rewrite paragraph', changedLines: 1, changedText: 'a6|  <p>There</p>' },
                     ],
                     ok: true,
                   },
@@ -743,7 +743,7 @@ describe('streamLandingAgent edit fan-out', () => {
     const ids = editEvents.map((event) => (event.data as { id?: string }).id)
     expect(new Set(ids).size).toBe(2)
     const intents = done.map(
-      (event) => (event.data as { intent?: string }).intent,
+      (event) => (event.data as { action?: string }).action,
     )
     expect(intents).toEqual(
       expect.arrayContaining(['Rewrite headline', 'Rewrite paragraph']),
@@ -756,7 +756,7 @@ describe('streamLandingAgent edit fan-out', () => {
     expect(editParts).toHaveLength(2)
   })
 
-  it('surfaces the per-edit intent for a single-edit edit call', async () => {
+  it('surfaces the per-edit action for a single-edit edit call', async () => {
     vi.stubEnv('OPENROUTER_API_KEY', 'test-openrouter-key')
 
     vi.doMock('./index.ts', () => ({ mastra: {} }))
@@ -770,8 +770,8 @@ describe('streamLandingAgent edit fan-out', () => {
                   args: {
                     edits: [
                       {
+                        action: 'Set the page title',
                         code: '<title>X</title>',
-                        intent: 'Set the page title',
                       },
                     ],
                   },
@@ -785,8 +785,8 @@ describe('streamLandingAgent edit fan-out', () => {
                   args: {
                     edits: [
                       {
+                        action: 'Set the page title',
                         code: '<title>X</title>',
-                        intent: 'Set the page title',
                       },
                     ],
                   },
@@ -826,9 +826,9 @@ describe('streamLandingAgent edit fan-out', () => {
     )
     // Single edit -> one block (start + done), no fan-out sub-ids.
     expect(editEvents).toHaveLength(2)
-    // ...but its intent comes from the edit object, not null.
+    // ...but its action comes from the edit object, not null.
     for (const event of editEvents) {
-      expect((event.data as { intent?: string }).intent).toBe(
+      expect((event.data as { action?: string }).action).toBe(
         'Set the page title',
       )
     }
@@ -836,7 +836,7 @@ describe('streamLandingAgent edit fan-out', () => {
 })
 
 describe('streamLandingAgent default tool intents', () => {
-  it('derives intents for skill and skill_read calls without an intent arg', async () => {
+  it('derives intents for skill and skill_read calls without an action arg', async () => {
     vi.stubEnv('OPENROUTER_API_KEY', 'test-openrouter-key')
 
     vi.doMock('./index.ts', () => ({ mastra: {} }))
@@ -913,11 +913,11 @@ describe('streamLandingAgent default tool intents', () => {
         'tool' in event.data &&
         event.data.tool === 'skill_read',
     )
-    expect((skillCall?.data as undefined | { intent?: string })?.intent).toBe(
+    expect((skillCall?.data as undefined | { action?: string })?.action).toBe(
       'Load skill: design',
     )
     expect(
-      (skillReadCall?.data as undefined | { intent?: string })?.intent,
+      (skillReadCall?.data as undefined | { action?: string })?.action,
     ).toBe('Read design reference: color.md')
   })
 })
@@ -1278,8 +1278,8 @@ describe('streamLandingAgent history', () => {
           type: 'text',
         },
         {
+          action: 'Inspect /index.html',
           id: 'tool-history-1-read',
-          intent: 'Inspect /index.html',
           result: 'Read 50 lines of 943',
           state: 'done',
           tool: 'read',
@@ -1314,7 +1314,7 @@ describe('streamLandingAgent history', () => {
       { content: 'what i asked you todo', role: 'user' },
     ])
     expect(capturedMessages[1]?.content).not.toContain('Tool read done')
-    expect(capturedMessages[1]?.content).not.toContain('Intent:')
+    expect(capturedMessages[1]?.content).not.toContain('Action:')
     expect(capturedMessages[1]?.content).not.toContain('Result:')
   })
 })
@@ -1644,9 +1644,9 @@ describe('streamLandingAgent raw mastra message persistence', () => {
             args: {
               edits: [
                 {
+                  action: 'Rewrite hero',
                   code: '<h1>New</h1>',
                   from: 'a2',
-                  intent: 'Rewrite hero',
                 },
               ],
             },
@@ -1760,9 +1760,9 @@ describe('streamLandingAgent raw mastra message persistence', () => {
               args: {
                 edits: [
                   {
+                    action: 'Rewrite hero',
                     code: '<h1>New</h1>',
                     from: 'a2',
-                    intent: 'Rewrite hero',
                   },
                 ],
               },
@@ -1867,9 +1867,9 @@ async function* editToolStream({
       args: {
         edits: [
           {
+            action: 'Update hero copy',
             code: '<h1>Hi</h1>',
             from: 'a2',
-            intent: 'Update hero copy',
           },
         ],
       },
@@ -1884,9 +1884,9 @@ async function* editToolStream({
       args: {
         edits: [
           {
+            action: 'Update hero copy',
             code: '<h1>Hi</h1>',
             from: 'a2',
-            intent: 'Update hero copy',
           },
         ],
       },
@@ -1950,8 +1950,8 @@ async function* mixedToolStream() {
   yield {
     payload: {
       args: {
+        action: 'Create product image',
         aspectRatio: '1:1',
-        intent: 'Create product image',
         prompt: 'Studio product shot',
       },
       toolCallId: 'call-image',
@@ -1961,7 +1961,7 @@ async function* mixedToolStream() {
   }
   yield {
     payload: {
-      args: { intent: 'Create product image' },
+      args: { action: 'Create product image' },
       isError: false,
       result: {
         cost: 0.02,
@@ -1976,7 +1976,7 @@ async function* mixedToolStream() {
   }
   yield {
     payload: {
-      args: { intent: 'Scrape brand', url: 'https://example.test' },
+      args: { action: 'Scrape brand', url: 'https://example.test' },
       toolCallId: 'call-scrape',
       toolName: 'scrape',
     },
@@ -1984,7 +1984,7 @@ async function* mixedToolStream() {
   }
   yield {
     payload: {
-      args: { intent: 'Scrape brand', url: 'https://example.test' },
+      args: { action: 'Scrape brand', url: 'https://example.test' },
       isError: false,
       result: {
         charCount: 123,
@@ -2007,7 +2007,7 @@ async function* mixedToolStream() {
   }
   yield {
     payload: {
-      args: { intent: 'Find CTA', text: 'CTA' },
+      args: { action: 'Find CTA', text: 'CTA' },
       toolCallId: 'call-find',
       toolName: 'find',
     },
@@ -2015,7 +2015,7 @@ async function* mixedToolStream() {
   }
   yield {
     payload: {
-      args: { intent: 'Find CTA', text: 'CTA' },
+      args: { action: 'Find CTA', text: 'CTA' },
       isError: false,
       result: { matchCount: 2, truncatedLines: true },
       toolCallId: 'call-find',

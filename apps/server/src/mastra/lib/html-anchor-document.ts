@@ -3,10 +3,10 @@ import { createHash } from 'node:crypto'
 import { countChangedLines } from './edit-diff.ts'
 
 export interface ApplyAnchorEdit {
+  action: string
   code?: string
   from?: string
   insert?: 'after' | 'before'
-  intent: string
   to?: string
 }
 
@@ -62,10 +62,10 @@ export interface HtmlDocumentJsonV1 {
 export type HtmlLine = [anchor: string, text: string]
 
 export interface PerEditResult {
+  action: string
   changedLines: number
   changedText: string
   firstChangedAnchor?: string
-  intent: string
   lastChangedAnchor?: string
 }
 
@@ -670,7 +670,7 @@ function getChangedRegion(
  * Build a per-edit result slice from the placements recorded by
  * `applyCompiledEdits`: each edit's contributed lines (with their fresh
  * anchors) and line count. Deletes contribute zero lines and thus have an
- * empty `changedText`; their `intent` still flows through to the UI.
+ * empty `changedText`; their `action` still flows through to the UI.
  */
 function getPerEditResults(
   document: HtmlDocumentJsonV1,
@@ -685,10 +685,10 @@ function getPerEditResults(
     const slice = document.lines.slice(start, start + count)
     const formatted = formatCompactLines(slice)
     return {
+      action: edits[compiled.editIndex]!.action,
       changedLines: count,
       changedText: formatted.text,
       firstChangedAnchor: slice[0]?.[0],
-      intent: edits[compiled.editIndex]!.intent,
       lastChangedAnchor: slice[slice.length - 1]?.[0],
     }
   })

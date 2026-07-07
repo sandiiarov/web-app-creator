@@ -196,7 +196,7 @@ export type TokenUsage = {
 export type ToolCallPart = {
   detail?: null | string
   id: string
-  intent: null | string
+  action: null | string
   providerId?: string
   result?: null | string
   state: ToolCallState

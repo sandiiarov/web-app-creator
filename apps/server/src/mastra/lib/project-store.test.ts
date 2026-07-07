@@ -101,9 +101,9 @@ describe('project message storage', () => {
     const store = createProjectHtmlStore(project.id)
     const result = applyAnchorEdits(store.getDocument(), [
       {
+        action: 'Rename title',
         code: '    <title>Anchored</title>',
         from: 'a6',
-        intent: 'Rename title',
       },
     ])
 

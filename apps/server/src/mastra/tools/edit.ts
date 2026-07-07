@@ -8,6 +8,11 @@ import {
 import type { HtmlStore } from '../lib/html-store.ts'
 
 const anchorEditSchema = z.object({
+  action: z
+    .string()
+    .describe(
+      'One short imperative line stating what THIS edit does, shown to the user as its label (think commit message), e.g. "swap hero headline to benefit-driven copy". Each edit in the batch has its own action.',
+    ),
   code: z
     .string()
     .optional()
@@ -26,11 +31,6 @@ const anchorEditSchema = z.object({
     .describe(
       'Set to insert code instead of replacing: "before"/"after" the from anchor (or a document boundary when from is omitted). Omit to replace or delete the from/to region.',
     ),
-  intent: z
-    .string()
-    .describe(
-      'Short reason for THIS edit, shown to the user, e.g. "swap hero headline to benefit-driven copy". Each edit in the batch has its own intent.',
-    ),
   to: z
     .string()
     .optional()
@@ -43,21 +43,21 @@ const editInputSchema = z.object({
   edits: z
     .preprocess(parseStringifiedEdits, z.array(anchorEditSchema).min(1))
     .describe(
-      'One or more edits. All from/to anchors resolve against the original document and apply atomically. Each edit carries its own intent so the user sees one reason per change.',
+      'One or more edits. All from/to anchors resolve against the original document and apply atomically. Each edit carries its own action so the user sees one label per change.',
     ),
 })
 
 /**
  * Apply anchored line-range edits to the project HTML document. Batched edits
  * are resolved against the original anchored document, validated atomically,
- * and persisted through the project store on success. Each edit's `intent` is
+ * and persisted through the project store on success. Each edit's `action` is
  * surfaced to the UI as its own block. Returns concise metadata and a bounded
  * changed anchored region, never the full HTML.
  */
 export function createEditTool(store: HtmlStore) {
   return createTool({
     description:
-      'Edit the project HTML using anchors from read/find. Each edit is { intent, from?, to?, code?, insert? }. from/to accept a real anchor or the "start"/"end" sentinels for document boundaries; omit both from and to (with code) to replace the whole document (initial page). Discriminate by field presence: give from (and optional to) plus code to replace a region, or omit code to delete it; set insert to "before"/"after" to insert code relative to from (or a document boundary when from is omitted). from/to are order-insensitive (resolved by document position). Each edit carries its own intent shown to the user. Combine related non-overlapping edits in one call. The preview updates automatically after a successful edit. The result is concise metadata, not the full file.',
+      'Edit the project HTML using anchors from read/find. Each edit is { action, from?, to?, code?, insert? }. from/to accept a real anchor or the "start"/"end" sentinels for document boundaries; omit both from and to (with code) to replace the whole document (initial page). Discriminate by field presence: give from (and optional to) plus code to replace a region, or omit code to delete it; set insert to "before"/"after" to insert code relative to from (or a document boundary when from is omitted). from/to are order-insensitive (resolved by document position). Each edit carries its own action shown to the user. Combine related non-overlapping edits in one call. The preview updates automatically after a successful edit. The result is concise metadata, not the full file.',
     execute: async ({ edits }) => {
       const result = applyAnchorEdits(store.getDocument(), toAnchorEdits(edits))
       const bytes = store.setDocument(result.document)
@@ -84,10 +84,10 @@ export function createEditTool(store: HtmlStore) {
       checksum: z.string(),
       edits: z.array(
         z.object({
+          action: z.string(),
           changedLines: z.number(),
           changedText: z.string(),
           firstChangedAnchor: z.string().optional(),
-          intent: z.string(),
           lastChangedAnchor: z.string().optional(),
         }),
       ),

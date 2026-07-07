@@ -43,8 +43,8 @@ export function createScreenshotTool(
 ) {
   return createTool({
     description:
-      'Request a browser-rendered screenshot of one element in the current project HTML document, then OCR/analyze it with vision. Accepts three arguments: a CSS element selector, viewportSize (mobile, tablet, or desktop), and an intent describing what to inspect. The intent becomes the vision prompt alongside the Z.AI ui_to_artifact system prompt, so state precisely what feedback you need (e.g. "check hero spacing and CTA contrast", "verify mobile nav wraps without clipping"). Use after substantial edits or when you need visual feedback about layout, text, spacing, contrast, clipping, or responsive issues. Returns a padded element screenshot OCR/visual transcript; it does not create files.',
-    execute: async ({ intent, selector, viewportSize }) => {
+      'Request a browser-rendered screenshot of one element in the current project HTML document, then OCR/analyze it with vision. Accepts three arguments: a CSS element selector, viewportSize (mobile, tablet, or desktop), and an action describing what to inspect. The action becomes the vision prompt alongside the Z.AI ui_to_artifact system prompt, so state precisely what feedback you need (e.g. "check hero spacing and CTA contrast", "verify mobile nav wraps without clipping"). Use after substantial edits or when you need visual feedback about layout, text, spacing, contrast, clipping, or responsive issues. Returns a padded element screenshot OCR/visual transcript; it does not create files.',
+    execute: async ({ action, selector, viewportSize }) => {
       if (!requestScreenshot) {
         return {
           height: null,
@@ -102,7 +102,7 @@ export function createScreenshotTool(
             sourceLabel: `browser screenshot ${screenshot.width}×${screenshot.height} of ${selector} at ${viewportSize} viewport`,
           },
         ],
-        `${intent}\nTarget selector: ${selector}\nViewport size: ${viewportSize}`,
+        `${action}\nTarget selector: ${selector}\nViewport size: ${viewportSize}`,
         visionModel,
       )
 
@@ -121,7 +121,7 @@ export function createScreenshotTool(
     id: 'screenshot',
     inputSchema: z
       .object({
-        intent: z
+        action: z
           .string()
           .min(1)
           .describe(

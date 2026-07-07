@@ -7,12 +7,12 @@ import type { HtmlStore } from '../lib/html-store.ts'
 /**
  * Search `/index.html` for a pattern. Regex by default; `literal` for plain
  * strings. Returns matching lines with line numbers and optional context.
- * `intent` is surfaced to the UI.
+ * `action` is surfaced to the UI.
  */
 export function createGrepTool(store: HtmlStore) {
   return createTool({
     description:
-      'Search /index.html for a pattern. Regex by default; set literal=true for plain strings. Returns numbered text plus raw unnumbered matches. Use rawMatches/read rawText for edit.oldText; do not copy line numbers into edits. Always pass an intent describing the search.',
+      'Search /index.html for a pattern. Regex by default; set literal=true for plain strings. Returns numbered text plus raw unnumbered matches. Use rawMatches/read rawText for edit.oldText; do not copy line numbers into edits. Always pass an action: one short imperative line on what you are searching for (shown to the user as the label for this step).',
     execute: async ({ context, ignoreCase, limit, literal, pattern }) => {
       const result = grepHtml(store.get(), pattern, {
         context,
@@ -30,6 +30,11 @@ export function createGrepTool(store: HtmlStore) {
     },
     id: 'grep',
     inputSchema: z.object({
+      action: z
+        .string()
+        .describe(
+          'Short reason for searching (shown to the user), e.g. "locate the CTA button markup"',
+        ),
       context: z
         .number()
         .int()
@@ -40,11 +45,6 @@ export function createGrepTool(store: HtmlStore) {
         .boolean()
         .optional()
         .describe('Case-insensitive (default false)'),
-      intent: z
-        .string()
-        .describe(
-          'Short reason for searching (shown to the user), e.g. "locate the CTA button markup"',
-        ),
       limit: z
         .number()
         .int()

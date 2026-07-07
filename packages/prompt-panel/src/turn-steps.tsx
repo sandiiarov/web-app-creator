@@ -53,7 +53,7 @@ export function TurnToolBlock({ step }: { step: ToolCallPart }) {
   const [open, setOpen] = useState(false)
   const args = argsFromDetail(step)
   const Icon = TOOL_ICONS[step.tool] ?? Wrench
-  const intent = displayIntent(step)
+  const action = displayIntent(step)
   const isActive = isActiveState(step.state)
   const isError = step.state === 'error'
   const label = toolLabel(step.tool)
@@ -68,7 +68,7 @@ export function TurnToolBlock({ step }: { step: ToolCallPart }) {
     >
       <CollapsibleTrigger asChild>
         <button
-          aria-label={`${open ? 'Hide' : 'Show'} ${label} details: ${intent}`}
+          aria-label={`${open ? 'Hide' : 'Show'} ${label} details: ${action}`}
           className={toolTriggerClassName}
           type="button"
         >
@@ -88,7 +88,7 @@ export function TurnToolBlock({ step }: { step: ToolCallPart }) {
                 isError && 'text-destructive/85',
               )}
             >
-              {intent}
+              {action}
             </span>
             <span className="sr-only">{stateLabel(step.state)}</span>
           </span>
@@ -126,7 +126,7 @@ function argsFromDetail(step: ToolCallPart) {
   const detail = normalizeText(step.detail)
   if (!detail) return null
 
-  const explicitIntent = normalizeText(step.intent)
+  const explicitIntent = normalizeText(step.action)
   const lines = detail
     .split('\n')
     .map((line) => line.trim())
@@ -182,7 +182,7 @@ function DisclosureIcon({
 }
 
 function displayIntent(step: ToolCallPart) {
-  const explicitIntent = normalizeText(step.intent)
+  const explicitIntent = normalizeText(step.action)
   if (explicitIntent) return explicitIntent
 
   const detail = normalizeText(step.detail)

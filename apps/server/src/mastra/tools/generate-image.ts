@@ -26,8 +26,8 @@ export function createGenerateImageTool(
 ) {
   return createTool({
     description:
-      'Generate an image from a text prompt using the Seedream 4.5 model. Returns a hosted URL (e.g. http://localhost:3001/images/img-1.jpg) — embed it directly as `<img src="<url>" alt="...">`. Use for hero/product imagery, brand visuals, or any raster graphic the landing page needs — do NOT use for icons or decoration. Always pass an intent. Be specific and art-directed in the prompt (subject, lighting, composition, style).',
-    execute: async ({ aspectRatio, intent: _intent, prompt }) => {
+      'Generate an image from a text prompt using the Seedream 4.5 model. Returns a hosted URL (e.g. http://localhost:3001/images/img-1.jpg) — embed it directly as `<img src="<url>" alt="...">`. Use for hero/product imagery, brand visuals, or any raster graphic the landing page needs — do NOT use for icons or decoration. Always pass an action: one short imperative line on what you are generating (shown to the user as the label for this step). Be specific and art-directed in the prompt (subject, lighting, composition, style).',
+    execute: async ({ action: _intent, aspectRatio, prompt }) => {
       if (!config.openrouter.apiKey) {
         return {
           cost: 0,
@@ -97,16 +97,16 @@ export function createGenerateImageTool(
     },
     id: 'generate_image',
     inputSchema: z.object({
+      action: z
+        .string()
+        .describe(
+          'Short reason for generating this image (shown to the user), e.g. "hero product shot for the landing page"',
+        ),
       aspectRatio: z
         .enum(['1:1', '16:9', '9:16', '4:3', '3:4', '3:2', '2:3', '4:5', '5:4'])
         .optional()
         .describe(
           'Output aspect ratio (default 16:9). Match the slot the image fills.',
-        ),
-      intent: z
-        .string()
-        .describe(
-          'Short reason for generating this image (shown to the user), e.g. "hero product shot for the landing page"',
         ),
       prompt: z
         .string()

@@ -17,18 +17,21 @@ describe('createEditTool', () => {
     expect(schemaText).toContain('"code"')
     expect(schemaText).toContain('"insert"')
     expect(schemaText).toContain('"enum":["after","before"]')
-    expect(schemaText).toContain('"required":["intent"]')
+    expect(schemaText).toContain('"required":["action"]')
     expect(schemaText).not.toContain('"items":[]')
     expect(schemaText).not.toContain('"maxItems"')
   })
 
   it('coerces a stringified edits array into a real array', () => {
     const tool = createEditTool(createHtmlStore())
-    const parsed = tool.inputSchema.parse({
-      edits: JSON.stringify([{ code: '<p>y</p>', intent: 'x' }]),
-    })
+    const parsed = (tool.inputSchema as z.ZodType).parse({
+      edits: JSON.stringify([{ action: 'x', code: '<p>y</p>' }]),
+    }) as { edits: unknown }
     expect(Array.isArray(parsed.edits)).toBe(true)
-    expect(parsed.edits[0]).toMatchObject({ code: '<p>y</p>', intent: 'x' })
+    expect((parsed.edits as { action: string; code: string }[])[0]).toMatchObject({
+      action: 'x',
+      code: '<p>y</p>',
+    })
   })
 
   it('applies anchor-range edits and returns metadata without full HTML', async () => {
@@ -39,9 +42,9 @@ describe('createEditTool', () => {
       {
         edits: [
           {
+            action: 'Update hero heading',
             code: '  <h1>Hi</h1>',
             from: 'a2',
-            intent: 'Update hero heading',
           },
         ],
       },
@@ -78,15 +81,15 @@ describe('createEditTool', () => {
       {
         edits: [
           {
+            action: 'Update hero copy',
             code: '  <h1>Hi</h1>',
             from: 'a2',
-            intent: 'Update hero copy',
           },
           {
+            action: 'Insert CTA',
             code: '  <a href="#cta">Start</a>',
             from: 'a3',
             insert: 'after',
-            intent: 'Insert CTA',
           },
         ],
       },
@@ -113,8 +116,8 @@ describe('createEditTool', () => {
       {
         edits: [
           {
+            action: 'Replace full document',
             code: '<!doctype html>\n<html></html>',
-            intent: 'Replace full document',
           },
         ],
       },
@@ -133,9 +136,9 @@ describe('createEditTool', () => {
         {
           edits: [
             {
+              action: 'Try stale edit',
               code: '  <h1>Hi</h1>',
               from: 'missing',
-              intent: 'Try stale edit',
             },
           ],
         },

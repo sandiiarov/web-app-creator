@@ -6,7 +6,7 @@ import { providerReportedCost } from './cost.ts'
  * `code` artifact). Frames the model as a senior frontend engineer studying a
  * UI screenshot to extract structure, spacing scale, hex colors, and
  * typography with precision. Sent as the `system` message so per-call user
- * prompts (attachment framing, screenshot intent, scrape OCR) stay focused on
+ * prompts (attachment framing, screenshot action, scrape OCR) stay focused on
  * what the caller wants analyzed in that image.
  */
 export const UI_TO_ARTIFACT_SYSTEM_PROMPT = `You are a senior frontend engineer who specializes in translating design mockups into pixel-perfect, production-ready code. When you examine a UI screenshot, you approach it like an architect studying blueprints—you see not just the visual surface, but the underlying structure, the spacing rhythms, the component relationships, and the interaction patterns that bring it to life.

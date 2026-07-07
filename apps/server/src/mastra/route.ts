@@ -40,7 +40,7 @@ const MAX_EDIT_FAILURES = 10
 const MAX_STEPS = 30
 const REPEATED_EDIT_FAILURE_MESSAGE = `Edit failed ${MAX_EDIT_FAILURES} times in this turn. Stopping so the agent does not keep making blind edit attempts. Read/find the current project HTML and try again.`
 const INVALID_EDIT_RESULT_MESSAGE =
-  'Edit failed because the model did not provide a valid edits array. Retry with edit({ edits: [{ intent, from?, to?, code?, insert? }] }).'
+  'Edit failed because the model did not provide a valid edits array. Retry with edit({ edits: [{ action, from?, to?, code?, insert? }] }).'
 const NO_GENERATED_HTML_MESSAGE =
   'Agent finished without generating project HTML. The draft still has no content because no successful edit changed the page.'
 const SCREENSHOT_UNAVAILABLE_REASON =
@@ -109,9 +109,9 @@ interface StreamOptions {
 type ToolArgs = Record<string, unknown>
 
 interface ToolCallDisplay {
+  action: null | string
   detail: null | string
   id: string
-  intent: null | string
   tool: string
 }
 
@@ -125,7 +125,7 @@ export function resolveModelId(model?: string): string {
 
 /**
  * Run the landing-page agent and stream the custom SSE protocol by mapping
- * Mastra `fullStream` chunks. Emits: thinking, text, tool_call (with intent +
+ * Mastra `fullStream` chunks. Emits: thinking, text, tool_call (with action +
  * terminal error/result states), stats, error, done.
  */
 export async function streamLandingAgent({
@@ -217,9 +217,9 @@ export async function streamLandingAgent({
   // separate invocations into one rendered row.
   const callDisplay = new Map<string, ToolCallDisplay>()
   const completedCallIds = new Set<string>()
-  // Track per-call intent from the tool-call chunk (tool-result args can be
+  // Track per-call action from the tool-call chunk (tool-result args can be
   // absent), so we can echo it on the done/error states too.
-  const callIntent = new Map<string, null | string>()
+  const callAction = new Map<string, null | string>()
   // Fan-out: one provider `edit` call with N edits renders as N blocks. Map
   // the provider toolCallId to the per-edit sub-ids so tool-result can match.
   const editSubIds = new Map<string, string[]>()
@@ -342,23 +342,23 @@ export async function streamLandingAgent({
             chunk.payload.toolName,
             args,
           )
-          callIntent.set(chunk.payload.toolCallId, display.intent)
+          callAction.set(chunk.payload.toolCallId, display.action)
 
           // Edit fan-out: a batched edit call (N >= 2 edits) renders as N
-          // running blocks, each carrying its own intent, instead of one.
-          const editIntents =
+          // running blocks, each carrying its own action, instead of one.
+          const editActions =
             chunk.payload.toolName === 'edit'
-              ? editIntentsFromArgs(args)
+              ? editActionsFromArgs(args)
               : null
-          if (editIntents) {
-            const subIds = editIntents.map((_, index) =>
+          if (editActions) {
+            const subIds = editActions.map((_, index) =>
               editSubId(toolCallSeq, index),
             )
             editSubIds.set(chunk.payload.toolCallId, subIds)
-            for (const [index, intent] of editIntents.entries()) {
+            for (const [index, action] of editActions.entries()) {
               const toolPayload: RecordedToolPayload = {
+                action,
                 id: subIds[index]!,
-                intent,
                 providerId: chunk.payload.toolCallId,
                 state: 'running',
                 tool: chunk.payload.toolName,
@@ -370,9 +370,9 @@ export async function streamLandingAgent({
           }
 
           const toolPayload: RecordedToolPayload = {
+            action: display.action,
             detail: display.detail,
             id: display.id,
-            intent: display.intent,
             providerId: chunk.payload.toolCallId,
             state: 'running',
             tool: chunk.payload.toolName,
@@ -391,9 +391,9 @@ export async function streamLandingAgent({
           )
 
           const toolPayload: RecordedToolPayload = {
+            action: display.action,
             detail: display.detail,
             id: display.id,
-            intent: display.intent,
             providerId: chunk.payload.toolCallId,
             state: 'start',
             tool: chunk.payload.toolName,
@@ -411,12 +411,12 @@ export async function streamLandingAgent({
             args,
             ++toolCallSeq,
           )
-          const intent =
-            callIntent.get(chunk.payload.toolCallId) ?? display.intent
+          const action =
+            callAction.get(chunk.payload.toolCallId) ?? display.action
           const toolPayload: RecordedToolPayload = {
+            action,
             detail: display.detail,
             id: display.id,
-            intent,
             providerId: chunk.payload.toolCallId,
             result: summarizeToolError(chunk.payload.error),
             state: 'error',
@@ -452,21 +452,21 @@ export async function streamLandingAgent({
             args,
             ++toolCallSeq,
           )
-          const intent =
-            callIntent.get(chunk.payload.toolCallId) ?? display.intent
+          const action =
+            callAction.get(chunk.payload.toolCallId) ?? display.action
           const result = summarizeToolResult(
             chunk.payload.toolName,
             chunk.payload.result,
             isError,
           )
           // Edit fan-out result: emit one terminal block per edit, each with
-          // its own intent and per-edit diff slice (from result.edits[i]). On
+          // its own action and per-edit diff slice (from result.edits[i]). On
           // a whole-call error every edit block gets the shared error reason.
           const fanOutSubIds = editSubIds.get(chunk.payload.toolCallId)
           if (fanOutSubIds && chunk.payload.toolName === 'edit') {
             const perEditResults = (chunk.payload.result as { edits?: { changedLines: number; changedText: string }[] })
               .edits
-            const editArgsIntents = editIntentsFromArgs(args) ?? []
+            const editArgsIntents = editActionsFromArgs(args) ?? []
             for (const [index, subId] of fanOutSubIds.entries()) {
               const perEdit = perEditResults?.[index]
               const perResult = isError
@@ -475,8 +475,8 @@ export async function streamLandingAgent({
                   ? `Changed ${perEdit.changedLines} line${perEdit.changedLines === 1 ? '' : 's'}`
                   : result
               const toolPayload: RecordedToolPayload = {
+                action: editArgsIntents[index] ?? null,
                 id: subId!,
-                intent: editArgsIntents[index] ?? null,
                 providerId: chunk.payload.toolCallId,
                 result: perResult,
                 state: isError ? 'error' : 'done',
@@ -517,9 +517,9 @@ export async function streamLandingAgent({
             break
           }
           const toolPayload: RecordedToolPayload = {
+            action,
             detail: display.detail,
             id: display.id,
-            intent,
             providerId: chunk.payload.toolCallId,
             result,
             state: isError ? 'error' : 'done',
@@ -785,15 +785,15 @@ async function analyzePromptAttachments({
   }
 
   const id = `tool-${nextToolSeq()}-analyze_image`
-  const intent = 'Analyze attached visual reference'
+  const action = 'Analyze attached visual reference'
   const detail = compactLines([
-    intent,
+    action,
     ...attachments.map((attachment) => attachment.name),
   ])
   const runningPayload: RecordedToolPayload = {
+    action,
     detail,
     id,
-    intent,
     state: 'running',
     tool: 'analyze_image',
   }
@@ -817,9 +817,9 @@ async function analyzePromptAttachments({
     if (!result.ok) {
       const reason = result.reason ?? 'Image analysis failed.'
       const errorPayload: RecordedToolPayload = {
+        action,
         detail,
         id,
-        intent,
         result: reason,
         state: 'error',
         tool: 'analyze_image',
@@ -835,9 +835,9 @@ async function analyzePromptAttachments({
     }
 
     const donePayload: RecordedToolPayload = {
+      action,
       detail,
       id,
-      intent,
       result: `Analyzed ${images} attached image${images === 1 ? '' : 's'}`,
       state: 'done',
       tool: 'analyze_image',
@@ -853,9 +853,9 @@ async function analyzePromptAttachments({
   } catch (error) {
     const reason = summarizeToolError(error)
     const errorPayload: RecordedToolPayload = {
+      action,
       detail,
       id,
-      intent,
       result: reason,
       state: 'error',
       tool: 'analyze_image',
@@ -1037,19 +1037,19 @@ function createRecordedTurn(
   }
 }
 
-function defaultToolIntent(tool: string, args: ToolArgs): string | undefined {
+function defaultToolAction(tool: string, args: ToolArgs): string | undefined {
   if (tool === 'edit') {
-    // `edit` has no call-level intent; the model puts one on each edit
-    // object. For a single-edit call use that intent directly. A multi-edit
-    // batch is fanned out by `editIntentsFromArgs` (each edit gets its own
-    // block), so the first edit's intent here is only a fallback for the
+    // `edit` has no call-level action; the model puts one on each edit
+    // object. For a single-edit call use that action directly. A multi-edit
+    // batch is fanned out by `editActionsFromArgs` (each edit gets its own
+    // block), so the first edit's action here is only a fallback for the
     // call-level display record.
     const edits = args.edits
     if (Array.isArray(edits) && edits.length >= 1) {
       const first = edits[0]
       if (first && typeof first === 'object' && !Array.isArray(first)) {
-        const intent = stringValue((first as { intent?: unknown }).intent)
-        if (intent) return intent
+        const action = stringValue((first as { action?: unknown }).action)
+        if (action) return action
       }
     }
     return undefined
@@ -1066,7 +1066,7 @@ function defaultToolIntent(tool: string, args: ToolArgs): string | undefined {
     return 'Capture screenshot'
   }
 
-  // `skill`/`skill_read` schemas have no `intent` arg; derive one from their
+  // `skill`/`skill_read` schemas have no `action` arg; derive one from their
   // other args so the UI reason column is populated instead of blank.
   if (tool === 'skill') {
     const name = stringValue(args.name)
@@ -1086,18 +1086,18 @@ function defaultToolIntent(tool: string, args: ToolArgs): string | undefined {
 
 /**
  * Extract the per-edit intents from an `edit` tool-call args. Returns null
- * when the args are not the expected `{ edits: [{ intent, ... }] }` shape or
+ * when the args are not the expected `{ edits: [{ action, ... }] }` shape or
  * the batch has 0/1 edits (single-block fallback handles those).
  */
-function editIntentsFromArgs(args: ToolArgs): null | string[] {
+function editActionsFromArgs(args: ToolArgs): null | string[] {
   const edits = args.edits
   if (!Array.isArray(edits) || edits.length < 2) return null
   const intents: string[] = []
   for (const edit of edits) {
     if (!edit || typeof edit !== 'object' || Array.isArray(edit)) return null
-    const intent = (edit as { intent?: unknown }).intent
-    if (typeof intent !== 'string' || intent.length === 0) return null
-    intents.push(intent)
+    const action = (edit as { action?: unknown }).action
+    if (typeof action !== 'string' || action.length === 0) return null
+    intents.push(action)
   }
   return intents
 }
@@ -1196,8 +1196,8 @@ function recordToolCall(
   payload: RecordedToolPayload,
 ) {
   const next: ProjectMessageToolCallPart = {
+    action: payload.action,
     id: payload.id,
-    intent: payload.intent,
     state: payload.state,
     tool: payload.tool,
     type: 'tool_call',
@@ -1238,17 +1238,17 @@ function startToolCallDisplay(
 
   if (!display || completedProviderIds.has(providerId)) {
     display = {
+      action: null,
       detail: null,
       id: `tool-${nextDisplaySeq}-${tool}`,
-      intent: null,
       tool,
     }
     displayByProviderId.set(providerId, display)
     completedProviderIds.delete(providerId)
   }
 
-  const intent = stringValue(args.intent) ?? defaultToolIntent(tool, args)
-  if (intent) display.intent = intent
+  const action = stringValue(args.action) ?? defaultToolAction(tool, args)
+  if (action) display.action = action
 
   const detail = summarizeToolArgs(tool, args)
   if (detail) display.detail = detail
@@ -1298,28 +1298,28 @@ function stripReplayNoise(messages: MastraDBMessage[]): MastraDBMessage[] {
 }
 
 function summarizeToolArgs(tool: string, args: ToolArgs): null | string {
-  const intent = stringValue(args.intent)
+  const action = stringValue(args.action)
 
   switch (tool) {
     case 'edit':
-      return intent ?? null
+      return action ?? null
     case 'find':
       return compactLines([
-        intent,
+        action,
         stringValue(args.text) ? `Text: ${stringValue(args.text)}` : null,
       ])
     case 'generate_image': {
       const prompt = stringValue(args.prompt)
       const aspectRatio = stringValue(args.aspectRatio)
       return compactLines([
-        intent,
-        prompt && prompt !== intent ? prompt : null,
+        action,
+        prompt && prompt !== action ? prompt : null,
         aspectRatio ? `Aspect ratio: ${aspectRatio}` : null,
       ])
     }
     case 'grep':
       return compactLines([
-        intent,
+        action,
         stringValue(args.pattern)
           ? `Pattern: ${stringValue(args.pattern)}`
           : null,
@@ -1329,7 +1329,7 @@ function summarizeToolArgs(tool: string, args: ToolArgs): null | string {
       const to = stringValue(args.to)
       const limit = numberValue(args.limit)
       return compactLines([
-        intent,
+        action,
         from || to
           ? `Anchors: ${from ?? 'start'}${to ? `..${to}` : ''}`
           : null,
@@ -1337,12 +1337,12 @@ function summarizeToolArgs(tool: string, args: ToolArgs): null | string {
       ])
     }
     case 'scrape':
-      return compactLines([intent, stringValue(args.url)])
+      return compactLines([action, stringValue(args.url)])
     case 'screenshot': {
       const selector = stringValue(args.selector)
       const viewportSize = stringValue(args.viewportSize)
       return compactLines([
-        intent,
+        action,
         selector ? `Selector: ${selector}` : null,
         viewportSize ? `Viewport: ${viewportSize}` : null,
       ])
@@ -1370,7 +1370,7 @@ function summarizeToolArgs(tool: string, args: ToolArgs): null | string {
       ])
     }
     default:
-      return intent ?? null
+      return action ?? null
   }
 }
 

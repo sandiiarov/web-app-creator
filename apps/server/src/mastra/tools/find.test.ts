@@ -11,7 +11,7 @@ describe('createFindTool', () => {
     const tool = createFindTool(store)
 
     const result = await tool.execute?.(
-      { context: 1, intent: 'Find heading anchors', text: 'Hello' },
+      { action: 'Find heading anchors', context: 1, text: 'Hello' },
       undefined as never,
     )
 
@@ -31,11 +31,11 @@ describe('createFindTool', () => {
     const tool = createFindTool(store)
 
     const match = await tool.execute?.(
-      { intent: 'Find heading tags', regex: true, text: '<h\\d>' },
+      { action: 'Find heading tags', regex: true, text: '<h\\d>' },
       undefined as never,
     )
     const invalid = await tool.execute?.(
-      { intent: 'Try invalid pattern', regex: true, text: '[' },
+      { action: 'Try invalid pattern', regex: true, text: '[' },
       undefined as never,
     )
 

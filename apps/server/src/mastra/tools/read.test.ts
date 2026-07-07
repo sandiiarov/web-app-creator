@@ -13,7 +13,7 @@ describe('createReadTool', () => {
 
     expect(schemaText).toContain('"from"')
     expect(schemaText).toContain('"to"')
-    expect(schemaText).toContain('"required":["intent"]')
+    expect(schemaText).toContain('"required":["action"]')
     expect(schemaText).not.toContain('"items":[]')
     expect(schemaText).not.toContain('"maxItems"')
   })
@@ -25,11 +25,11 @@ describe('createReadTool', () => {
     const tool = createReadTool(store)
 
     const regionResult = await tool.execute?.(
-      { from: 'a2', intent: 'Read hero anchors', to: 'a3' },
+      { action: 'Read hero anchors', from: 'a2', to: 'a3' },
       undefined as never,
     )
     const singleResult = await tool.execute?.(
-      { from: 'a3', intent: 'Read paragraph anchor' },
+      { action: 'Read paragraph anchor', from: 'a3' },
       undefined as never,
     )
 

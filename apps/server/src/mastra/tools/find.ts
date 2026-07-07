@@ -11,7 +11,7 @@ import type { HtmlStore } from '../lib/html-store.ts'
 export function createFindTool(store: HtmlStore) {
   return createTool({
     description:
-      'Find text in the current project HTML. Literal substring search is the default; set regex=true for regular expressions. Returns compact anchor|text lines with optional context. Use returned anchors in edit ranges. Always pass an intent describing the search.',
+      'Find text in the current project HTML. Literal substring search is the default; set regex=true for regular expressions. Returns compact anchor|text lines with optional context. Use returned anchors in edit ranges. Always pass an action: one short imperative line on what you are searching for (shown to the user as the label for this step).',
     execute: async ({ context, ignoreCase, limit, regex, text }) => {
       const result = findHtmlDocumentLines(store.getDocument(), {
         context,
@@ -24,6 +24,11 @@ export function createFindTool(store: HtmlStore) {
     },
     id: 'find',
     inputSchema: z.object({
+      action: z
+        .string()
+        .describe(
+          'One short imperative line stating what you are searching for, shown to the user as this step\'s label (think commit message), e.g. "locate the CTA button anchors"',
+        ),
       context: z
         .number()
         .int()
@@ -34,11 +39,6 @@ export function createFindTool(store: HtmlStore) {
         .boolean()
         .optional()
         .describe('Case-insensitive search (default false)'),
-      intent: z
-        .string()
-        .describe(
-          'Short reason for searching (shown to the user), e.g. "locate the CTA button anchors"',
-        ),
       limit: z
         .number()
         .int()

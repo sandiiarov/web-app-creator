@@ -53,7 +53,7 @@ describe('grepHtml', () => {
     const tool = createGrepTool(createHtmlStore('<main>Launch</main>\n'))
     const result = await tool.execute?.(
       {
-        intent: 'Find launch copy',
+        action: 'Find launch copy',
         literal: true,
         pattern: 'Launch',
       },
@@ -94,7 +94,7 @@ describe('createGenerateImageTool', () => {
 
     const result = await tool.execute?.(
       {
-        intent: 'Create a hero image',
+        action: 'Create a hero image',
         prompt: 'A cinematic product render on a clean desk',
       },
       undefined as never,
@@ -127,8 +127,8 @@ describe('createGenerateImageTool', () => {
     const tool = createGenerateImageTool('http://server.test')
     const result = await tool.execute?.(
       {
+        action: 'Create a square product image',
         aspectRatio: '1:1',
-        intent: 'Create a square product image',
         prompt: 'A detailed product render in soft studio light',
       },
       undefined as never,
@@ -200,7 +200,7 @@ describe('createGenerateImageTool', () => {
       'fallback png prompt',
     ]) {
       const result = await tool.execute?.(
-        { intent: 'Create image', prompt },
+        { action: 'Create image', prompt },
         undefined as never,
       )
       if (!result || !('url' in result)) {
@@ -230,7 +230,7 @@ describe('createGenerateImageTool', () => {
     await expect(
       tool.execute?.(
         {
-          intent: 'Try image generation',
+          action: 'Try image generation',
           prompt: 'A detailed product render in soft studio light',
         },
         undefined as never,
@@ -247,7 +247,7 @@ describe('createGenerateImageTool', () => {
     await expect(
       tool.execute?.(
         {
-          intent: 'Try image generation again',
+          action: 'Try image generation again',
           prompt: 'A detailed product render in soft studio light',
         },
         undefined as never,
@@ -266,7 +266,7 @@ describe('createScrapeTool', () => {
 
     const result = await tool.execute?.(
       {
-        intent: 'Scrape brand identity',
+        action: 'Scrape brand identity',
         url: 'https://example.test',
       },
       undefined as never,
@@ -317,9 +317,9 @@ describe('createScrapeTool', () => {
     const tool = createScrapeTool()
     const result = await tool.execute?.(
       {
+        action: 'Scrape brand identity',
         excludeTags: ['nav'],
         includeTags: ['main'],
-        intent: 'Scrape brand identity',
         url: 'https://example.test/path',
         waitFor: 250,
       },
@@ -362,7 +362,7 @@ describe('createScreenshotTool', () => {
     await expect(
       unavailable.execute?.(
         {
-          intent: 'Check desktop hero layout',
+          action: 'Check desktop hero layout',
           selector: '#hero',
           viewportSize: 'desktop',
         },
@@ -381,7 +381,7 @@ describe('createScreenshotTool', () => {
     await expect(
       failing.execute?.(
         {
-          intent: 'Check mobile hero layout',
+          action: 'Check mobile hero layout',
           selector: '#hero',
           viewportSize: 'mobile',
         },
@@ -430,7 +430,7 @@ describe('createScreenshotTool', () => {
     const tool = loadTool(requestScreenshot)
     const result = await tool.execute?.(
       {
-        intent: 'Check hero spacing and CTA contrast',
+        action: 'Check hero spacing and CTA contrast',
         selector: '#hero',
         viewportSize: 'tablet',
       },

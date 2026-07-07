@@ -8,12 +8,12 @@ import type { HtmlStore } from '../lib/html-store.ts'
  * Read lines of the project HTML as compact anchored text (`anchor|text`).
  * `from`/`to` select an inclusive anchor region (order-insensitive); omit
  * both to read from the start. `limit` caps the line count (default 2000).
- * `intent` is surfaced to the UI as the reason for the read.
+ * `action` is surfaced to the UI as the label for this step.
  */
 export function createReadTool(store: HtmlStore) {
   return createTool({
     description:
-      'Read the current project HTML as compact anchored lines in the form anchor|text. Use the returned anchors in edit from/to; do not copy raw HTML snippets. Omit from/to to read from the start; set from (and optional to) to read a region (order-insensitive). limit caps the line count. Always pass an intent describing why you are reading.',
+      'Read the current project HTML as compact anchored lines in the form anchor|text. Use the returned anchors in edit from/to; do not copy raw HTML snippets. Omit from/to to read from the start; set from (and optional to) to read a region (order-insensitive). limit caps the line count. Always pass an action: one short imperative line on what you are checking (shown to the user as the label for this step).',
     execute: async ({ from, limit, to }) => {
       const result = readHtmlDocumentLines(store.getDocument(), {
         from,
@@ -24,16 +24,16 @@ export function createReadTool(store: HtmlStore) {
     },
     id: 'read',
     inputSchema: z.object({
+      action: z
+        .string()
+        .describe(
+          'One short imperative line stating what you are reading, shown to the user as this step\'s label (think commit message), e.g. "review current hero markup anchors"',
+        ),
       from: z
         .string()
         .optional()
         .describe(
           'Start of the region (inclusive): a real anchor from read/find, or "start" for the document beginning. Omit to read from the start.',
-        ),
-      intent: z
-        .string()
-        .describe(
-          'Short reason for reading (shown to the user), e.g. "review current hero markup anchors"',
         ),
       limit: z
         .number()

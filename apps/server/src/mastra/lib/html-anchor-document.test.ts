@@ -82,15 +82,15 @@ describe('html-anchor-document', () => {
     )
     const result = applyAnchorEdits(document, [
       {
+        action: 'edit-1',
         code: '  <h1>Hi</h1>',
         from: 'a2',
-        intent: 'edit-1',
       },
       {
+        action: 'edit-2',
         code: '  <a href="#cta">Start</a>\n',
         from: 'a3',
         insert: 'after',
-        intent: 'edit-2',
       },
     ])
 
@@ -121,8 +121,8 @@ describe('html-anchor-document', () => {
     const document = createHtmlDocumentFromString('<main>Old</main>\n')
     const result = applyAnchorEdits(document, [
       {
+        action: 'edit-3',
         code: '<!doctype html>\n<html></html>',
-        intent: 'edit-3',
       },
     ])
 
@@ -148,20 +148,20 @@ describe('html-anchor-document', () => {
 
     expect(() =>
       applyAnchorEdits(document, [
-        { code: '<h1>Hi</h1>', from: 'missing', intent: 'edit-1' },
+        { action: 'edit-1', code: '<h1>Hi</h1>', from: 'missing' },
       ]),
     ).toThrow('missing anchor')
 
     expect(() =>
       applyAnchorEdits(document, [
-        { code: '<main>new</main>', from: 'a1', intent: 'edit-2', to: 'a3' },
-        { from: 'a2', intent: 'edit-3' },
+        { action: 'edit-2', code: '<main>new</main>', from: 'a1', to: 'a3' },
+        { action: 'edit-3', from: 'a2' },
       ]),
     ).toThrow('overlap')
 
     expect(() =>
       applyAnchorEdits(document, [
-        { code: '  <h1>Hello</h1>', from: 'a2', intent: 'edit-4' },
+        { action: 'edit-4', code: '  <h1>Hello</h1>', from: 'a2' },
       ]),
     ).toThrow('No changes made')
 
@@ -207,15 +207,15 @@ describe('html-anchor-document', () => {
     ).toThrow('missing anchor')
     expect(() =>
       applyAnchorEdits(document, [
-        { code: 'x', from: 'a1', insert: 'middle' as never, intent: 'edit-5' },
+        { action: 'edit-5', code: 'x', from: 'a1', insert: 'middle' as never },
       ]),
     ).toThrow('insert must be')
     expect(() =>
-      applyAnchorEdits(document, [{ intent: 'edit-6' }]),
+      applyAnchorEdits(document, [{ action: 'edit-6' }]),
     ).toThrow('from is required for a delete')
     expect(() =>
       applyAnchorEdits(document, [
-        { code: 'x', from: 'a1', insert: 'after', intent: 'edit-8', to: 'a2' },
+        { action: 'edit-8', code: 'x', from: 'a1', insert: 'after', to: 'a2' },
       ]),
     ).toThrow('to is not allowed with insert')
   })
@@ -225,7 +225,7 @@ describe('html-anchor-document', () => {
       '<main>\n  <h1>Hello</h1>\n  <p>World</p>\n</main>',
     )
     const result = applyAnchorEdits(document, [
-      { code: '<section>new</section>', from: 'a3', intent: 'edit-7', to: 'a1' },
+      { action: 'edit-7', code: '<section>new</section>', from: 'a3', to: 'a1' },
     ])
     // a1..a3 span <main>+h1+p; reversed endpoints resolve by position.
     expect(renderHtmlDocument(result.document)).toBe(
@@ -238,11 +238,11 @@ describe('html-anchor-document', () => {
       '<main>\n  <h1>Hello</h1>\n  <p>World</p>\n</main>\n',
     )
     const full = applyAnchorEdits(document, [
-      { code: '<div>all</div>', from: 'start', intent: 'whole via sentinels', to: 'end' },
+      { action: 'whole via sentinels', code: '<div>all</div>', from: 'start', to: 'end' },
     ])
     expect(renderHtmlDocument(full.document)).toBe('<div>all</div>')
     const tail = applyAnchorEdits(document, [
-      { code: '  <p>new</p>', from: 'a3', intent: 'a3 to end', to: 'end' },
+      { action: 'a3 to end', code: '  <p>new</p>', from: 'a3', to: 'end' },
     ])
     // a3..<end> covers <p>World</p> + </main>; the document's final newline is kept.
     expect(renderHtmlDocument(tail.document)).toBe(
@@ -254,7 +254,7 @@ describe('html-anchor-document', () => {
     const document = createHtmlDocumentFromString('<main></main>')
     expect(() =>
       applyAnchorEdits(document, [
-        { code: 'y', from: 'a1v__2', intent: 'invented' },
+        { action: 'invented', code: 'y', from: 'a1v__2' },
       ]),
     ).toThrow('missing anchor')
   })
@@ -266,24 +266,24 @@ describe('html-anchor-document', () => {
 
     const result = applyAnchorEdits(document, [
       {
+        action: 'Rewrite headline',
         code: '  <h1>Hi</h1>',
         from: 'a2',
-        intent: 'Rewrite headline',
       },
       {
+        action: 'Rewrite paragraph',
         code: '  <p>There</p>',
         from: 'a3',
-        intent: 'Rewrite paragraph',
       },
     ])
 
     expect(result.edits).toHaveLength(2)
     // Each edit's changedText contains only its own line — not the in-between
     // unchanged line, and not the other edit's text.
-    expect(result.edits[0]).toMatchObject({ intent: 'Rewrite headline' })
+    expect(result.edits[0]).toMatchObject({ action: 'Rewrite headline' })
     expect(result.edits[0]?.changedText).toContain('Hi')
     expect(result.edits[0]?.changedText).not.toContain('There')
-    expect(result.edits[1]).toMatchObject({ intent: 'Rewrite paragraph' })
+    expect(result.edits[1]).toMatchObject({ action: 'Rewrite paragraph' })
     expect(result.edits[1]?.changedText).toContain('There')
     expect(result.edits[1]?.changedText).not.toContain('Hi')
     // Per-edit anchors are present and distinct.
@@ -303,14 +303,14 @@ describe('html-anchor-document', () => {
     )
 
     const result = applyAnchorEdits(document, [
-      { from: 'a2', intent: 'Delete heading' },
+      { action: 'Delete heading', from: 'a2' },
     ])
 
     expect(result.edits).toHaveLength(1)
     expect(result.edits[0]).toMatchObject({
+      action: 'Delete heading',
       changedLines: 0,
       changedText: '',
-      intent: 'Delete heading',
     })
   })
 })

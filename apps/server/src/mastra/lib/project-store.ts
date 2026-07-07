@@ -104,9 +104,9 @@ export interface ProjectMessageThinkingPart {
 }
 
 export interface ProjectMessageToolCallPart {
+  action: null | string
   detail?: null | string
   id: string
-  intent: null | string
   providerId?: string
   result?: null | string
   state: 'done' | 'error' | 'running' | 'start'
