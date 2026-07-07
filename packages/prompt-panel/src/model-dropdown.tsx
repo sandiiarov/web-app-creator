@@ -51,11 +51,11 @@ const ROLE_ORDER: LandingModelRole[] = ['text', 'image', 'vision']
 
 const ROLE_META: Record<
   LandingModelRole,
-  { Icon: ComponentType<{ className?: string }>; label: string }
+  { color: string; Icon: ComponentType<{ className?: string }>; label: string }
 > = {
-  image: { Icon: ImageIcon, label: 'Image' },
-  text: { Icon: Type, label: 'Text' },
-  vision: { Icon: Eye, label: 'Vision' },
+  image: { color: 'text-emerald-500', Icon: ImageIcon, label: 'Image' },
+  text: { color: 'text-blue-500', Icon: Type, label: 'Text' },
+  vision: { color: 'text-amber-500', Icon: Eye, label: 'Vision' },
 }
 
 export interface ModelDropdownProps {
@@ -97,7 +97,7 @@ export function ModelDropdown({ models, onModelsChange }: ModelDropdownProps) {
                       index > 0 && 'border-l border-border',
                     )}
                   >
-                    <RoleIcon className="size-3" />
+                    <RoleIcon className={cn('size-3', ROLE_META[role].color)} />
                     {Logo ? <Logo className="size-3" /> : null}
                   </span>
                 </TooltipTrigger>
@@ -129,7 +129,7 @@ export function ModelDropdown({ models, onModelsChange }: ModelDropdownProps) {
                 type="button"
                 variant="ghost"
               >
-                <meta.Icon />
+                <meta.Icon className={cn('size-3.5', meta.color)} />
                 {meta.label}
               </Button>
             )
