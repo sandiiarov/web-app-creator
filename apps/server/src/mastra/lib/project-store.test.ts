@@ -555,7 +555,7 @@ describe('append-only debug logs', () => {
     const entries = await readClientMessages(project.id)
     expect(entries).toHaveLength(20)
     const indices = entries
-      .map((e) => (e.payload as { i: number } | undefined)?.i)
+      .map((e) => (e.payload as undefined | { i: number })?.i)
       .sort((a, b) => (a ?? 0) - (b ?? 0))
     expect(indices).toEqual(Array.from({ length: 20 }, (_, i) => i))
   })

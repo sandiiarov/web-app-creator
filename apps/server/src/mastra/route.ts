@@ -17,6 +17,8 @@ import {
 } from './lib/cost.ts'
 import { ocrImageInputs, type ImageOcrResult } from './lib/image-ocr.ts'
 import {
+  appendAgentMessages,
+  appendClientMessage,
   saveProjectMessageTurn,
   createProjectHtmlStore,
   getProject,
@@ -25,6 +27,8 @@ import {
   saveProjectRawMessages,
   setTitleIfUntitled,
   updateProjectModel,
+  type AgentMessageEntry,
+  type ClientMessageEntry,
   type ProjectMessageAttachment,
   type ProjectMessageStatsPart,
   type ProjectMessageToolCallPart,
@@ -167,6 +171,20 @@ export async function streamLandingAgent({
       })
     return writeChain
   }
+
+  // Debug: mirror the client wire to `client-messages.jsonl`. Every SSE event we
+  // emit to the browser is also appended (timestamped, dir:"out") so the exact
+  // client-visible data at any moment is inspectable mid-run. `appendClientMessage`
+  // serializes appends per file, so fire-and-forget is safe and order-preserving.
+  const emit = (event: string, payload: unknown) => {
+    sendSse(response, event, payload)
+    void appendClientMessage(projectId, {
+      dir: 'out',
+      event,
+      payload,
+      ts: new Date().toISOString(),
+    } satisfies ClientMessageEntry)
+  }
   const startedAt = Date.now()
   const store = createProjectHtmlStore(projectId)
   let lastHtmlUpdate = store.get()
@@ -188,7 +206,7 @@ export async function streamLandingAgent({
       const { promise, requestId } = createPendingBrowserScreenshot({
         timeoutMs,
       })
-      sendSse(response, 'screenshot_request', {
+      emit('screenshot_request', {
         projectId,
         requestId,
         selector,
@@ -211,6 +229,16 @@ export async function streamLandingAgent({
   request.on('close', onClose)
 
   startSse(response)
+
+  // Record the inbound prompt (client→server) as the first client-messages line.
+  void appendClientMessage(projectId, {
+    attachmentCount: attachments.length,
+    dir: 'in',
+    model: textModel,
+    prompt,
+    ts: new Date().toISOString(),
+    type: 'prompt',
+  } satisfies ClientMessageEntry)
 
   // Track per-call display state from provider toolCallId. The UI receives our
   // display id, not the raw provider id, so repeated provider ids cannot collapse
@@ -257,9 +285,9 @@ export async function streamLandingAgent({
     await checkpointTurn()
     const attachmentAnalysis = await analyzePromptAttachments({
       attachments,
+      emit,
       nextToolSeq: () => ++toolCallSeq,
       recordedTurn,
-      response,
       visionModel,
     })
     if (attachmentAnalysis.images > 0) {
@@ -287,12 +315,16 @@ export async function streamLandingAgent({
       agentPrompt,
     )
 
+    let agentStep = 0
+    let agentMessageList: {
+      get?: { all?: { db?: () => MastraDBMessage[] } }
+    }
     const stream = await agent.stream(agentMessages, {
       abortSignal: controller.signal,
       errorProcessors: createLandingAgentErrorProcessors(
         config.agentRetry,
         (event) => {
-          sendSse(response, 'retry', event)
+          emit('retry', event)
           checkpointTurn()
         },
       ),
@@ -303,7 +335,24 @@ export async function streamLandingAgent({
         maxOutputTokens: 16_384,
         maxRetries: config.agentRetry.modelMaxRetries,
       },
+      onStepFinish: () => {
+        // Snapshot the real Mastra message list after each agent step and append
+        // it (timestamped) to agent-messages.jsonl — the verbatim assistant/tool
+        // messages, inspectable per step mid-run.
+        const messages = agentMessageList?.get?.all?.db?.()
+        if (messages && messages.length > 0) {
+          agentStep += 1
+          void appendAgentMessages(projectId, {
+            dir: 'step',
+            messages: messages as ProjectRawMessage[],
+            step: agentStep,
+            ts: new Date().toISOString(),
+            turnId: recordedTurn.id,
+          } satisfies AgentMessageEntry)
+        }
+      },
     })
+    agentMessageList = stream.messageList
 
     streamLoop: for await (const chunk of stream.fullStream) {
       switch (chunk.type) {
@@ -313,7 +362,7 @@ export async function streamLandingAgent({
               ? chunk.payload.error.message
               : String(chunk.payload.error)
           recordTurnError(recordedTurn, message)
-          sendSse(response, 'error', { message })
+          emit('error', { message })
           checkpointTurn()
           break
         }
@@ -324,12 +373,12 @@ export async function streamLandingAgent({
         }
         case 'reasoning-delta': {
           recordTextDelta(recordedTurn, 'thinking', chunk.payload.text)
-          sendSse(response, 'thinking', { delta: chunk.payload.text })
+          emit('thinking', { delta: chunk.payload.text })
           break
         }
         case 'text-delta': {
           recordTextDelta(recordedTurn, 'text', chunk.payload.text)
-          sendSse(response, 'text', { delta: chunk.payload.text })
+          emit('text', { delta: chunk.payload.text })
           break
         }
         case 'tool-call': {
@@ -356,7 +405,7 @@ export async function streamLandingAgent({
             // replaces it with N per-edit blocks — drop the provisional from
             // the recorded turn and the UI so it is not orphaned as "no result".
             removeToolCall(recordedTurn, display.id)
-            sendSse(response, 'tool_call_drop', { id: display.id })
+            emit('tool_call_drop', { id: display.id })
             const subIds = editActions.map((_, index) =>
               editSubId(toolCallSeq, index),
             )
@@ -370,7 +419,7 @@ export async function streamLandingAgent({
                 tool: chunk.payload.toolName,
               }
               recordToolCall(recordedTurn, toolPayload)
-              sendSse(response, 'tool_call', toolPayload)
+              emit('tool_call', toolPayload)
             }
             break
           }
@@ -384,7 +433,7 @@ export async function streamLandingAgent({
             tool: chunk.payload.toolName,
           }
           recordToolCall(recordedTurn, toolPayload)
-          sendSse(response, 'tool_call', toolPayload)
+          emit('tool_call', toolPayload)
           break
         }
         case 'tool-call-input-streaming-start': {
@@ -405,7 +454,7 @@ export async function streamLandingAgent({
             tool: chunk.payload.toolName,
           }
           recordToolCall(recordedTurn, toolPayload)
-          sendSse(response, 'tool_call', toolPayload)
+          emit('tool_call', toolPayload)
           break
         }
         case 'tool-error': {
@@ -429,14 +478,14 @@ export async function streamLandingAgent({
             tool: chunk.payload.toolName,
           }
           recordToolCall(recordedTurn, toolPayload)
-          sendSse(response, 'tool_call', toolPayload)
+          emit('tool_call', toolPayload)
           completedCallIds.add(chunk.payload.toolCallId)
           if (chunk.payload.toolName === 'edit') {
             editFailures += 1
             if (editFailures >= MAX_EDIT_FAILURES) {
               fatalRunError = REPEATED_EDIT_FAILURE_MESSAGE
               recordTurnError(recordedTurn, fatalRunError)
-              sendSse(response, 'error', { message: fatalRunError })
+              emit('error', { message: fatalRunError })
               controller.abort()
               break streamLoop
             }
@@ -489,7 +538,7 @@ export async function streamLandingAgent({
                 tool: chunk.payload.toolName,
               }
               recordToolCall(recordedTurn, toolPayload)
-              sendSse(response, 'tool_call', toolPayload)
+              emit('tool_call', toolPayload)
             }
             editSubIds.delete(chunk.payload.toolCallId)
             completedCallIds.add(chunk.payload.toolCallId)
@@ -499,7 +548,7 @@ export async function streamLandingAgent({
                 if (editFailures >= MAX_EDIT_FAILURES) {
                   fatalRunError = REPEATED_EDIT_FAILURE_MESSAGE
                   recordTurnError(recordedTurn, fatalRunError)
-                  sendSse(response, 'error', { message: fatalRunError })
+                  emit('error', { message: fatalRunError })
                   controller.abort()
                   break streamLoop
                 }
@@ -514,7 +563,7 @@ export async function streamLandingAgent({
                     projectId,
                     sequence: htmlUpdateSequence,
                   })
-                  sendSse(response, 'html_update', htmlUpdate)
+                  emit('html_update', htmlUpdate)
                   lastHtmlUpdate = nextHtml
                   checkpointTurn()
                 }
@@ -532,7 +581,7 @@ export async function streamLandingAgent({
             tool: chunk.payload.toolName,
           }
           recordToolCall(recordedTurn, toolPayload)
-          sendSse(response, 'tool_call', toolPayload)
+          emit('tool_call', toolPayload)
           completedCallIds.add(chunk.payload.toolCallId)
           if (chunk.payload.toolName === 'edit') {
             if (isError) {
@@ -540,7 +589,7 @@ export async function streamLandingAgent({
               if (editFailures >= MAX_EDIT_FAILURES) {
                 fatalRunError = REPEATED_EDIT_FAILURE_MESSAGE
                 recordTurnError(recordedTurn, fatalRunError)
-                sendSse(response, 'error', { message: fatalRunError })
+                emit('error', { message: fatalRunError })
                 controller.abort()
                 break streamLoop
               }
@@ -555,7 +604,7 @@ export async function streamLandingAgent({
                   projectId,
                   sequence: htmlUpdateSequence,
                 })
-                sendSse(response, 'html_update', htmlUpdate)
+                emit('html_update', htmlUpdate)
                 lastHtmlUpdate = nextHtml
                 checkpointTurn()
               }
@@ -727,7 +776,7 @@ export async function streamLandingAgent({
       },
     }
     recordStats(recordedTurn, statsPayload)
-    sendSse(response, 'stats', statsPayload)
+    emit('stats', statsPayload)
 
     rawResponseMessages = captureResponseMessages(stream)
 
@@ -735,7 +784,7 @@ export async function streamLandingAgent({
     // concern, so it only fires when the run was not already fatal.
     if (!fatalRunError && !project.hasHtml && htmlUpdateSequence === 0) {
       recordTurnError(recordedTurn, NO_GENERATED_HTML_MESSAGE)
-      sendSse(response, 'error', { message: NO_GENERATED_HTML_MESSAGE })
+      emit('error', { message: NO_GENERATED_HTML_MESSAGE })
     }
   } catch (error) {
     const aborted = controller.signal.aborted
@@ -750,7 +799,7 @@ export async function streamLandingAgent({
       } else {
         recordTurnError(recordedTurn, message)
       }
-      sendSse(response, 'error', { message })
+      emit('error', { message })
     }
   } finally {
     request.off('close', onClose)
@@ -768,22 +817,22 @@ export async function streamLandingAgent({
         console.error('Failed to persist raw mastra messages', error)
       }
     }
-    sendSse(response, 'done', {})
+    emit('done', {})
     response.end()
   }
 }
 
 async function analyzePromptAttachments({
   attachments,
+  emit,
   nextToolSeq,
   recordedTurn,
-  response,
   visionModel,
 }: {
   attachments: AgentAttachmentInput[]
+  emit: (event: string, payload: unknown) => void
   nextToolSeq: () => number
   recordedTurn: ProjectMessageTurn
-  response: ServerResponse
   visionModel: string
 }): Promise<AttachmentAnalysis> {
   if (attachments.length === 0) {
@@ -804,7 +853,7 @@ async function analyzePromptAttachments({
     tool: 'analyze_image',
   }
   recordToolCall(recordedTurn, runningPayload)
-  sendSse(response, 'tool_call', runningPayload)
+  emit('tool_call', runningPayload)
 
   try {
     const result = await ocrImageInputs(
@@ -831,7 +880,7 @@ async function analyzePromptAttachments({
         tool: 'analyze_image',
       }
       recordToolCall(recordedTurn, errorPayload)
-      sendSse(response, 'tool_call', errorPayload)
+      emit('tool_call', errorPayload)
       return {
         contextBlock: `Attached image analysis failed: ${reason}`,
         cost,
@@ -849,7 +898,7 @@ async function analyzePromptAttachments({
       tool: 'analyze_image',
     }
     recordToolCall(recordedTurn, donePayload)
-    sendSse(response, 'tool_call', donePayload)
+    emit('tool_call', donePayload)
     return {
       contextBlock: buildAttachmentContext(attachments, result, visionModel),
       cost,
@@ -867,7 +916,7 @@ async function analyzePromptAttachments({
       tool: 'analyze_image',
     }
     recordToolCall(recordedTurn, errorPayload)
-    sendSse(response, 'tool_call', errorPayload)
+    emit('tool_call', errorPayload)
     return {
       contextBlock: `Attached image analysis failed: ${reason}`,
       cost: 0,
