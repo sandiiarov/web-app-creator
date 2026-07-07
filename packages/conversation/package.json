@@ -1,0 +1,28 @@
+{
+  "name": "@workspace/conversation",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "format": "oxfmt -c oxfmt.config.ts .",
+    "format:check": "oxfmt -c oxfmt.config.ts --check .",
+    "lint": "oxlint .",
+    "lint:fix": "oxlint --fix .",
+    "test": "vitest run --config vitest.config.ts --coverage",
+    "typecheck": "tsgo --noEmit -p tsconfig.json"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "@typescript/native-preview": "catalog:",
+    "@workspace/oxfmt-config": "workspace:*",
+    "@workspace/oxlint-config": "workspace:*",
+    "@workspace/typescript-config": "workspace:*",
+    "@workspace/vitest-preset": "workspace:*",
+    "oxfmt": "catalog:",
+    "oxlint": "catalog:",
+    "vitest": "catalog:"
+  }
+}
