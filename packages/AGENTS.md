@@ -9,7 +9,7 @@
 - `ui/`: shared shadcn/Tailwind React component package.
 - `prompt-panel/`: landing-page prompt panel UI + conversation domain model, source-consumed by the client.
 - `conversation/`: canonical conversation model + the shared event→turn reducer (`applyEventToTurn`/`replayClientEvents`/`terminalizeTools`) consumed by both the server (hydration) and the client (live SSE stream).
-- `landing-preview/`: shared landing-page preview iframe runtime, DOM morphing, and browser screenshot capture, source-consumed by the client.
+- `landing-preview/`: shared landing-page preview iframe runtime, DOM morphing, and browser screenshot capture, source-consumed by the client. The iframe carries `key={reloadKey}` and `reloadPreview()` bumps that key — do NOT remove it: browsers don't re-load an `<iframe srcDoc>` when React updates the attribute after an empty initial mount, so without the remount the preview renders blank on project open and on the first live `html_update`.
 - `typescript-config/`: shared strict tsgo/TypeScript configs.
 - `vite-config/`: shared Vite React config factory.
 - `vitest-preset/`: shared Vitest config factory.
