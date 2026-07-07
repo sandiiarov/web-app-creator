@@ -422,6 +422,49 @@ describe('streamLandingAgent cost accounting', () => {
     )
   })
 
+  it('aborts the run when accumulated cost exceeds the cap', async () => {
+    vi.stubEnv('OPENROUTER_API_KEY', 'test-openrouter-key')
+    vi.stubEnv('AGENT_MAX_COST_USD', '0.01')
+
+    vi.doMock('./index.ts', () => ({ mastra: {} }))
+    vi.doMock('./agents/landing-page-agent.ts', () => ({
+      createLandingPageAgent: () => ({
+        stream: async () =>
+          fakeAgentStream(rawCostStream(), {
+            cachedInputTokens: 0,
+            inputTokens: 23,
+            outputTokens: 8,
+            totalTokens: 31,
+          }),
+      }),
+    }))
+
+    const { createProject } = await import('./lib/project-store.ts')
+    const project = await createProject()
+    createdProjectIds.push(project.id)
+    const { streamLandingAgent } = await import('./route.ts')
+    const response = new FakeResponse()
+
+    await streamLandingAgent({
+      projectId: project.id,
+      prompt: 'Trip the cost cap.',
+      request: fakeRequest(),
+      response: response as unknown as ServerResponse,
+      textModel: 'z-ai/glm-5.2',
+    })
+
+    expect(parseSseEvents(response.body)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          data: expect.objectContaining({
+            message: 'Run exceeded the $0.01 cost cap.',
+          }),
+          event: 'error',
+        }),
+      ]),
+    )
+  })
+
   it('reports zero LLM cost when OpenRouter cost metadata is absent', async () => {
     vi.stubEnv('OPENROUTER_API_KEY', 'test-openrouter-key')
 

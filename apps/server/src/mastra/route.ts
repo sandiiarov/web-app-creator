@@ -261,6 +261,19 @@ export async function streamLandingAgent({
   // Stop repeated blind edit attempts after MAX_EDIT_FAILURES consecutive failures.
   let editFailures = 0
   let fatalRunError: null | string = null
+  // Optional per-run USD cap (config.agentMaxCostUsd). 0/undefined disables it.
+  // Checked after each LLM/image/vision cost accrual; aborts the run if exceeded.
+  const costCapUsd = config.agentMaxCostUsd ?? 0
+  const checkCostCap = (): boolean => {
+    if (costCapUsd <= 0) return false
+    const runCostUsd = llmProviderCostUsd + imageCostUsd + visionCostUsd
+    if (runCostUsd < costCapUsd) return false
+    fatalRunError = `Run exceeded the $${costCapUsd.toFixed(2)} cost cap.`
+    recordTurnError(recordedTurn, fatalRunError)
+    emit('error', { message: fatalRunError })
+    controller.abort()
+    return true
+  }
 
   try {
     // Persist the streaming turn (prompt + isStreaming) before any work so a
@@ -355,6 +368,7 @@ export async function streamLandingAgent({
         case 'raw': {
           const providerCost = providerReportedCost(chunk.payload)
           if (providerCost > 0) llmProviderCostUsd = providerCost
+          if (checkCostCap()) break streamLoop
           break
         }
         case 'reasoning-delta': {
@@ -640,6 +654,7 @@ export async function streamLandingAgent({
             if (typeof result.imagesGenerated === 'number') {
               imageCount += result.imagesGenerated
               imageCostUsd += imageGenCost(result.imagesGenerated, result.cost)
+              if (checkCostCap()) break streamLoop
             }
             // Persist generated image bytes to the project folder at
             // generation time so they are durable even if a later edit fails
@@ -677,6 +692,7 @@ export async function streamLandingAgent({
                 },
                 imageOcr.cost,
               )
+              if (checkCostCap()) break streamLoop
             }
           }
           break
