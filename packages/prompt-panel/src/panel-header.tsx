@@ -2,7 +2,6 @@ import { Button } from '@workspace/ui/components/button'
 import {
   Tooltip,
   TooltipContent,
-  TooltipProvider,
   TooltipTrigger,
 } from '@workspace/ui/components/tooltip'
 import { cn } from '@workspace/ui/lib/utils'
@@ -69,25 +68,23 @@ export function PanelHeader({
           onPointerMove={(event) => event.stopPropagation()}
           onPointerUp={(event) => event.stopPropagation()}
         >
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  aria-label={`Go to all projects. Shortcut ${KEYBOARD_SHORTCUTS.allProjects.title}`}
-                  onClick={onAllProjects}
-                  size="icon-sm"
-                  type="button"
-                  variant="ghost"
-                >
-                  <FolderOpen />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">
-                All projects
-                <KeyboardShortcut shortcut={KEYBOARD_SHORTCUTS.allProjects} />
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                aria-label={`Go to all projects. Shortcut ${KEYBOARD_SHORTCUTS.allProjects.title}`}
+                onClick={onAllProjects}
+                size="icon-sm"
+                type="button"
+                variant="ghost"
+              >
+                <FolderOpen />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">
+              All projects
+              <KeyboardShortcut shortcut={KEYBOARD_SHORTCUTS.allProjects} />
+            </TooltipContent>
+          </Tooltip>
           <PanelLayoutMenu
             layout={layout}
             onLayoutChange={onLayoutChange}
@@ -95,25 +92,23 @@ export function PanelHeader({
             open={panelMenuOpen}
           />
           <PanelSettingsMenu onToggleTheme={onToggleTheme} theme={theme} />
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  aria-label={collapsed ? 'Maximize panel' : 'Minimize panel'}
-                  onClick={onToggleCollapsed}
-                  size="icon-sm"
-                  type="button"
-                  variant="ghost"
-                >
-                  {collapsed ? <Maximize2 /> : <Minimize2 />}
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">
-                {collapsed ? 'Maximize panel' : 'Minimize panel'}
-                <KeyboardShortcut shortcut={KEYBOARD_SHORTCUTS.panelToggle} />
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                aria-label={collapsed ? 'Maximize panel' : 'Minimize panel'}
+                onClick={onToggleCollapsed}
+                size="icon-sm"
+                type="button"
+                variant="ghost"
+              >
+                {collapsed ? <Maximize2 /> : <Minimize2 />}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">
+              {collapsed ? 'Maximize panel' : 'Minimize panel'}
+              <KeyboardShortcut shortcut={KEYBOARD_SHORTCUTS.panelToggle} />
+            </TooltipContent>
+          </Tooltip>
         </div>
       </div>
     </header>

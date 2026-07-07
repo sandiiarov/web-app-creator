@@ -9,7 +9,6 @@ import {
 import {
   Tooltip,
   TooltipContent,
-  TooltipProvider,
   TooltipTrigger,
 } from '@workspace/ui/components/tooltip'
 import {
@@ -51,23 +50,21 @@ export function PanelLayoutMenu({
 
   return (
     <DropdownMenu onOpenChange={onOpenChange} open={open}>
-      <TooltipProvider>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <DropdownMenuTrigger asChild>
-              <Button
-                aria-label={`Open panel layout menu. Current layout: ${PANEL_LAYOUT_LABELS[layout]}.`}
-                size="icon-sm"
-                type="button"
-                variant="ghost"
-              >
-                <PanelsTopLeft />
-              </Button>
-            </DropdownMenuTrigger>
-          </TooltipTrigger>
-          <TooltipContent side="bottom">Panel</TooltipContent>
-        </Tooltip>
-      </TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <DropdownMenuTrigger asChild>
+            <Button
+              aria-label={`Open panel layout menu. Current layout: ${PANEL_LAYOUT_LABELS[layout]}.`}
+              size="icon-sm"
+              type="button"
+              variant="ghost"
+            >
+              <PanelsTopLeft />
+            </Button>
+          </DropdownMenuTrigger>
+        </TooltipTrigger>
+        <TooltipContent side="bottom">Panel</TooltipContent>
+      </Tooltip>
       <DropdownMenuContent
         align="end"
         className="w-52"
@@ -116,23 +113,21 @@ export function PanelSettingsMenu({
 
   return (
     <DropdownMenu>
-      <TooltipProvider>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <DropdownMenuTrigger asChild>
-              <Button
-                aria-label="Open panel settings"
-                size="icon-sm"
-                type="button"
-                variant="ghost"
-              >
-                <Settings />
-              </Button>
-            </DropdownMenuTrigger>
-          </TooltipTrigger>
-          <TooltipContent side="bottom">Settings</TooltipContent>
-        </Tooltip>
-      </TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <DropdownMenuTrigger asChild>
+            <Button
+              aria-label="Open panel settings"
+              size="icon-sm"
+              type="button"
+              variant="ghost"
+            >
+              <Settings />
+            </Button>
+          </DropdownMenuTrigger>
+        </TooltipTrigger>
+        <TooltipContent side="bottom">Settings</TooltipContent>
+      </Tooltip>
       <DropdownMenuContent
         align="end"
         className="w-52"

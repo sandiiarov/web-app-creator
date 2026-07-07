@@ -3,7 +3,6 @@ import { Textarea } from '@workspace/ui/components/textarea'
 import {
   Tooltip,
   TooltipContent,
-  TooltipProvider,
   TooltipTrigger,
 } from '@workspace/ui/components/tooltip'
 import { cn } from '@workspace/ui/lib/utils'
@@ -104,113 +103,105 @@ export const Composer = memo(function Composer({
               ref={fileInputRef}
               type="file"
             />
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <span className="inline-flex">
-                    <Button
-                      aria-label={
-                        elementSelectionActive
-                          ? 'Cancel element selection'
-                          : 'Select element from preview'
-                      }
-                      aria-pressed={elementSelectionActive}
-                      disabled={isStreaming}
-                      onClick={onElementSelectionToggle}
-                      size="icon-xs"
-                      type="button"
-                      variant={elementSelectionActive ? 'default' : 'outline'}
-                    >
-                      <MousePointerClick />
-                    </Button>
-                  </span>
-                </TooltipTrigger>
-                <TooltipContent side="top">
-                  {elementSelectionActive
-                    ? 'Cancel element selection'
-                    : 'Select element from preview'}
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <span className="inline-flex">
-                    <Button
-                      aria-label="Attach image"
-                      disabled={isStreaming}
-                      onClick={() => fileInputRef.current?.click()}
-                      size="icon-xs"
-                      type="button"
-                      variant="outline"
-                    >
-                      <Paperclip />
-                    </Button>
-                  </span>
-                </TooltipTrigger>
-                <TooltipContent side="top">
-                  Attach image
-                  <span className="ml-2 text-background/80">
-                    PNG, JPEG, WEBP, or GIF
-                  </span>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="inline-flex">
+                  <Button
+                    aria-label={
+                      elementSelectionActive
+                        ? 'Cancel element selection'
+                        : 'Select element from preview'
+                    }
+                    aria-pressed={elementSelectionActive}
+                    disabled={isStreaming}
+                    onClick={onElementSelectionToggle}
+                    size="icon-xs"
+                    type="button"
+                    variant={elementSelectionActive ? 'default' : 'outline'}
+                  >
+                    <MousePointerClick />
+                  </Button>
+                </span>
+              </TooltipTrigger>
+              <TooltipContent side="top">
+                {elementSelectionActive
+                  ? 'Cancel element selection'
+                  : 'Select element from preview'}
+              </TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="inline-flex">
+                  <Button
+                    aria-label="Attach image"
+                    disabled={isStreaming}
+                    onClick={() => fileInputRef.current?.click()}
+                    size="icon-xs"
+                    type="button"
+                    variant="outline"
+                  >
+                    <Paperclip />
+                  </Button>
+                </span>
+              </TooltipTrigger>
+              <TooltipContent side="top">
+                Attach image
+                <span className="ml-2 text-background/80">
+                  PNG, JPEG, WEBP, or GIF
+                </span>
+              </TooltipContent>
+            </Tooltip>
             <ModelDropdown models={models} onModelsChange={onModelsChange} />
           </div>
           <div>
             {isStreaming ? (
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <span className="inline-flex">
-                      <Button
-                        aria-label="Stop generation"
-                        onClick={onStop}
-                        size="icon-sm"
-                        type="button"
-                        variant="destructive"
-                      >
-                        <Square />
-                      </Button>
-                    </span>
-                  </TooltipTrigger>
-                  <TooltipContent side="top">
-                    Stop generation
-                    <KeyboardShortcut
-                      className="ml-0 text-background opacity-80"
-                      shortcut={KEYBOARD_SHORTCUTS.stop}
-                    />
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className="inline-flex">
+                    <Button
+                      aria-label="Stop generation"
+                      onClick={onStop}
+                      size="icon-sm"
+                      type="button"
+                      variant="destructive"
+                    >
+                      <Square />
+                    </Button>
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent side="top">
+                  Stop generation
+                  <KeyboardShortcut
+                    className="ml-0 text-background opacity-80"
+                    shortcut={KEYBOARD_SHORTCUTS.stop}
+                  />
+                </TooltipContent>
+              </Tooltip>
             ) : (
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <span className="inline-flex">
-                      <Button
-                        aria-label="Send prompt"
-                        className={cn(
-                          disabled && 'cursor-not-allowed opacity-60',
-                        )}
-                        disabled={disabled}
-                        size="icon-sm"
-                        type="submit"
-                      >
-                        <ArrowUp />
-                      </Button>
-                    </span>
-                  </TooltipTrigger>
-                  <TooltipContent side="top">
-                    Send prompt
-                    <KeyboardShortcut
-                      className="ml-0 text-background opacity-80"
-                      shortcut={KEYBOARD_SHORTCUTS.send}
-                    />
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className="inline-flex">
+                    <Button
+                      aria-label="Send prompt"
+                      className={cn(
+                        disabled && 'cursor-not-allowed opacity-60',
+                      )}
+                      disabled={disabled}
+                      size="icon-sm"
+                      type="submit"
+                    >
+                      <ArrowUp />
+                    </Button>
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent side="top">
+                  Send prompt
+                  <KeyboardShortcut
+                    className="ml-0 text-background opacity-80"
+                    shortcut={KEYBOARD_SHORTCUTS.send}
+                  />
+                </TooltipContent>
+              </Tooltip>
             )}
           </div>
         </div>

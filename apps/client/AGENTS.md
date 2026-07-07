@@ -7,7 +7,7 @@
 
 ## Ownership
 
-- `src/main.tsx`: `BrowserRouter` + route table (`/`, `/projects/new`, `/projects/:id`) and `ThemeProvider` root.
+- `src/main.tsx`: `BrowserRouter` + route table (`/`, `/projects/new`, `/projects/:id`), `ThemeProvider` root, and `TooltipProvider` root (all tooltips in the app descend from it).
 - `src/App.tsx`: `EditorPage` (preview + prompt panel composition), param-driven and keyed by project id.
 - `src/components/projects-page.tsx`: project list + new-project redirect.
 - `src/components/`: app-specific UI (error banner, theme provider). The landing preview is consumed from `@workspace/landing-preview` (see `packages/landing-preview/AGENTS.md`); the prompt panel is consumed from `@workspace/prompt-panel` (see `packages/prompt-panel/AGENTS.md`); `EditorPage` injects `onAllProjects`, `theme`, and `onToggleTheme`.

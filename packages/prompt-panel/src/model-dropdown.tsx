@@ -97,12 +97,12 @@ export function ModelDropdown({ models, onModelsChange }: ModelDropdownProps) {
                       index > 0 && 'border-l border-border',
                     )}
                   >
-                    <RoleIcon />
-                    {Logo ? <Logo /> : null}
+                    <RoleIcon className="size-3" />
+                    {Logo ? <Logo className="size-3" /> : null}
                   </span>
                 </TooltipTrigger>
                 <TooltipContent side="top">
-                  {Logo ? <Logo /> : null}
+                  {Logo ? <Logo className="size-3.5" /> : null}
                   {option?.label ?? models[role]}
                 </TooltipContent>
               </Tooltip>
