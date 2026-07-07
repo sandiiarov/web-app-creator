@@ -319,7 +319,7 @@ describe('streamLandingAgent error handling', () => {
     const {
       createProject,
       getProject,
-      readProjectRawMessages,
+      readAgentMessages,
     } = await import('./lib/project-store.ts')
     const project = await createProject()
     createdProjectIds.push(project.id)
@@ -354,13 +354,12 @@ describe('streamLandingAgent error handling', () => {
       expect.objectContaining({ type: 'stats' }),
     )
     // Raw response messages are captured even though the run did not complete
-    // a clean success path.
-    await expect(readProjectRawMessages(project.id)).resolves.toEqual([
-      {
-        messages: [ASSISTANT_RAW],
-        turnId: expect.stringMatching(/^turn-/),
-      },
-    ])
+    // a clean success path (final agent-message snapshot at run end).
+    const agentEntries = await readAgentMessages(project.id)
+    expect(agentEntries.at(-1)).toMatchObject({
+      messages: [ASSISTANT_RAW],
+      turnId: expect.stringMatching(/^turn-/),
+    })
   })
 })
 
@@ -1706,15 +1705,14 @@ describe('streamLandingAgent raw mastra message persistence', () => {
       textModel: 'z-ai/glm-5.2',
     })
 
-    const { readProjectRawMessages } = await import(
+    const { readAgentMessages } = await import(
       './lib/project-store.ts'
     )
-    await expect(readProjectRawMessages(project.id)).resolves.toEqual([
-      {
-        messages: [ASSISTANT_RAW, TOOL_RAW],
-        turnId: expect.stringMatching(/^turn-/),
-      },
-    ])
+    const agentEntries = await readAgentMessages(project.id)
+    expect(agentEntries.at(-1)).toMatchObject({
+      messages: [ASSISTANT_RAW, TOOL_RAW],
+      turnId: expect.stringMatching(/^turn-/),
+    })
 
     // Second turn: the prior raw assistant + tool messages must be fed back
     // verbatim so the model sees what it actually called and got back.
@@ -1791,7 +1789,7 @@ describe('streamLandingAgent raw mastra message persistence', () => {
 
     const {
       createProject,
-      readProjectRawMessages,
+      readAgentMessages,
     } = await import('./lib/project-store.ts')
     const project = await createProject()
     createdProjectIds.push(project.id)
@@ -1805,9 +1803,9 @@ describe('streamLandingAgent raw mastra message persistence', () => {
       textModel: 'z-ai/glm-5.2',
     })
 
-    const persisted = await readProjectRawMessages(project.id)
+    const persisted = await readAgentMessages(project.id)
     const firstMsg = (
-      persisted[0]?.messages[0] as
+      persisted.at(-1)?.messages[0] as
         | undefined
         | { content?: { parts?: { type: string }[] } }
     )

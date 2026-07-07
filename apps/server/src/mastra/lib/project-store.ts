@@ -298,7 +298,11 @@ export async function getProject(id: string): Promise<null | Project> {
   const meta = await readMeta(id)
   if (!meta) return null
   const document = await readOrCreateHtmlDocument(id)
-  const messages = await readMessages(id)
+  // Hydrate from the append-only client log (replayed into turns); fall back to
+  // the legacy messages.json for projects persisted before this refactor.
+  const replayed = replayClientMessages(await readClientMessages(id))
+  const messages =
+    replayed.length > 0 ? replayed : await readMessages(id)
   return { ...meta, indexHtml: renderHtmlDocument(document), messages }
 }
 
@@ -423,54 +427,63 @@ export async function saveProjectRawMessages(
 // inspectable mid-run. JSONL for the high-frequency logs (true append, no
 // rewrite); JSON array for the infrequent vision log.
 
-const jsonlChains = new Map<string, Promise<void>>()
+const projectWriteChains = new Map<string, Promise<void>>()
 
 /** Append one per-step Mastra message snapshot to `agent-messages.jsonl`. */
-export async function appendAgentMessages(
+export function appendAgentMessages(
   id: string,
   entry: AgentMessageEntry,
 ): Promise<void> {
-  await ensureProjectDir(id)
-  await appendJsonlLine(join(projectDir(id), AGENT_MESSAGES_JSONL), entry)
+  return chainProjectWrite(id, async () => {
+    await ensureProjectDir(id)
+    await appendFile(
+      join(projectDir(id), AGENT_MESSAGES_JSONL),
+      `${JSON.stringify(entry)}\n`,
+      'utf8',
+    )
+  })
 }
 
 /** Append one client-facing event/request to `client-messages.jsonl`. */
-export async function appendClientMessage(
+export function appendClientMessage(
   id: string,
   entry: ClientMessageEntry,
 ): Promise<void> {
-  await ensureProjectDir(id)
-  await appendJsonlLine(join(projectDir(id), CLIENT_MESSAGES_JSONL), entry)
+  return chainProjectWrite(id, async () => {
+    await ensureProjectDir(id)
+    await appendFile(
+      join(projectDir(id), CLIENT_MESSAGES_JSONL),
+      `${JSON.stringify(entry)}\n`,
+      'utf8',
+    )
+  })
 }
 
 /** Append one OCR/vision call to `vision-messages.json` (read-modify-write;
  *  OCR is infrequent so a full rewrite per call is fine). */
-export async function appendVisionMessage(
+export function appendVisionMessage(
   id: string,
   entry: Omit<VisionMessageEntry, 'seq'>,
 ): Promise<VisionMessageEntry[]> {
-  const existing = await readVisionMessages(id)
-  const next = [...existing, { ...entry, seq: existing.length + 1 }]
-  await ensureProjectDir(id)
-  await writeFile(
-    join(projectDir(id), VISION_MESSAGES_JSON),
-    JSON.stringify(next, null, 2),
-    'utf8',
-  )
-  return next
+  let result: VisionMessageEntry[] = []
+  const done = chainProjectWrite(id, async () => {
+    const existing = await readVisionMessages(id)
+    result = [...existing, { ...entry, seq: existing.length + 1 }]
+    await ensureProjectDir(id)
+    await writeFile(
+      join(projectDir(id), VISION_MESSAGES_JSON),
+      JSON.stringify(result, null, 2),
+      'utf8',
+    )
+  })
+  return done.then(() => result)
 }
 
-/** Await any still-pending `.jsonl` appends for a project's client + agent logs.
- *  Call before a run fully completes so the logs are durable (and so test
- *  cleanup doesn't race fire-and-forget appends). */
+/** Await any still-pending debug-log writes for a project (client, agent,
+ *  vision). Call before a run fully completes so the logs are durable (and so
+ *  test cleanup doesn't race fire-and-forget appends). */
 export async function flushProjectLogs(id: string): Promise<void> {
-  const files = [
-    join(projectDir(id), AGENT_MESSAGES_JSONL),
-    join(projectDir(id), CLIENT_MESSAGES_JSONL),
-  ]
-  await Promise.allSettled(
-    files.map((file) => jsonlChains.get(file) ?? Promise.resolve()),
-  )
+  await (projectWriteChains.get(id) ?? Promise.resolve())
 }
 
 /** Read the full agent message log (oldest first). Empty when absent. */
@@ -479,6 +492,26 @@ export async function readAgentMessages(
 ): Promise<AgentMessageEntry[]> {
   return readJsonl<AgentMessageEntry>(
     join(projectDir(id), AGENT_MESSAGES_JSONL),
+  )
+}
+
+/** Build a turn-id → raw Mastra message[] map for agent history replay, taking
+ *  the LAST per-step snapshot per turn from the agent log. Falls back to the
+ *  legacy raw-messages.json for projects persisted before this refactor. */
+export async function readAgentRawByTurn(
+  id: string,
+): Promise<Map<string, ProjectRawMessage[]>> {
+  const entries = await readAgentMessages(id)
+  if (entries.length > 0) {
+    const byTurn = new Map<string, ProjectRawMessage[]>()
+    for (const entry of entries) byTurn.set(entry.turnId, entry.messages)
+    return byTurn
+  }
+  return new Map(
+    (await readProjectRawMessages(id)).map((entry) => [
+      entry.turnId,
+      entry.messages,
+    ]),
   )
 }
 
@@ -502,6 +535,119 @@ export async function readVisionMessages(
   } catch {
     return []
   }
+}
+
+/**
+ * Reconstruct `ProjectMessageTurn[]` from a client-messages log by replaying the
+ * events — the same reduction the browser applies to the live SSE stream, so a
+ * reload renders identically to the run that produced it. Each `dir:"in"`
+ * prompt starts a turn; subsequent `dir:"out"` events populate it; `done`
+ * finalizes. Any tool left `running`/`start` is terminalized to `error` on
+ * restore (matching the client's restore behavior). `retry`/`html_update`/
+ * `screenshot_request` have no turn-structure effect and are skipped.
+ */
+export function replayClientMessages(
+  entries: ClientMessageEntry[],
+): ProjectMessageTurn[] {
+  const turns: ProjectMessageTurn[] = []
+  let current: ProjectMessageTurn | undefined
+
+  for (const entry of entries) {
+    if (entry.dir === 'in') {
+      if (entry.type === 'prompt') {
+        current = {
+          htmlSwaps: 0,
+          id: typeof entry.turnId === 'string' ? entry.turnId : `turn-${turns.length + 1}`,
+          isStreaming: true,
+          model: typeof entry.model === 'string' ? entry.model : '',
+          parts: [],
+          prompt: typeof entry.prompt === 'string' ? entry.prompt : '',
+        }
+        turns.push(current)
+      }
+      continue
+    }
+
+    if (!current) continue
+    const event = typeof entry.event === 'string' ? entry.event : ''
+    const data = (entry.payload ?? {}) as Record<string, unknown>
+
+    switch (event) {
+      case 'attachments_update': {
+        if (Array.isArray(data.attachments)) {
+          current.attachments = data.attachments as ProjectMessageAttachment[]
+        }
+        break
+      }
+      case 'done': {
+        current.isStreaming = false
+        terminalizeTools(current)
+        break
+      }
+      case 'error': {
+        const message = typeof data.message === 'string' ? data.message : ''
+        if (message && message !== 'stopped') {
+          current.error = message
+          terminalizeTools(current, message)
+        }
+        break
+      }
+      case 'stats': {
+        current.parts.push({
+          ...(data as object),
+          type: 'stats',
+        } as ProjectMessageStatsPart)
+        break
+      }
+      case 'text': {
+        const delta = typeof data.delta === 'string' ? data.delta : ''
+        appendDelta(current, 'text', delta)
+        break
+      }
+      case 'thinking': {
+        const delta = typeof data.delta === 'string' ? data.delta : ''
+        appendDelta(current, 'thinking', delta)
+        break
+      }
+      case 'tool_call': {
+        const payload = {
+          ...(data as unknown as Omit<ProjectMessageToolCallPart, 'type'>),
+          type: 'tool_call' as const,
+        }
+        const idx = current.parts.findIndex(
+          (part) => part.type === 'tool_call' && part.id === payload.id,
+        )
+        if (idx !== -1) {
+          const prev = current.parts[idx] as ProjectMessageToolCallPart
+          current.parts[idx] = {
+            ...prev,
+            ...payload,
+            action: payload.action ?? prev.action,
+            detail: payload.detail ?? prev.detail,
+            result: payload.result ?? prev.result,
+          }
+        } else {
+          current.parts.push(payload)
+        }
+        if (payload.tool === 'edit' && payload.state === 'done') {
+          current.htmlSwaps += 1
+        }
+        break
+      }
+      case 'tool_call_drop': {
+        const id = typeof data.id === 'string' ? data.id : ''
+        current.parts = current.parts.filter(
+          (part) => part.type !== 'tool_call' || part.id !== id,
+        )
+        break
+      }
+      default:
+        break
+    }
+  }
+
+  for (const turn of turns) terminalizeTools(turn)
+  return turns
 }
 
 /** Set the title from the prompt if it is still the default. Sync, server-side. */
@@ -555,20 +701,45 @@ export function writeProjectScreenshotSync(
   return { ext, path: `/api/projects/${id}/screenshots/${fileName}` }
 }
 
-/** Serialize appends to one JSONL file so concurrent calls never interleave
- *  lines. Resolves once the line is durably appended. */
-function appendJsonlLine(filePath: string, value: unknown): Promise<void> {
-  const run = () => appendFile(filePath, `${JSON.stringify(value)}\n`, 'utf8')
-  const prev = jsonlChains.get(filePath) ?? Promise.resolve()
-  // Run even if the previous append rejected, so one bad line can't wedge the chain.
-  const next = prev.then(run, run)
-  jsonlChains.set(filePath, next)
+function appendDelta(
+  turn: ProjectMessageTurn,
+  kind: 'text' | 'thinking',
+  delta: string,
+): void {
+  const last = turn.parts[turn.parts.length - 1]
+  if (last && last.type === kind) {
+    last.text += delta
+    return
+  }
+  turn.parts.push({
+    id: kind === 'text' ? `${turn.id}-text` : `${turn.id}-think`,
+    text: delta,
+    type: kind,
+  })
+}
+
+/** Serialize a project's debug-log writes on one per-project chain. The chain
+ *  is registered SYNCHRONOUSLY (before any await) so `flushProjectLogs` always
+ *  sees the latest pending write — fire-and-forget callers from the stream
+ *  loop can't race project cleanup. */
+function chainProjectWrite(
+  id: string,
+  run: () => Promise<unknown>,
+): Promise<void> {
+  const prev = projectWriteChains.get(id) ?? Promise.resolve()
+  const next = prev.then(run, run).then(
+    () => undefined,
+    () => undefined,
+  )
+  projectWriteChains.set(id, next)
   void next.finally(() => {
-    if (jsonlChains.get(filePath) === next) jsonlChains.delete(filePath)
+    if (projectWriteChains.get(id) === next) projectWriteChains.delete(id)
   })
   return next
 }
 
+/** Serialize appends to one JSONL file so concurrent calls never interleave
+ *  lines. Resolves once the line is durably appended. */
 function copyAgentImageSync(
   projectId: string,
   imgId: string,
@@ -591,11 +762,11 @@ function decodeBase64DataUrl(dataUrl: string, mediaType: string): Buffer {
   return Buffer.from(dataUrl.slice(start), 'base64')
 }
 
-// ── image URL normalization (sync) ───────────────────────────────
-
 async function ensureProjectDir(id: string) {
   await mkdir(projectDir(id), { recursive: true })
 }
+
+// ── image URL normalization (sync) ───────────────────────────────
 
 async function ensureProjectsRoot() {
   await mkdir(PROJECTS_DIR, { recursive: true })
@@ -609,8 +780,6 @@ function isProjectRawTurnMessages(value: unknown): value is ProjectRawTurnMessag
   )
 }
 
-// ── sync fs helpers ──────────────────────────────────────────────
-
 function isSafeImageName(name: string): boolean {
   return (
     /^(img-\d+|img-\d+\.[a-z0-9]+|[a-z0-9_-]+\.[a-z0-9]+)$/i.test(name) &&
@@ -618,6 +787,8 @@ function isSafeImageName(name: string): boolean {
     !name.includes('/')
   )
 }
+
+// ── sync fs helpers ──────────────────────────────────────────────
 
 function markHasHtmlSync(id: string) {
   const meta = readMetaSync(id)
@@ -719,8 +890,6 @@ function projectDir(id: string) {
   return join(PROJECTS_DIR, id)
 }
 
-// ── async fs helpers (HTTP CRUD) ─────────────────────────────────
-
 async function readDirSafe(dir: string): Promise<string[]> {
   try {
     if (!existsSync(dir)) await ensureProjectsRoot()
@@ -732,6 +901,8 @@ async function readDirSafe(dir: string): Promise<string[]> {
     return []
   }
 }
+
+// ── async fs helpers (HTTP CRUD) ─────────────────────────────────
 
 async function readHtmlDocument(
   id: string,
@@ -843,6 +1014,21 @@ function removeIndexHtmlSync(id: string) {
 
 function stripOrigin(url: string): string {
   return url.replace(/^https?:\/\/[^/]+/i, '')
+}
+
+function terminalizeTools(
+  turn: ProjectMessageTurn,
+  result = 'Tool did not return a result before the response completed.',
+): void {
+  for (const part of turn.parts) {
+    if (
+      part.type === 'tool_call' &&
+      (part.state === 'running' || part.state === 'start')
+    ) {
+      part.result = part.result ?? result
+      part.state = 'error'
+    }
+  }
 }
 
 function truncateTitle(value: string): string {

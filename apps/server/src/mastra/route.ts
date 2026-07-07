@@ -21,12 +21,10 @@ import {
   appendClientMessage,
   appendVisionMessage,
   flushProjectLogs,
-  saveProjectMessageTurn,
   createProjectHtmlStore,
   getProject,
   persistGeneratedImage,
-  readProjectRawMessages,
-  saveProjectRawMessages,
+  readAgentRawByTurn,
   setTitleIfUntitled,
   updateProjectModel,
   type AgentMessageEntry,
@@ -161,18 +159,6 @@ export async function streamLandingAgent({
     textModel,
     attachments.map(stripAttachmentData),
   )
-  // Serialize incremental message checkpoints so a crash mid-run still leaves a
-  // recoverable streaming turn on disk. The finalized turn (same id) replaces
-  // the streaming checkpoints via `saveProjectMessageTurn`'s upsert-by-id.
-  let writeChain: Promise<unknown> = Promise.resolve()
-  const checkpointTurn = (turn: ProjectMessageTurn = recordedTurn) => {
-    writeChain = writeChain
-      .then(() => saveProjectMessageTurn(projectId, turn))
-      .catch((error) => {
-        console.error('Failed to checkpoint project message turn', error)
-      })
-    return writeChain
-  }
 
   // Debug: mirror the client wire to `client-messages.jsonl`. Every SSE event we
   // emit to the browser is also appended (timestamped, dir:"out") so the exact
@@ -240,6 +226,7 @@ export async function streamLandingAgent({
     model: textModel,
     prompt,
     ts: new Date().toISOString(),
+    turnId: recordedTurn.id,
     type: 'prompt',
   } satisfies ClientMessageEntry)
 
@@ -274,18 +261,11 @@ export async function streamLandingAgent({
   // Stop repeated blind edit attempts after MAX_EDIT_FAILURES consecutive failures.
   let editFailures = 0
   let fatalRunError: null | string = null
-  let terminalToolResult: string | undefined
-  // Captured from `stream.messageList` after the run so the real assistant +
-  // tool messages can be persisted for faithful history replay. Declared
-  // outside `try` so the `finally` block can persist whatever was captured
-  // (undefined when the stream never completed a full response).
-  let rawResponseMessages: MastraDBMessage[] | undefined
 
   try {
     // Persist the streaming turn (prompt + isStreaming) before any work so a
     // crash during attachment analysis or the agent run still leaves the prompt
     // and any later checkpoints recoverable on disk.
-    await checkpointTurn()
     const attachmentAnalysis = await analyzePromptAttachments({
       attachments,
       emit,
@@ -294,25 +274,29 @@ export async function streamLandingAgent({
       recordedTurn,
       visionModel,
     })
+    // Surface the final attachment metadata (incl. OCR analysisText) so the
+    // client-messages replay can reconstruct turn.attachments on reload. The
+    // browser ignores this unknown event; only server-side hydration reads it.
+    if (recordedTurn.attachments && recordedTurn.attachments.length > 0) {
+      emit('attachments_update', { attachments: recordedTurn.attachments })
+    }
     if (attachmentAnalysis.images > 0) {
       visionImages += attachmentAnalysis.images
       visionCostUsd += attachmentAnalysis.cost
       if (attachmentAnalysis.ok) visionCalls += 1
     }
-    checkpointTurn()
 
     const agentPrompt = attachmentAnalysis.contextBlock
       ? `${prompt}\n\n${attachmentAnalysis.contextBlock}`
       : prompt
     // Replay the real prior conversation (raw Mastra messages) when available
     // so the model sees previous tool calls and tool results, not a prose
-    // paraphrase. `readProjectRawMessages` returns [] on a fresh project.
-    const rawByTurnId = new Map(
-      (await readProjectRawMessages(projectId)).map((entry) => [
-        entry.turnId,
-        entry.messages as MastraDBMessage[],
-      ]),
-    )
+    // paraphrase. The agent log holds per-step Mastra snapshots; take the last
+    // snapshot per turn. Falls back to legacy raw-messages.json for old projects.
+    const rawByTurnId = (await readAgentRawByTurn(projectId)) as unknown as ReadonlyMap<
+      string,
+      MastraDBMessage[]
+    >
     const agentMessages = buildAgentMessages(
       project.messages,
       rawByTurnId,
@@ -321,7 +305,7 @@ export async function streamLandingAgent({
 
     let agentStep = 0
     let agentMessageList: {
-      get?: { all?: { db?: () => MastraDBMessage[] } }
+      get?: { response?: { db?: () => MastraDBMessage[] } }
     }
     const stream = await agent.stream(agentMessages, {
       abortSignal: controller.signal,
@@ -329,7 +313,6 @@ export async function streamLandingAgent({
         config.agentRetry,
         (event) => {
           emit('retry', event)
-          checkpointTurn()
         },
       ),
       includeRawChunks: true,
@@ -343,12 +326,12 @@ export async function streamLandingAgent({
         // Snapshot the real Mastra message list after each agent step and append
         // it (timestamped) to agent-messages.jsonl — the verbatim assistant/tool
         // messages, inspectable per step mid-run.
-        const messages = agentMessageList?.get?.all?.db?.()
+        const messages = agentMessageList?.get?.response?.db?.()
         if (messages && messages.length > 0) {
           agentStep += 1
           void appendAgentMessages(projectId, {
             dir: 'step',
-            messages: messages as ProjectRawMessage[],
+            messages: stripReasoning(messages) as ProjectRawMessage[],
             step: agentStep,
             ts: new Date().toISOString(),
             turnId: recordedTurn.id,
@@ -367,7 +350,6 @@ export async function streamLandingAgent({
               : String(chunk.payload.error)
           recordTurnError(recordedTurn, message)
           emit('error', { message })
-          checkpointTurn()
           break
         }
         case 'raw': {
@@ -569,7 +551,6 @@ export async function streamLandingAgent({
                   })
                   emit('html_update', htmlUpdate)
                   lastHtmlUpdate = nextHtml
-                  checkpointTurn()
                 }
               }
             }
@@ -610,7 +591,6 @@ export async function streamLandingAgent({
                 })
                 emit('html_update', htmlUpdate)
                 lastHtmlUpdate = nextHtml
-                checkpointTurn()
               }
             }
           }
@@ -782,7 +762,21 @@ export async function streamLandingAgent({
     recordStats(recordedTurn, statsPayload)
     emit('stats', statsPayload)
 
-    rawResponseMessages = captureResponseMessages(stream)
+    // Final agent-message snapshot at run end (the last per-step snapshot via
+    // onStepFinish may not fire for every stream shape, so this guarantees the
+    // turn's Mastra messages are captured for replay). `dir: 'step'` with the
+    // next step number; replay takes the last snapshot per turn.
+    const finalAgentMessages = stream.messageList?.get?.response?.db?.()
+    if (finalAgentMessages && finalAgentMessages.length > 0) {
+      agentStep += 1
+      void appendAgentMessages(projectId, {
+        dir: 'step',
+        messages: stripReasoning(finalAgentMessages) as ProjectRawMessage[],
+        step: agentStep,
+        ts: new Date().toISOString(),
+        turnId: recordedTurn.id,
+      })
+    }
 
     // The empty-draft guard is a real completion error, not an accounting
     // concern, so it only fires when the run was not already fatal.
@@ -799,7 +793,7 @@ export async function streamLandingAgent({
           ? error.message
           : 'Unknown error'
       if (aborted) {
-        terminalToolResult = 'Stopped.'
+        // stopped — no terminal tool result needed; the client log captures the error event.
       } else {
         recordTurnError(recordedTurn, message)
       }
@@ -807,20 +801,6 @@ export async function streamLandingAgent({
     }
   } finally {
     request.off('close', onClose)
-    await checkpointTurn(
-      finalizeRecordedTurn(recordedTurn, terminalToolResult),
-    )
-    if (rawResponseMessages && rawResponseMessages.length > 0) {
-      try {
-        await saveProjectRawMessages(
-          projectId,
-          recordedTurn.id,
-          stripReplayNoise(rawResponseMessages) as ProjectRawMessage[],
-        )
-      } catch (error) {
-        console.error('Failed to persist raw mastra messages', error)
-      }
-    }
     emit('done', {})
     // Flush any still-pending debug-log appends so they're durable before the
     // response closes (and before callers/tests clean up the project dir).
@@ -1054,23 +1034,6 @@ function buildHistoryUserContent(turn: ProjectMessageTurn): null | string {
  * turn. Returns `undefined` when the accessor is absent (e.g. the test fake
  * stream) or throws, so persistence is best-effort and never breaks a run.
  */
-function captureResponseMessages(stream: {
-  messageList?: {
-    get?: {
-      response?: {
-        db?: () => MastraDBMessage[]
-      }
-    }
-  }
-}): MastraDBMessage[] | undefined {
-  try {
-    const messages = stream.messageList?.get?.response?.db?.()
-    return messages && messages.length > 0 ? messages : undefined
-  } catch {
-    return undefined
-  }
-}
-
 function compactLines(lines: Array<null | string | undefined>): null | string {
   const compacted = lines
     .map((line) => line?.trim())
@@ -1189,16 +1152,6 @@ function editSubId(baseSeq: number, index: number) {
   return `tool-${baseSeq}-edit-${index + 1}`
 }
 
-function finalizeRecordedTurn(
-  turn: ProjectMessageTurn,
-  terminalToolResult?: string,
-): ProjectMessageTurn {
-  return terminalizeRecordedTools(
-    { ...turn, isStreaming: false },
-    terminalToolResult,
-  )
-}
-
 function getToolCallDisplay(
   displayByProviderId: Map<string, ToolCallDisplay>,
   providerId: string,
@@ -1218,6 +1171,7 @@ function getToolCallDisplay(
     )
   )
 }
+
 
 function hashHtml(html: string): string {
   return createHash('sha256').update(html).digest('hex')
@@ -1363,25 +1317,18 @@ function stripAttachmentData({
   return metadata
 }
 
-/**
- * Strip parts that bloat history replay without aiding the next turn's
- * decisions. `reasoning` is the model's private chain-of-thought — every
- * decision it informed is already captured by the `tool-invocation`
- * calls/results and `text` we keep, so replaying the reasoning only inflates
- * the prompt (observed +73K input tokens on a 2-line turn-2 edit) without
- * improving fidelity. Returns a deep clone so the live stream's message list
- * is never mutated.
- */
-function stripReplayNoise(messages: MastraDBMessage[]): MastraDBMessage[] {
+/** Strip `reasoning` parts (the model's private chain-of-thought) from Mastra
+ *  messages before persisting them to agent-messages.jsonl. Every decision
+ *  reasoning informed is already captured by the tool-invocation calls/results
+ *  and text we keep, so replaying it only inflates the next turn's prompt
+ *  (observed +73K input tokens on a 2-line edit) without aiding fidelity. */
+function stripReasoning(messages: MastraDBMessage[]): MastraDBMessage[] {
   return messages.map((message) => {
     const parts = message.content?.parts
     if (!Array.isArray(parts)) return message
     const kept = parts.filter((part) => part?.type !== 'reasoning')
     if (kept.length === parts.length) return message
-    return {
-      ...message,
-      content: { ...message.content, parts: kept },
-    }
+    return { ...message, content: { ...message.content, parts: kept } }
   })
 }
 
@@ -1582,28 +1529,6 @@ function summarizeToolResult(
       return 'Search complete'
     default:
       return null
-  }
-}
-
-function terminalizeRecordedTools(
-  turn: ProjectMessageTurn,
-  result = 'Tool did not return a result before the response completed.',
-): ProjectMessageTurn {
-  return {
-    ...turn,
-    parts: turn.parts.map((part) => {
-      if (
-        part.type !== 'tool_call' ||
-        (part.state !== 'running' && part.state !== 'start')
-      ) {
-        return part
-      }
-      return {
-        ...part,
-        result: part.result ?? result,
-        state: 'error',
-      }
-    }),
   }
 }
 
