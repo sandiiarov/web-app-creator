@@ -21,6 +21,7 @@ export type LandingModelRole = 'image' | 'text' | 'vision'
 // All model ids are OpenRouter slugs, verified live against the OpenRouter API.
 export const TEXT_MODEL_OPTIONS: LandingModelOption[] = [
   { id: 'z-ai/glm-5.2', label: 'GLM 5.2' },
+  { id: 'tencent/hy3', label: 'Tencent Hy3' },
   { id: 'moonshotai/kimi-k2.7-code', label: 'Kimi K2.7 Code' },
   { id: 'deepseek/deepseek-v4-pro', label: 'DeepSeek V4 Pro' },
   { id: 'nvidia/nemotron-3-ultra-550b-a55b', label: 'Nemotron Ultra' },

@@ -24,6 +24,7 @@ import { KimiIcon } from './kimi-icon'
 import { MinimaxIcon } from './minimax-icon'
 import { NvidiaIcon } from './nvidia-icon'
 import { OpenaiIcon } from './openai-icon'
+import { TencentIcon } from './tencent-icon'
 import { XaiIcon } from './xai-icon'
 import { XiaomiIcon } from './xiaomi-icon'
 
@@ -35,6 +36,7 @@ const MODEL_ICONS: Record<string, ComponentType<{ className?: string }>> = {
   'moonshotai/kimi-k2.7-code': KimiIcon,
   'nvidia/nemotron-3-ultra-550b-a55b': NvidiaIcon,
   'openai/gpt-image-2': OpenaiIcon,
+  'tencent/hy3': TencentIcon,
   'x-ai/grok-imagine-image-quality': XaiIcon,
   'xiaomi/mimo-v2.5': XiaomiIcon,
   'z-ai/glm-5.2': GlmIcon,
