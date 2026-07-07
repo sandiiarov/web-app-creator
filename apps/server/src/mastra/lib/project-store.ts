@@ -556,7 +556,10 @@ export async function readVisionMessages(
   id: string,
 ): Promise<VisionMessageEntry[]> {
   try {
-    const raw = await readFile(join(projectDir(id), VISION_MESSAGES_JSON), 'utf8')
+    const raw = await readFile(
+      join(projectDir(id), VISION_MESSAGES_JSON),
+      'utf8',
+    )
     const parsed = JSON.parse(raw)
     return Array.isArray(parsed) ? (parsed as VisionMessageEntry[]) : []
   } catch {
@@ -584,7 +587,10 @@ export function replayClientMessages(
       if (entry.type === 'prompt') {
         current = {
           htmlSwaps: 0,
-          id: typeof entry.turnId === 'string' ? entry.turnId : `turn-${turns.length + 1}`,
+          id:
+            typeof entry.turnId === 'string'
+              ? entry.turnId
+              : `turn-${turns.length + 1}`,
           isStreaming: true,
           model: typeof entry.model === 'string' ? entry.model : '',
           parts: [],
@@ -785,7 +791,9 @@ function copyAgentImageSync(
 
 function decodeBase64DataUrl(dataUrl: string, mediaType: string): Buffer {
   const prefix = `data:${mediaType};base64,`
-  const start = dataUrl.startsWith(prefix) ? prefix.length : dataUrl.indexOf(',') + 1
+  const start = dataUrl.startsWith(prefix)
+    ? prefix.length
+    : dataUrl.indexOf(',') + 1
   return Buffer.from(dataUrl.slice(start), 'base64')
 }
 
@@ -803,12 +811,12 @@ function invalidateTurnCache(id: string): void {
   turnCache.delete(id)
 }
 
-function isProjectRawTurnMessages(value: unknown): value is ProjectRawTurnMessages {
+function isProjectRawTurnMessages(
+  value: unknown,
+): value is ProjectRawTurnMessages {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false
   const data = value as Record<string, unknown>
-  return (
-    typeof data.turnId === 'string' && Array.isArray(data.messages)
-  )
+  return typeof data.turnId === 'string' && Array.isArray(data.messages)
 }
 
 function isSafeImageName(name: string): boolean {

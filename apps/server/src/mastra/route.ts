@@ -204,8 +204,7 @@ export async function streamLandingAgent({
       try {
         return await promise
       } catch (error) {
-        const reason =
-          error instanceof Error ? error.message : String(error)
+        const reason = error instanceof Error ? error.message : String(error)
         if (reason.includes('timed out')) screenshotUnavailable = true
         throw error
       }
@@ -305,10 +304,9 @@ export async function streamLandingAgent({
     // so the model sees previous tool calls and tool results, not a prose
     // paraphrase. The agent log holds per-step Mastra snapshots; take the last
     // snapshot per turn. Falls back to legacy raw-messages.json for old projects.
-    const rawByTurnId = (await readAgentRawByTurn(projectId)) as unknown as ReadonlyMap<
-      string,
-      MastraDBMessage[]
-    >
+    const rawByTurnId = (await readAgentRawByTurn(
+      projectId,
+    )) as unknown as ReadonlyMap<string, MastraDBMessage[]>
     const agentMessages = buildAgentMessages(
       project.messages,
       rawByTurnId,
@@ -392,9 +390,7 @@ export async function streamLandingAgent({
           // Edit fan-out: a batched edit call (N >= 2 edits) renders as N
           // running blocks, each carrying its own action, instead of one.
           const editActions =
-            chunk.payload.toolName === 'edit'
-              ? editActionsFromArgs(args)
-              : null
+            chunk.payload.toolName === 'edit' ? editActionsFromArgs(args) : null
           if (editActions) {
             // A `tool-call-input-streaming-start` may have already created a
             // provisional block (display.id) for this providerId. The fan-out
@@ -509,8 +505,11 @@ export async function streamLandingAgent({
           // a whole-call error every edit block gets the shared error reason.
           const fanOutSubIds = editSubIds.get(chunk.payload.toolCallId)
           if (fanOutSubIds && chunk.payload.toolName === 'edit') {
-            const perEditResults = (chunk.payload.result as { edits?: { changedLines: number; changedText: string }[] })
-              .edits
+            const perEditResults = (
+              chunk.payload.result as {
+                edits?: { changedLines: number; changedText: string }[]
+              }
+            ).edits
             const editArgsIntents = editActionsFromArgs(args) ?? []
             for (const [index, subId] of fanOutSubIds.entries()) {
               const perEdit = perEditResults?.[index]
@@ -643,8 +642,7 @@ export async function streamLandingAgent({
             // Persist generated image bytes to the project folder at
             // generation time so they are durable even if a later edit fails
             // (the edit path otherwise never runs persistProjectImagesSync).
-            const imgUrl =
-              typeof result.url === 'string' ? result.url : null
+            const imgUrl = typeof result.url === 'string' ? result.url : null
             const match = imgUrl?.match(/\/images\/(img-\d+)(\.[a-z0-9]+)?$/i)
             if (match) {
               persistGeneratedImage(projectId, match[1]!, match[2] ?? '')
@@ -1165,7 +1163,6 @@ function getToolCallDisplay(
   )
 }
 
-
 function hashHtml(html: string): string {
   return createHash('sha256').update(html).digest('hex')
 }
@@ -1290,9 +1287,7 @@ function summarizeToolArgs(tool: string, args: ToolArgs): null | string {
       const limit = numberValue(args.limit)
       return compactLines([
         action,
-        from || to
-          ? `Anchors: ${from ?? 'start'}${to ? `..${to}` : ''}`
-          : null,
+        from || to ? `Anchors: ${from ?? 'start'}${to ? `..${to}` : ''}` : null,
         limit ? `Limit: ${limit}` : null,
       ])
     }

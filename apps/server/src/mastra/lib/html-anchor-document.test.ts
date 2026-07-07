@@ -202,17 +202,17 @@ describe('html-anchor-document', () => {
       '<main>\n  <h1>Hello</h1>\n  <p>World</p>\n</main>',
     )
 
-    expect(() =>
-      readHtmlDocumentLines(document, { from: 'missing' }),
-    ).toThrow('missing anchor')
+    expect(() => readHtmlDocumentLines(document, { from: 'missing' })).toThrow(
+      'missing anchor',
+    )
     expect(() =>
       applyAnchorEdits(document, [
         { action: 'edit-5', code: 'x', from: 'a1', insert: 'middle' as never },
       ]),
     ).toThrow('insert must be')
-    expect(() =>
-      applyAnchorEdits(document, [{ action: 'edit-6' }]),
-    ).toThrow('from is required for a delete')
+    expect(() => applyAnchorEdits(document, [{ action: 'edit-6' }])).toThrow(
+      'from is required for a delete',
+    )
     expect(() =>
       applyAnchorEdits(document, [
         { action: 'edit-8', code: 'x', from: 'a1', insert: 'after', to: 'a2' },
@@ -225,7 +225,12 @@ describe('html-anchor-document', () => {
       '<main>\n  <h1>Hello</h1>\n  <p>World</p>\n</main>',
     )
     const result = applyAnchorEdits(document, [
-      { action: 'edit-7', code: '<section>new</section>', from: 'a3', to: 'a1' },
+      {
+        action: 'edit-7',
+        code: '<section>new</section>',
+        from: 'a3',
+        to: 'a1',
+      },
     ])
     // a1..a3 span <main>+h1+p; reversed endpoints resolve by position.
     expect(renderHtmlDocument(result.document)).toBe(
@@ -238,7 +243,12 @@ describe('html-anchor-document', () => {
       '<main>\n  <h1>Hello</h1>\n  <p>World</p>\n</main>\n',
     )
     const full = applyAnchorEdits(document, [
-      { action: 'whole via sentinels', code: '<div>all</div>', from: 'start', to: 'end' },
+      {
+        action: 'whole via sentinels',
+        code: '<div>all</div>',
+        from: 'start',
+        to: 'end',
+      },
     ])
     expect(renderHtmlDocument(full.document)).toBe('<div>all</div>')
     const tail = applyAnchorEdits(document, [

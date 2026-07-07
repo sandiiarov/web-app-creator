@@ -304,23 +304,16 @@ describe('streamLandingAgent error handling', () => {
     vi.doMock('./agents/landing-page-agent.ts', () => ({
       createLandingPageAgent: () => ({
         stream: async () =>
-          fakeAgentStream(
-            editToolStream({ isError: true }),
-            undefined,
-            {
-              messageList: {
-                get: { response: { db: () => [ASSISTANT_RAW] } },
-              },
+          fakeAgentStream(editToolStream({ isError: true }), undefined, {
+            messageList: {
+              get: { response: { db: () => [ASSISTANT_RAW] } },
             },
-          ),
+          }),
       }),
     }))
 
-    const {
-      createProject,
-      getProject,
-      readAgentMessages,
-    } = await import('./lib/project-store.ts')
+    const { createProject, getProject, readAgentMessages } =
+      await import('./lib/project-store.ts')
     const project = await createProject()
     createdProjectIds.push(project.id)
     const { streamLandingAgent } = await import('./route.ts')
@@ -657,10 +650,8 @@ describe('streamLandingAgent generated image persistence', () => {
       }),
     }))
 
-    const {
-      createProject,
-      readProjectImage,
-    } = await import('./lib/project-store.ts')
+    const { createProject, readProjectImage } =
+      await import('./lib/project-store.ts')
     const project = await createProject()
     createdProjectIds.push(project.id)
     const { streamLandingAgent } = await import('./route.ts')
@@ -734,8 +725,16 @@ describe('streamLandingAgent edit fan-out', () => {
                   result: {
                     changedLines: 2,
                     edits: [
-                      { action: 'Rewrite headline', changedLines: 1, changedText: 'a5|  <h1>Hi</h1>' },
-                      { action: 'Rewrite paragraph', changedLines: 1, changedText: 'a6|  <p>There</p>' },
+                      {
+                        action: 'Rewrite headline',
+                        changedLines: 1,
+                        changedText: 'a5|  <h1>Hi</h1>',
+                      },
+                      {
+                        action: 'Rewrite paragraph',
+                        changedLines: 1,
+                        changedText: 'a6|  <p>There</p>',
+                      },
                     ],
                     ok: true,
                   },
@@ -1230,16 +1229,18 @@ describe('streamLandingAgent html updates', () => {
     })
 
     const events = parseSseEvents(response.body)
-    const isToolCall = (
-      event: { data: unknown; event: string },
-    ): event is { data: { tool: string }; event: 'tool_call' } =>
+    const isToolCall = (event: {
+      data: unknown
+      event: string
+    }): event is { data: { tool: string }; event: 'tool_call' } =>
       event.event === 'tool_call' &&
       !!event.data &&
       typeof event.data === 'object' &&
       'tool' in event.data
-    const isError = (
-      event: { data: unknown; event: string },
-    ): event is { data: { message: string }; event: 'error' } =>
+    const isError = (event: {
+      data: unknown
+      event: string
+    }): event is { data: { message: string }; event: 'error' } =>
       event.event === 'error' &&
       !!event.data &&
       typeof event.data === 'object' &&
@@ -1724,8 +1725,7 @@ describe('streamLandingAgent raw mastra message persistence', () => {
             messageList: {
               get: {
                 response: {
-                  db: () =>
-                    runCount === 1 ? [ASSISTANT_RAW, TOOL_RAW] : [],
+                  db: () => (runCount === 1 ? [ASSISTANT_RAW, TOOL_RAW] : []),
                 },
               },
             },
@@ -1748,9 +1748,7 @@ describe('streamLandingAgent raw mastra message persistence', () => {
       textModel: 'z-ai/glm-5.2',
     })
 
-    const { readAgentMessages } = await import(
-      './lib/project-store.ts'
-    )
+    const { readAgentMessages } = await import('./lib/project-store.ts')
     const agentEntries = await readAgentMessages(project.id)
     expect(agentEntries.at(-1)).toMatchObject({
       messages: [ASSISTANT_RAW, TOOL_RAW],
@@ -1777,9 +1775,11 @@ describe('streamLandingAgent raw mastra message persistence', () => {
         typeof message === 'object' &&
         typeof (message as { content?: unknown }).content === 'string',
     )
-    expect(replayStrings.some((message) => /Tool read done|Result:/.test(message.content))).toBe(
-      false,
-    )
+    expect(
+      replayStrings.some((message) =>
+        /Tool read done|Result:/.test(message.content),
+      ),
+    ).toBe(false)
     // The current prompt is still the final user message.
     expect(capturedReplay.at(-1)).toMatchObject({
       content: 'Tighten the hero.',
@@ -1830,10 +1830,8 @@ describe('streamLandingAgent raw mastra message persistence', () => {
       }),
     }))
 
-    const {
-      createProject,
-      readAgentMessages,
-    } = await import('./lib/project-store.ts')
+    const { createProject, readAgentMessages } =
+      await import('./lib/project-store.ts')
     const project = await createProject()
     createdProjectIds.push(project.id)
     const { streamLandingAgent } = await import('./route.ts')
@@ -1847,11 +1845,9 @@ describe('streamLandingAgent raw mastra message persistence', () => {
     })
 
     const persisted = await readAgentMessages(project.id)
-    const firstMsg = (
-      persisted.at(-1)?.messages[0] as
-        | undefined
-        | { content?: { parts?: { type: string }[] } }
-    )
+    const firstMsg = persisted.at(-1)?.messages[0] as
+      | undefined
+      | { content?: { parts?: { type: string }[] } }
     const parts = firstMsg?.content?.parts ?? []
     const types = parts.map((part) => part.type)
     // Reasoning is stripped; the decision-relevant content survives.

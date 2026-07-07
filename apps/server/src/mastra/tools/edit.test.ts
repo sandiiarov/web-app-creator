@@ -27,7 +27,9 @@ describe('createEditTool', () => {
       edits: JSON.stringify([{ action: 'x', code: '<p>y</p>' }]),
     }) as { edits: unknown }
     expect(Array.isArray(parsed.edits)).toBe(true)
-    expect((parsed.edits as { action: string; code: string }[])[0]).toMatchObject({
+    expect(
+      (parsed.edits as { action: string; code: string }[])[0],
+    ).toMatchObject({
       action: 'x',
       code: '<p>y</p>',
     })

@@ -377,7 +377,8 @@ describe('createScrapeTool', () => {
       text: 'a hero shot',
       usage: null,
     }))
-    const appendVisionMessage = vi.fn()
+    const appendVisionMessage =
+      vi.fn<(id: string, entry: unknown) => Promise<void>>()
     const { createScrapeTool } = await loadScrapeTool({
       appendVisionMessage,
       FIRECRAWL_API_KEY: 'firecrawl-key',
@@ -411,13 +412,21 @@ describe('createScrapeTool', () => {
       markdown: '',
       metadata: {},
     }))
-    const ocrImages = vi.fn(async () => ({
+    const ocrImages = vi.fn<
+      () => Promise<{
+        imagesAnalyzed: number
+        ok: boolean
+        text: string
+        usage: null
+      }>
+    >(async () => ({
       imagesAnalyzed: 1,
       ok: true,
       text: 'x',
       usage: null,
     }))
-    const appendVisionMessage = vi.fn()
+    const appendVisionMessage =
+      vi.fn<(id: string, entry: unknown) => Promise<void>>()
     const { createScrapeTool } = await loadScrapeTool({
       appendVisionMessage,
       FIRECRAWL_API_KEY: 'firecrawl-key',
@@ -557,7 +566,7 @@ async function loadGenerateImageTool(env: Record<string, string> = {}) {
 }
 
 async function loadScrapeTool({
-  appendVisionMessage = vi.fn(),
+  appendVisionMessage = vi.fn<(id: string, entry: unknown) => Promise<void>>(),
   FIRECRAWL_API_KEY,
   ocrImages = vi.fn<() => Promise<unknown>>(),
   scrape = vi.fn<() => Promise<unknown>>(),

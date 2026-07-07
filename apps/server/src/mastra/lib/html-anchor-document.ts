@@ -315,7 +315,10 @@ export function renderHtmlDocument(document: HtmlDocumentJsonV1): string {
 function applyCompiledEdits(
   document: HtmlDocumentJsonV1,
   compiledEdits: CompiledEdit[],
-): { document: HtmlDocumentJsonV1; placements: Map<number, { count: number; startNewIndex: number }> } {
+): {
+  document: HtmlDocumentJsonV1
+  placements: Map<number, { count: number; startNewIndex: number }>
+} {
   let nextAnchor = document.nextAnchor
   const mutationsByStart = new Map<number, CompiledEdit>()
   const insertionsByPosition = new Map<number, CompiledEdit[]>()
@@ -772,9 +775,7 @@ function resolveReadRange(
   }
   const fromIndex = resolveAnchorOrBoundary(document, from, 'from')
   const toIndex =
-    to === undefined
-      ? fromIndex
-      : resolveAnchorOrBoundary(document, to, 'to')
+    to === undefined ? fromIndex : resolveAnchorOrBoundary(document, to, 'to')
   // Order-insensitive: resolve by document position so reversed endpoints work.
   const startIndex = Math.min(fromIndex, toIndex)
   const endExclusive = Math.max(fromIndex, toIndex) + 1

@@ -432,9 +432,9 @@ describe('project message storage', () => {
     const project = await createProject()
     createdProjectIds.push(project.id)
 
-    expect(persistGeneratedImage(project.id, 'img-does-not-exist', '.jpg')).toBe(
-      null,
-    )
+    expect(
+      persistGeneratedImage(project.id, 'img-does-not-exist', '.jpg'),
+    ).toBe(null)
   })
 })
 
@@ -616,15 +616,17 @@ describe('append-only debug logs', () => {
       `/api/projects/${project.id}/screenshots/001-req-1.png`,
     )
     await expect(
-      readFile(
-        join(PROJECTS_DIR, project.id, 'screenshots', '001-req-1.png'),
-      ),
+      readFile(join(PROJECTS_DIR, project.id, 'screenshots', '001-req-1.png')),
     ).resolves.toEqual(bytes)
   })
 })
 
 describe('replayClientMessages (hydration reducer)', () => {
-  const out = (event: string, payload: Record<string, unknown> = {}, ts = 't') => ({
+  const out = (
+    event: string,
+    payload: Record<string, unknown> = {},
+    ts = 't',
+  ) => ({
     dir: 'out' as const,
     event,
     payload,
@@ -782,7 +784,9 @@ describe('replayClientMessages (hydration reducer)', () => {
     const turns = replayClientMessages([
       prompt('turn-1'),
       out('attachments_update', {
-        attachments: [{ id: 'a', mediaType: 'image/png', name: 'pic', size: 1 }],
+        attachments: [
+          { id: 'a', mediaType: 'image/png', name: 'pic', size: 1 },
+        ],
       }),
     ])
     expect(turns[0]?.attachments).toEqual([
@@ -822,7 +826,9 @@ describe('replayClientMessages (hydration reducer)', () => {
       out('retry', { attempt: 1 }),
       out('text', { delta: 'x' }),
     ])
-    expect(turns[0]?.parts).toEqual([{ id: 'turn-1-text', text: 'x', type: 'text' }])
+    expect(turns[0]?.parts).toEqual([
+      { id: 'turn-1-text', text: 'x', type: 'text' },
+    ])
   })
 })
 
