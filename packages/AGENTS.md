@@ -8,6 +8,7 @@
 
 - `ui/`: shared shadcn/Tailwind React component package.
 - `prompt-panel/`: landing-page prompt panel UI + conversation domain model, source-consumed by the client.
+- `conversation/`: canonical conversation model + the shared event→turn reducer (`applyEventToTurn`/`replayClientEvents`/`terminalizeTools`) consumed by both the server (hydration) and the client (live SSE stream).
 - `landing-preview/`: shared landing-page preview iframe runtime, DOM morphing, and browser screenshot capture, source-consumed by the client.
 - `typescript-config/`: shared strict tsgo/TypeScript configs.
 - `vite-config/`: shared Vite React config factory.
