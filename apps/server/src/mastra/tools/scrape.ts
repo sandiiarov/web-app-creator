@@ -3,7 +3,9 @@ import { Firecrawl } from 'firecrawl'
 import { z } from 'zod'
 
 import { config } from '../../config.ts'
+import { visionCost } from '../lib/cost.ts'
 import { ocrImages } from '../lib/image-ocr.ts'
+import { appendVisionMessage } from '../lib/project-store.ts'
 
 /**
  * Lazily-built Firecrawl client (shared across calls). Reads
@@ -92,9 +94,15 @@ interface CollectImageUrlsOptions {
   rawImages: string[]
 }
 
-export function createScrapeTool(
-  visionModel: string = config.openrouter.defaultVisionModel,
-) {
+export function createScrapeTool({
+  projectId,
+  turnId,
+  visionModel = config.openrouter.defaultVisionModel,
+}: {
+  projectId?: string
+  turnId?: string
+  visionModel?: string
+} = {}) {
   return createTool({
     description:
       'Scrape a URL into markdown + links + images + branding (palette, fonts, logo), then OCR all scraped image URLs and return the OCR/visual transcript in `imageOcr`. Handles JavaScript-rendered pages. Use to pull a brand identity before building or refining a landing page. Always pass an action: one short imperative line on what you are scraping (shown to the user as the label for this step).',
@@ -149,6 +157,22 @@ export function createScrapeTool(
         rawImages: doc.images ?? [],
       })
       const imageOcr = await ocrImages(images, undefined, visionModel)
+      // Log this scrape OCR/vision call to vision-messages.json (text/usage/cost
+      // only — no image bytes), mirroring the attachment-OCR logging site.
+      if (projectId && turnId) {
+        void appendVisionMessage(projectId, {
+          costUsd: visionCost(imageOcr.usage ?? {}, imageOcr.cost),
+          imagesAnalyzed: imageOcr.imagesAnalyzed,
+          model: visionModel,
+          ok: imageOcr.ok,
+          reason: imageOcr.reason,
+          source: 'scrape',
+          text: imageOcr.text,
+          ts: new Date().toISOString(),
+          turnId,
+          usage: imageOcr.usage ?? undefined,
+        })
+      }
       const title = doc.metadata?.title
       const sourceUrl = doc.metadata?.sourceURL ?? doc.metadata?.url ?? url
       const creditsUsed =

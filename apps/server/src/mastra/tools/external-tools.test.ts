@@ -354,6 +354,84 @@ describe('createScrapeTool', () => {
       url: 'https://example.test/home',
     })
   })
+
+  it('logs scrape OCR to vision-messages.json when projectId/turnId are set', async () => {
+    const scrape = vi.fn<() => Promise<Record<string, unknown>>>(async () => ({
+      images: ['/hero.png'],
+      links: [],
+      markdown: '',
+      metadata: { title: 'X' },
+    }))
+    const ocrImages = vi.fn<
+      (images: string[]) => Promise<{
+        cost: number
+        imagesAnalyzed: number
+        ok: boolean
+        text: string
+        usage: null
+      }>
+    >(async (images) => ({
+      cost: 0.002,
+      imagesAnalyzed: images.length,
+      ok: true,
+      text: 'a hero shot',
+      usage: null,
+    }))
+    const appendVisionMessage = vi.fn()
+    const { createScrapeTool } = await loadScrapeTool({
+      appendVisionMessage,
+      FIRECRAWL_API_KEY: 'firecrawl-key',
+      ocrImages,
+      scrape,
+    })
+
+    const tool = createScrapeTool({ projectId: 'proj-1', turnId: 'turn-1' })
+    await tool.execute?.(
+      { action: 'Scrape brand', url: 'https://example.test' },
+      undefined as never,
+    )
+
+    expect(appendVisionMessage).toHaveBeenCalledWith(
+      'proj-1',
+      expect.objectContaining({
+        imagesAnalyzed: 1,
+        model: 'z-ai/glm-5v-turbo',
+        ok: true,
+        source: 'scrape',
+        text: 'a hero shot',
+        turnId: 'turn-1',
+      }),
+    )
+  })
+
+  it('does not log scrape OCR when projectId/turnId are absent', async () => {
+    const scrape = vi.fn<() => Promise<Record<string, unknown>>>(async () => ({
+      images: ['/hero.png'],
+      links: [],
+      markdown: '',
+      metadata: {},
+    }))
+    const ocrImages = vi.fn(async () => ({
+      imagesAnalyzed: 1,
+      ok: true,
+      text: 'x',
+      usage: null,
+    }))
+    const appendVisionMessage = vi.fn()
+    const { createScrapeTool } = await loadScrapeTool({
+      appendVisionMessage,
+      FIRECRAWL_API_KEY: 'firecrawl-key',
+      ocrImages,
+      scrape,
+    })
+
+    await createScrapeTool().execute?.(
+      { action: 'Scrape brand', url: 'https://example.test' },
+      undefined as never,
+    )
+
+    expect(appendVisionMessage).not.toHaveBeenCalled()
+  })
 })
 
 describe('createScreenshotTool', () => {
@@ -479,10 +557,12 @@ async function loadGenerateImageTool(env: Record<string, string> = {}) {
 }
 
 async function loadScrapeTool({
+  appendVisionMessage = vi.fn(),
   FIRECRAWL_API_KEY,
   ocrImages = vi.fn<() => Promise<unknown>>(),
   scrape = vi.fn<() => Promise<unknown>>(),
 }: {
+  appendVisionMessage?: ReturnType<typeof vi.fn>
   FIRECRAWL_API_KEY?: string
   ocrImages?: ReturnType<typeof vi.fn>
   scrape?: ReturnType<typeof vi.fn>
@@ -497,5 +577,6 @@ async function loadScrapeTool({
     },
   }))
   vi.doMock('../lib/image-ocr.ts', () => ({ ocrImages }))
+  vi.doMock('../lib/project-store.ts', () => ({ appendVisionMessage }))
   return import('./scrape.ts')
 }

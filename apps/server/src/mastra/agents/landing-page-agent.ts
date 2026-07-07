@@ -44,7 +44,12 @@ export function createLandingPageAgent(
   baseUrl: string,
   textModel: string = config.openrouter.defaultChatModel,
   requestScreenshot?: RequestBrowserScreenshot,
-  options: { imageModel?: string; visionModel?: string } = {},
+  options: {
+    imageModel?: string
+    projectId?: string
+    turnId?: string
+    visionModel?: string
+  } = {},
 ): AgentType {
   return new Agent({
     id: 'landing-page-agent',
@@ -66,7 +71,12 @@ function createLandingPageAgentConfig(
   baseUrl: string,
   textModel: string = config.openrouter.defaultChatModel,
   requestScreenshot?: RequestBrowserScreenshot,
-  options: { imageModel?: string; visionModel?: string } = {},
+  options: {
+    imageModel?: string
+    projectId?: string
+    turnId?: string
+    visionModel?: string
+  } = {},
 ) {
   return {
     id: 'landing-page-agent',

@@ -22,8 +22,10 @@ type LandingTool =
 interface LandingToolContext {
   baseUrl: string
   imageModel?: string
+  projectId?: string
   requestScreenshot?: RequestBrowserScreenshot
   store: HtmlStore
+  turnId?: string
   visionModel?: string
 }
 
@@ -52,7 +54,8 @@ const LANDING_TOOL_DEFINITIONS = [
   tool(
     'scrape',
     'Use `scrape` when the user gives a reference URL or asks you to match a brand. It returns markdown, links, image URLs, branding, and `imageOcr` — the OCR + visual transcript for all scraped images. Use `imageOcr.text` directly. Prefer relevant URLs from `images` for source-site content such as portraits, logos, screenshots, newsletter art, and video thumbnails; do not hotlink arbitrary image URLs that were not returned by `scrape`. If `images` is empty, say no OCR was possible.',
-    ({ visionModel }) => createScrapeTool(visionModel),
+    ({ projectId, turnId, visionModel }) =>
+      createScrapeTool({ projectId, turnId, visionModel }),
   ),
   tool(
     'read',
@@ -96,7 +99,12 @@ export function createLandingTools(
   store: HtmlStore,
   baseUrl: string,
   requestScreenshot?: RequestBrowserScreenshot,
-  options: { imageModel?: string; visionModel?: string } = {},
+  options: {
+    imageModel?: string
+    projectId?: string
+    turnId?: string
+    visionModel?: string
+  } = {},
 ): Record<string, LandingTool> {
   return Object.fromEntries(
     LANDING_TOOL_DEFINITIONS.map(({ create, id }) => [
@@ -104,8 +112,10 @@ export function createLandingTools(
       create({
         baseUrl,
         imageModel: options.imageModel,
+        projectId: options.projectId,
         requestScreenshot,
         store,
+        turnId: options.turnId,
         visionModel: options.visionModel,
       }),
     ]),

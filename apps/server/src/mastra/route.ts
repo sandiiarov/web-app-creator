@@ -210,7 +210,7 @@ export async function streamLandingAgent({
         throw error
       }
     },
-    { imageModel, visionModel },
+    { imageModel, projectId, turnId: recordedTurn.id, visionModel },
   )
   const controller = new AbortController()
 
