@@ -357,7 +357,7 @@ export async function streamLandingAgent({
             editSubIds.set(chunk.payload.toolCallId, subIds)
             for (const [index, action] of editActions.entries()) {
               const toolPayload: RecordedToolPayload = {
-                action,
+                action: action ?? null,
                 id: subIds[index]!,
                 providerId: chunk.payload.toolCallId,
                 state: 'running',
@@ -1089,17 +1089,18 @@ function defaultToolAction(tool: string, args: ToolArgs): string | undefined {
  * when the args are not the expected `{ edits: [{ action, ... }] }` shape or
  * the batch has 0/1 edits (single-block fallback handles those).
  */
-function editActionsFromArgs(args: ToolArgs): null | string[] {
+function editActionsFromArgs(args: ToolArgs): (string | undefined)[] | null {
   const edits = args.edits
   if (!Array.isArray(edits) || edits.length < 2) return null
-  const intents: string[] = []
+  const actions: (string | undefined)[] = []
   for (const edit of edits) {
     if (!edit || typeof edit !== 'object' || Array.isArray(edit)) return null
     const action = (edit as { action?: unknown }).action
-    if (typeof action !== 'string' || action.length === 0) return null
-    intents.push(action)
+    actions.push(
+      typeof action === 'string' && action.length > 0 ? action : undefined,
+    )
   }
-  return intents
+  return actions
 }
 
 /**

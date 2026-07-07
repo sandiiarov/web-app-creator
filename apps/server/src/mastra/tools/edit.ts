@@ -10,6 +10,7 @@ import type { HtmlStore } from '../lib/html-store.ts'
 const anchorEditSchema = z.object({
   action: z
     .string()
+    .optional()
     .describe(
       'One short imperative line stating what THIS edit does, shown to the user as its label (think commit message), e.g. "swap hero headline to benefit-driven copy". Each edit in the batch has its own action.',
     ),
@@ -84,7 +85,7 @@ export function createEditTool(store: HtmlStore) {
       checksum: z.string(),
       edits: z.array(
         z.object({
-          action: z.string(),
+          action: z.string().optional(),
           changedLines: z.number(),
           changedText: z.string(),
           firstChangedAnchor: z.string().optional(),

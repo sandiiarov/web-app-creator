@@ -99,6 +99,7 @@ export function createGenerateImageTool(
     inputSchema: z.object({
       action: z
         .string()
+        .optional()
         .describe(
           'Short reason for generating this image (shown to the user), e.g. "hero product shot for the landing page"',
         ),

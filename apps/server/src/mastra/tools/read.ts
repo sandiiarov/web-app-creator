@@ -26,6 +26,7 @@ export function createReadTool(store: HtmlStore) {
     inputSchema: z.object({
       action: z
         .string()
+        .optional()
         .describe(
           'One short imperative line stating what you are reading, shown to the user as this step\'s label (think commit message), e.g. "review current hero markup anchors"',
         ),

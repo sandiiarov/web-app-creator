@@ -32,6 +32,7 @@ export function createGrepTool(store: HtmlStore) {
     inputSchema: z.object({
       action: z
         .string()
+        .optional()
         .describe(
           'Short reason for searching (shown to the user), e.g. "locate the CTA button markup"',
         ),

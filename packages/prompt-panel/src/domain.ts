@@ -194,9 +194,9 @@ export type TokenUsage = {
 }
 
 export type ToolCallPart = {
+  action: null | string
   detail?: null | string
   id: string
-  action: null | string
   providerId?: string
   result?: null | string
   state: ToolCallState

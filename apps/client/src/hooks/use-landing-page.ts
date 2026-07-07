@@ -329,8 +329,8 @@ export function useLandingPage({
                     updated[existing] = {
                       ...previous,
                       ...payload,
-                      detail: payload.detail ?? previous.detail,
                       action: payload.action ?? previous.action,
+                      detail: payload.detail ?? previous.detail,
                       result: payload.result ?? previous.result,
                     }
                     return { ...turn, parts: updated }

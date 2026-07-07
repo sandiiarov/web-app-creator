@@ -12,12 +12,11 @@ describe('createEditTool', () => {
     )
 
     // Named optional fields, not a positional range array.
-    expect(schemaText).toContain('"from"')
-    expect(schemaText).toContain('"to"')
-    expect(schemaText).toContain('"code"')
-    expect(schemaText).toContain('"insert"')
+    expect(schemaText).toContain('"action"')
     expect(schemaText).toContain('"enum":["after","before"]')
-    expect(schemaText).toContain('"required":["action"]')
+    // action is optional; the only required field is the edits array.
+    expect(schemaText).toContain('"required":["edits"]')
+    expect(schemaText).not.toContain('"required":["action"]')
     expect(schemaText).not.toContain('"items":[]')
     expect(schemaText).not.toContain('"maxItems"')
   })

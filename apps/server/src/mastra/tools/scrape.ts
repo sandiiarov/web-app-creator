@@ -175,6 +175,7 @@ export function createScrapeTool(
     inputSchema: z.object({
       action: z
         .string()
+        .optional()
         .describe(
           'Short reason for scraping (shown to the user), e.g. "pull acme.com brand palette + voice before redesigning"',
         ),

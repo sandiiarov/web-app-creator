@@ -11,9 +11,10 @@ describe('createReadTool', () => {
       z.toJSONSchema(tool.inputSchema as z.ZodType),
     )
 
+    expect(schemaText).toContain('"action"')
     expect(schemaText).toContain('"from"')
-    expect(schemaText).toContain('"to"')
-    expect(schemaText).toContain('"required":["action"]')
+    // action is optional; read has no required fields.
+    expect(schemaText).not.toContain('"required"')
     expect(schemaText).not.toContain('"items":[]')
     expect(schemaText).not.toContain('"maxItems"')
   })

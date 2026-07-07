@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto'
 import { countChangedLines } from './edit-diff.ts'
 
 export interface ApplyAnchorEdit {
-  action: string
+  action?: string
   code?: string
   from?: string
   insert?: 'after' | 'before'
@@ -62,7 +62,7 @@ export interface HtmlDocumentJsonV1 {
 export type HtmlLine = [anchor: string, text: string]
 
 export interface PerEditResult {
-  action: string
+  action?: string
   changedLines: number
   changedText: string
   firstChangedAnchor?: string

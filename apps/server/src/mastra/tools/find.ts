@@ -26,6 +26,7 @@ export function createFindTool(store: HtmlStore) {
     inputSchema: z.object({
       action: z
         .string()
+        .optional()
         .describe(
           'One short imperative line stating what you are searching for, shown to the user as this step\'s label (think commit message), e.g. "locate the CTA button anchors"',
         ),

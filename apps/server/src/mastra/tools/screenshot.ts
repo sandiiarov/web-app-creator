@@ -102,7 +102,7 @@ export function createScreenshotTool(
             sourceLabel: `browser screenshot ${screenshot.width}×${screenshot.height} of ${selector} at ${viewportSize} viewport`,
           },
         ],
-        `${action}\nTarget selector: ${selector}\nViewport size: ${viewportSize}`,
+        `${action ?? 'Inspect this element for layout, spacing, contrast, and responsive issues.'}\nTarget selector: ${selector}\nViewport size: ${viewportSize}`,
         visionModel,
       )
 
@@ -123,7 +123,7 @@ export function createScreenshotTool(
       .object({
         action: z
           .string()
-          .min(1)
+          .optional()
           .describe(
             'What to inspect in this screenshot; becomes the vision prompt alongside the ui_to_artifact system prompt, e.g. "check hero spacing and CTA contrast" or "verify mobile nav wraps without clipping".',
           ),
