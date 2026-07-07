@@ -144,7 +144,11 @@ export function ModelDropdown({ models, onModelsChange }: ModelDropdownProps) {
           {activeGroup.options.map((option) => {
             const Icon = MODEL_ICONS[option.id]
             return (
-              <DropdownMenuRadioItem key={option.id} value={option.id}>
+              <DropdownMenuRadioItem
+                key={option.id}
+                onSelect={(event) => event.preventDefault()}
+                value={option.id}
+              >
                 {Icon ? <Icon /> : null}
                 {option.label}
               </DropdownMenuRadioItem>
