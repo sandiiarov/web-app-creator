@@ -1,0 +1,36 @@
+diff --git a/dist/chunk-F5V6RIYO.js b/dist/chunk-F5V6RIYO.js
+index ce8ef1a91e0dabe935929921b0f47ef7900c1147..5fcd197354888a9adc9b2973615af49c8dd6b578 100644
+--- a/dist/chunk-F5V6RIYO.js
++++ b/dist/chunk-F5V6RIYO.js
+@@ -960,7 +960,7 @@ var OpenAIChatLanguageModel = class {
+                         delta: toolCall2.function.arguments
+                       });
+                     }
+-                    if (isParsableJson(toolCall2.function.arguments)) {
++                    if (false) {
+                       controller.enqueue({
+                         type: "tool-input-end",
+                         id: toolCall2.id
+@@ -988,7 +988,7 @@ var OpenAIChatLanguageModel = class {
+                   id: toolCall.id,
+                   delta: (_u = toolCallDelta.function.arguments) != null ? _u : ""
+                 });
+-                if (((_v = toolCall.function) == null ? void 0 : _v.name) != null && ((_w = toolCall.function) == null ? void 0 : _w.arguments) != null && isParsableJson(toolCall.function.arguments)) {
++                if (((_v = toolCall.function) == null ? void 0 : _v.name) != null && ((_w = toolCall.function) == null ? void 0 : _w.arguments) != null && false) {
+                   controller.enqueue({
+                     type: "tool-input-end",
+                     id: toolCall.id
+@@ -1019,6 +1019,13 @@ var OpenAIChatLanguageModel = class {
+             if (isActiveText) {
+               controller.enqueue({ type: "text-end", id: "0" });
+             }
++            for (const _tc of toolCalls) {
++              if (_tc && !_tc.hasFinished) {
++                controller.enqueue({ type: "tool-input-end", id: _tc.id });
++                controller.enqueue({ type: "tool-call", toolCallId: _tc.id != null ? _tc.id : generateId(), toolName: _tc.function.name, input: _tc.function.arguments });
++                _tc.hasFinished = true;
++              }
++            }
+             controller.enqueue({
+               type: "finish",
+               finishReason,
