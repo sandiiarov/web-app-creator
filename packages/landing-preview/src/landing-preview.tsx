@@ -117,6 +117,7 @@ export function LandingPreview({
   const iframeRef = useRef<HTMLIFrameElement>(null)
   const lastAppliedHtmlRef = useRef('')
   const [srcDoc, setSrcDoc] = useState('')
+  const [reloadKey, setReloadKey] = useState(0)
 
   const handle: LandingPreviewHandle = {
     captureScreenshot: async ({ selector }: LandingPreviewScreenshotInput) => {
@@ -151,6 +152,7 @@ export function LandingPreview({
     function reloadPreview() {
       lastAppliedHtmlRef.current = html
       setSrcDoc(preparePreviewMorphHtml(html))
+      setReloadKey((key) => key + 1)
     }
 
     if (!lastAppliedHtmlRef.current) {
@@ -310,6 +312,7 @@ export function LandingPreview({
   return (
     <iframe
       className={iframeClassName ?? 'h-svh w-screen border-0'}
+      key={reloadKey}
       ref={iframeRef}
       referrerPolicy="no-referrer"
       sandbox="allow-forms allow-modals allow-popups allow-same-origin allow-scripts"
