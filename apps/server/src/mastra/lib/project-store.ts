@@ -32,6 +32,29 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import {
+  replayClientEvents,
+  type ClientEvent as ClientMessageEntry,
+  type ConversationAttachment as ProjectMessageAttachment,
+  type ConversationPart as ProjectMessagePart,
+  type ConversationStatsPart as ProjectMessageStatsPart,
+  type ConversationTextPart as ProjectMessageTextPart,
+  type ConversationThinkingPart as ProjectMessageThinkingPart,
+  type ConversationToolCallPart as ProjectMessageToolCallPart,
+  type ConversationTurn as ProjectMessageTurn,
+} from '@workspace/conversation'
+
+export type {
+  ClientMessageEntry,
+  ProjectMessageAttachment,
+  ProjectMessagePart,
+  ProjectMessageStatsPart,
+  ProjectMessageTextPart,
+  ProjectMessageThinkingPart,
+  ProjectMessageToolCallPart,
+  ProjectMessageTurn,
+}
+
+import {
   cloneHtmlDocument,
   createHtmlDocumentFromString,
   type HtmlDocumentJsonV1,
@@ -75,15 +98,6 @@ export type AgentMessageEntry = {
   turnId: string
 }
 
-/** One line in `client-messages.jsonl`: a client-facing SSE event (out) or an
- * inbound client request (prompt POST, screenshot POST-back). The payload is
- * the real client message data (SSE frame for out; request metadata for in). */
-export type ClientMessageEntry = {
-  /** 'out' = server→client SSE event (`event`+`payload`); 'in' = client→server request (`type`). */
-  dir: 'in' | 'out'
-  ts: string
-} & Record<string, unknown>
-
 export interface Project extends ProjectMeta {
   indexHtml: string
   messages: ProjectMessageTurn[]
@@ -92,76 +106,6 @@ export interface Project extends ProjectMeta {
 export interface ProjectInput {
   model?: string
   title?: string
-}
-
-/**
- * Opaque raw Mastra message JSON (`MastraDBMessage`-shaped) persisted per turn
- * for faithful history replay. Stored apart from `messages.json` (the UI turn)
- * because raw tool args/results can be large and the browser never needs them —
- * only the server-side agent replay path reads them.
- */
-
-export interface ProjectMessageAttachment {
-  analysisText?: string
-  html?: string
-  id: string
-  kind?: 'element' | 'image'
-  mediaType: string
-  name: string
-  screenshotHeight?: number
-  screenshotWidth?: number
-  selector?: string
-  size: number
-}
-
-export type ProjectMessagePart =
-  | ProjectMessageStatsPart
-  | ProjectMessageTextPart
-  | ProjectMessageThinkingPart
-  | ProjectMessageToolCallPart
-
-export interface ProjectMessageStatsPart {
-  cost: number
-  costBreakdown?: unknown
-  durationMs: number
-  finishReason: string
-  model: string
-  type: 'stats'
-  usage: Record<string, number | undefined>
-}
-
-export interface ProjectMessageTextPart {
-  id: string
-  text: string
-  type: 'text'
-}
-
-export interface ProjectMessageThinkingPart {
-  id: string
-  text: string
-  type: 'thinking'
-}
-
-export interface ProjectMessageToolCallPart {
-  action: null | string
-  detail?: null | string
-  id: string
-  providerId?: string
-  result?: null | string
-  state: 'done' | 'error' | 'running' | 'start'
-  tool: string
-  type: 'tool_call'
-}
-
-export interface ProjectMessageTurn {
-  attachments?: ProjectMessageAttachment[]
-  error?: string
-  htmlSwaps: number
-  id: string
-  isStreaming: boolean
-  model: string
-  parts: ProjectMessagePart[]
-  prompt: string
 }
 
 export interface ProjectMeta {
@@ -304,7 +248,7 @@ export async function getProject(id: string): Promise<null | Project> {
   // every call; the cache is invalidated on any client-log or legacy write.
   let messages = turnCache.get(id)
   if (!messages) {
-    const replayed = replayClientMessages(await readClientMessages(id))
+    const replayed = replayClientEvents(await readClientMessages(id))
     messages = replayed.length > 0 ? replayed : await readMessages(id)
     turnCache.set(id, messages)
   }
@@ -567,122 +511,6 @@ export async function readVisionMessages(
   }
 }
 
-/**
- * Reconstruct `ProjectMessageTurn[]` from a client-messages log by replaying the
- * events — the same reduction the browser applies to the live SSE stream, so a
- * reload renders identically to the run that produced it. Each `dir:"in"`
- * prompt starts a turn; subsequent `dir:"out"` events populate it; `done`
- * finalizes. Any tool left `running`/`start` is terminalized to `error` on
- * restore (matching the client's restore behavior). `retry`/`html_update`/
- * `screenshot_request` have no turn-structure effect and are skipped.
- */
-export function replayClientMessages(
-  entries: ClientMessageEntry[],
-): ProjectMessageTurn[] {
-  const turns: ProjectMessageTurn[] = []
-  let current: ProjectMessageTurn | undefined
-
-  for (const entry of entries) {
-    if (entry.dir === 'in') {
-      if (entry.type === 'prompt') {
-        current = {
-          htmlSwaps: 0,
-          id:
-            typeof entry.turnId === 'string'
-              ? entry.turnId
-              : `turn-${turns.length + 1}`,
-          isStreaming: true,
-          model: typeof entry.model === 'string' ? entry.model : '',
-          parts: [],
-          prompt: typeof entry.prompt === 'string' ? entry.prompt : '',
-        }
-        turns.push(current)
-      }
-      continue
-    }
-
-    if (!current) continue
-    const event = typeof entry.event === 'string' ? entry.event : ''
-    const data = (entry.payload ?? {}) as Record<string, unknown>
-
-    switch (event) {
-      case 'attachments_update': {
-        if (Array.isArray(data.attachments)) {
-          current.attachments = data.attachments as ProjectMessageAttachment[]
-        }
-        break
-      }
-      case 'done': {
-        current.isStreaming = false
-        terminalizeTools(current)
-        break
-      }
-      case 'error': {
-        const message = typeof data.message === 'string' ? data.message : ''
-        if (message && message !== 'stopped') {
-          current.error = message
-          terminalizeTools(current, message)
-        }
-        break
-      }
-      case 'stats': {
-        current.parts.push({
-          ...(data as object),
-          type: 'stats',
-        } as ProjectMessageStatsPart)
-        break
-      }
-      case 'text': {
-        const delta = typeof data.delta === 'string' ? data.delta : ''
-        appendDelta(current, 'text', delta)
-        break
-      }
-      case 'thinking': {
-        const delta = typeof data.delta === 'string' ? data.delta : ''
-        appendDelta(current, 'thinking', delta)
-        break
-      }
-      case 'tool_call': {
-        const payload = {
-          ...(data as unknown as Omit<ProjectMessageToolCallPart, 'type'>),
-          type: 'tool_call' as const,
-        }
-        const idx = current.parts.findIndex(
-          (part) => part.type === 'tool_call' && part.id === payload.id,
-        )
-        if (idx !== -1) {
-          const prev = current.parts[idx] as ProjectMessageToolCallPart
-          current.parts[idx] = {
-            ...prev,
-            ...payload,
-            action: payload.action ?? prev.action,
-            detail: payload.detail ?? prev.detail,
-            result: payload.result ?? prev.result,
-          }
-        } else {
-          current.parts.push(payload)
-        }
-        if (payload.tool === 'edit' && payload.state === 'done') {
-          current.htmlSwaps += 1
-        }
-        break
-      }
-      case 'tool_call_drop': {
-        const id = typeof data.id === 'string' ? data.id : ''
-        current.parts = current.parts.filter(
-          (part) => part.type !== 'tool_call' || part.id !== id,
-        )
-        break
-      }
-      default:
-        break
-    }
-  }
-
-  for (const turn of turns) terminalizeTools(turn)
-  return turns
-}
-
 /** Set the title from the prompt if it is still the default. Sync, server-side. */
 export function setTitleIfUntitled(id: string, title: string): void {
   const meta = readMetaSync(id)
@@ -732,23 +560,6 @@ export function writeProjectScreenshotSync(
   const fileName = `${String(seq).padStart(3, '0')}-${requestId}${ext}`
   writeFileSync(join(dir, fileName), decodeBase64DataUrl(dataUrl, mediaType))
   return { ext, path: `/api/projects/${id}/screenshots/${fileName}` }
-}
-
-function appendDelta(
-  turn: ProjectMessageTurn,
-  kind: 'text' | 'thinking',
-  delta: string,
-): void {
-  const last = turn.parts[turn.parts.length - 1]
-  if (last && last.type === kind) {
-    last.text += delta
-    return
-  }
-  turn.parts.push({
-    id: kind === 'text' ? `${turn.id}-text` : `${turn.id}-think`,
-    text: delta,
-    type: kind,
-  })
 }
 
 /** Serialize a project's debug-log writes on one per-project chain. The chain
@@ -1061,21 +872,6 @@ function removeIndexHtmlSync(id: string) {
 
 function stripOrigin(url: string): string {
   return url.replace(/^https?:\/\/[^/]+/i, '')
-}
-
-function terminalizeTools(
-  turn: ProjectMessageTurn,
-  result = 'Tool did not return a result before the response completed.',
-): void {
-  for (const part of turn.parts) {
-    if (
-      part.type === 'tool_call' &&
-      (part.state === 'running' || part.state === 'start')
-    ) {
-      part.result = part.result ?? result
-      part.state = 'error'
-    }
-  }
 }
 
 function truncateTitle(value: string): string {

@@ -21,6 +21,7 @@
     "@mastra/libsql": "catalog:",
     "@mastra/loggers": "catalog:",
     "@mastra/observability": "catalog:",
+    "@workspace/conversation": "workspace:*",
     "firecrawl": "catalog:",
     "zod": "catalog:"
   },
