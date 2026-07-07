@@ -477,6 +477,44 @@ describe('append-only debug logs', () => {
     ])
   })
 
+  it('getProject reflects new client-log appends (turn cache invalidates)', async () => {
+    const project = await createProject()
+    createdProjectIds.push(project.id)
+
+    await appendClientMessage(project.id, {
+      dir: 'in',
+      model: 'm',
+      prompt: 'hi',
+      ts: 't0',
+      turnId: 'turn-x',
+      type: 'prompt',
+    })
+    await appendClientMessage(project.id, {
+      dir: 'out',
+      event: 'text',
+      payload: { delta: 'H' },
+      ts: 't1',
+    })
+
+    const first = await getProject(project.id)
+    expect(first?.messages[0]?.parts).toEqual([
+      { id: 'turn-x-text', text: 'H', type: 'text' },
+    ])
+
+    // A later append must be visible on the next getProject — proves the
+    // in-memory turn cache invalidated (otherwise this would still read 'H').
+    await appendClientMessage(project.id, {
+      dir: 'out',
+      event: 'text',
+      payload: { delta: 'i' },
+      ts: 't2',
+    })
+    const second = await getProject(project.id)
+    expect(second?.messages[0]?.parts).toEqual([
+      { id: 'turn-x-text', text: 'Hi', type: 'text' },
+    ])
+  })
+
   it('appends and reads per-step agent message snapshots', async () => {
     const project = await createProject()
     createdProjectIds.push(project.id)

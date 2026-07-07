@@ -289,6 +289,7 @@ export function createProjectHtmlStore(projectId: string): HtmlStore {
 
 /** Delete a project and its images. No-op if missing. */
 export async function deleteProject(id: string): Promise<void> {
+  invalidateTurnCache(id)
   await rm(projectDir(id), { force: true, recursive: true })
 }
 
@@ -299,9 +300,14 @@ export async function getProject(id: string): Promise<null | Project> {
   const document = await readOrCreateHtmlDocument(id)
   // Hydrate from the append-only client log (replayed into turns); fall back to
   // the legacy messages.json for projects persisted before this refactor.
-  const replayed = replayClientMessages(await readClientMessages(id))
-  const messages =
-    replayed.length > 0 ? replayed : await readMessages(id)
+  // Cached in memory so a reload doesn't re-read + re-replay the whole log on
+  // every call; the cache is invalidated on any client-log or legacy write.
+  let messages = turnCache.get(id)
+  if (!messages) {
+    const replayed = replayClientMessages(await readClientMessages(id))
+    messages = replayed.length > 0 ? replayed : await readMessages(id)
+    turnCache.set(id, messages)
+  }
   return { ...meta, indexHtml: renderHtmlDocument(document), messages }
 }
 
@@ -444,6 +450,11 @@ export async function saveProjectRawMessages(
 
 const projectWriteChains = new Map<string, Promise<void>>()
 
+/** In-memory cache of the replayed/legacy message turns for `getProject`, so a
+ *  reload doesn't re-read + re-replay the whole client log on every call.
+ *  Invalidated whenever the client log or legacy messages.json changes. */
+const turnCache = new Map<string, ProjectMessageTurn[]>()
+
 /** Append one per-step Mastra message snapshot to `agent-messages.jsonl`. */
 export function appendAgentMessages(
   id: string,
@@ -464,6 +475,7 @@ export function appendClientMessage(
   id: string,
   entry: ClientMessageEntry,
 ): Promise<void> {
+  invalidateTurnCache(id)
   return chainProjectWrite(id, async () => {
     await ensureProjectDir(id)
     await appendFile(
@@ -781,10 +793,14 @@ async function ensureProjectDir(id: string) {
   await mkdir(projectDir(id), { recursive: true })
 }
 
-// ── image URL normalization (sync) ───────────────────────────────
-
 async function ensureProjectsRoot() {
   await mkdir(PROJECTS_DIR, { recursive: true })
+}
+
+// ── image URL normalization (sync) ───────────────────────────────
+
+function invalidateTurnCache(id: string): void {
+  turnCache.delete(id)
 }
 
 function isProjectRawTurnMessages(value: unknown): value is ProjectRawTurnMessages {
@@ -1078,6 +1094,7 @@ function writeHtmlDocumentSync(id: string, document: HtmlDocumentJsonV1) {
 }
 
 async function writeMessages(id: string, messages: ProjectMessageTurn[]) {
+  invalidateTurnCache(id)
   await ensureProjectDir(id)
   await writeFile(
     join(projectDir(id), MESSAGES_JSON),
