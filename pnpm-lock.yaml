@@ -131,6 +131,9 @@ importers:
 
   apps/client:
     dependencies:
+      '@workspace/conversation':
+        specifier: workspace:*
+        version: link:../../packages/conversation
       '@workspace/landing-preview':
         specifier: workspace:*
         version: link:../../packages/landing-preview

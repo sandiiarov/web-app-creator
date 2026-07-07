@@ -620,7 +620,6 @@ describe('append-only debug logs', () => {
   })
 })
 
-
 function messageTurn(projectId: string): ProjectMessageTurn {
   return {
     htmlSwaps: 1,

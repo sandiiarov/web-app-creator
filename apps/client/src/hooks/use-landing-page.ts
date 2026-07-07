@@ -1,3 +1,4 @@
+import { applyEventToTurn, terminalizeTools } from '@workspace/conversation'
 import { captureProjectScreenshot } from '@workspace/landing-preview'
 import {
   DEFAULT_LANDING_MODELS,
@@ -7,7 +8,6 @@ import {
   type PromptAttachmentInput,
   type PromptAttachmentMeta,
   resolveLandingModels,
-  type ToolCallPart,
   type TurnPart,
 } from '@workspace/prompt-panel'
 import { useCallback, useEffect, useRef, useState } from 'react'
@@ -198,168 +198,38 @@ export function useLandingPage({
         },
         {
           onEvent: ({ data, event }) => {
-            switch (event) {
-              case 'done': {
-                patchTurn(turnId, (turn) => ({
-                  ...terminalizeActiveTools(turn),
-                  isStreaming: false,
-                }))
-                break
+            // Side-effect events have no turn-structure effect and stay
+            // client-local; structural events share the reducer with the
+            // server's hydration path (@workspace/conversation).
+            if (event === 'html_update') {
+              const update = data as HtmlUpdateEvent
+              if (update.projectId === projectId) {
+                setHtml(expandProjectImageUrls(update.html))
               }
-              case 'error': {
-                const { message } = data as { message: string }
-                if (message === 'stopped') break
-                patchTurn(turnId, (turn) => ({
-                  ...terminalizeActiveTools(turn, message),
-                  error: message,
-                }))
-                break
-              }
-              case 'html_update': {
-                const update = data as HtmlUpdateEvent
-                if (update.projectId === projectId) {
-                  setHtml(expandProjectImageUrls(update.html))
-                }
-                break
-              }
-              case 'retry': {
-                const retry = data as RetryEvent
-                appendPart(turnId, {
-                  ...retry,
-                  id: `${turnId}-retry-${retry.attempt}`,
-                  startedAt: Date.now(),
-                  type: 'retry',
-                })
-                break
-              }
-              case 'screenshot_request': {
-                void respondToScreenshotRequest(data as ScreenshotRequestEvent)
-                break
-              }
-              case 'stats': {
-                const stats = data as {
-                  cost: number
-                  costBreakdown?: {
-                    image?: { cost: number; count: number }
-                    llm: number
-                    scrape: {
-                      calls: number
-                      cost: number
-                      credits: number
-                      firecrawlCost?: number
-                      ocrCalls?: number
-                      ocrCost?: number
-                      ocrImages?: number
-                    }
-                    total: number
-                    vision?: {
-                      calls: number
-                      cost: number
-                      images: number
-                    }
-                  }
-                  durationMs: number
-                  finishReason: string
-                  model: string
-                  usage: {
-                    cachedInputTokens?: number
-                    inputTokens?: number
-                    outputTokens?: number
-                    reasoningTokens?: number
-                    totalTokens?: number
-                  }
-                }
-                appendPart(turnId, { ...stats, type: 'stats' })
-                break
-              }
-              case 'text': {
-                const { delta } = data as { delta: string }
-                patchTurn(turnId, (turn) => {
-                  const last = turn.parts[turn.parts.length - 1]
-                  if (last?.type === 'text') {
-                    const updated = [...turn.parts]
-                    updated[updated.length - 1] = {
-                      ...last,
-                      text: last.text + delta,
-                    }
-                    return { ...turn, parts: updated }
-                  }
-                  return {
-                    ...turn,
-                    parts: [
-                      ...turn.parts,
-                      { id: `${turnId}-text`, text: delta, type: 'text' },
-                    ],
-                  }
-                })
-                break
-              }
-              case 'thinking': {
-                const { delta } = data as { delta: string }
-                patchTurn(turnId, (turn) => {
-                  const last = turn.parts[turn.parts.length - 1]
-                  if (last?.type === 'thinking') {
-                    const updated = [...turn.parts]
-                    updated[updated.length - 1] = {
-                      ...last,
-                      text: last.text + delta,
-                    }
-                    return { ...turn, parts: updated }
-                  }
-                  return {
-                    ...turn,
-                    parts: [
-                      ...turn.parts,
-                      { id: `${turnId}-think`, text: delta, type: 'thinking' },
-                    ],
-                  }
-                })
-                break
-              }
-              case 'tool_call': {
-                const incoming = data as Omit<ToolCallPart, 'type'>
-                const payload: ToolCallPart = { ...incoming, type: 'tool_call' }
-                patchTurn(turnId, (turn) => {
-                  const existing = turn.parts.findIndex(
-                    (p) => p.type === 'tool_call' && p.id === payload.id,
-                  )
-                  if (existing !== -1) {
-                    const updated = [...turn.parts]
-                    const previous = updated[existing] as ToolCallPart
-                    updated[existing] = {
-                      ...previous,
-                      ...payload,
-                      action: payload.action ?? previous.action,
-                      detail: payload.detail ?? previous.detail,
-                      result: payload.result ?? previous.result,
-                    }
-                    return { ...turn, parts: updated }
-                  }
-                  return { ...turn, parts: [...turn.parts, payload] }
-                })
-                // The edit tool writes the project file; the server streams
-                // changed HTML separately through `html_update` for the preview.
-                if (payload.tool === 'edit' && payload.state === 'done') {
-                  patchTurn(turnId, (turn) => ({
-                    ...turn,
-                    htmlSwaps: turn.htmlSwaps + 1,
-                  }))
-                }
-                break
-              }
-              case 'tool_call_drop': {
-                const dropped = data as { id: string }
-                patchTurn(turnId, (turn) => ({
-                  ...turn,
-                  parts: turn.parts.filter(
-                    (p) => p.type !== 'tool_call' || p.id !== dropped.id,
-                  ),
-                }))
-                break
-              }
-              default:
-                break
+              return
             }
+            if (event === 'screenshot_request') {
+              void respondToScreenshotRequest(data as ScreenshotRequestEvent)
+              return
+            }
+            if (event === 'retry') {
+              const retry = data as RetryEvent
+              appendPart(turnId, {
+                ...retry,
+                id: `${turnId}-retry-${retry.attempt}`,
+                startedAt: Date.now(),
+                type: 'retry',
+              })
+              return
+            }
+            patchTurn(turnId, (turn) =>
+              applyEventToTurn(turn, {
+                dir: 'out',
+                event,
+                payload: data,
+                ts: '',
+              }),
+            )
           },
           signal: controller.signal,
         },
@@ -367,17 +237,25 @@ export function useLandingPage({
         .catch((error: unknown) => {
           const message = error instanceof Error ? error.message : String(error)
           if (message !== 'stopped' && !controller.signal.aborted) {
-            patchTurn(turnId, (turn) => ({
-              ...terminalizeActiveTools(turn, message),
-              error: message,
-            }))
+            patchTurn(turnId, (turn) =>
+              applyEventToTurn(turn, {
+                dir: 'out',
+                event: 'error',
+                payload: { message },
+                ts: '',
+              }),
+            )
           }
         })
         .finally(() => {
-          patchTurn(turnId, (turn) => ({
-            ...terminalizeActiveTools(turn),
-            isStreaming: false,
-          }))
+          patchTurn(turnId, (turn) =>
+            applyEventToTurn(turn, {
+              dir: 'out',
+              event: 'done',
+              payload: {},
+              ts: '',
+            }),
+          )
           setIsStreaming(false)
           controllerRef.current = null
         })
@@ -398,7 +276,7 @@ export function useLandingPage({
     setTurns((prev) =>
       prev.map((turn) =>
         turn.isStreaming
-          ? { ...terminalizeActiveTools(turn, 'Stopped.'), isStreaming: false }
+          ? { ...terminalizeTools(turn, 'Stopped.'), isStreaming: false }
           : turn,
       ),
     )
@@ -418,7 +296,7 @@ export function useLandingPage({
 
 function restoreProjectTurns(turns: LandingTurn[]): LandingTurn[] {
   return turns.map((turn) => {
-    const restored = terminalizeActiveTools({
+    const restored = terminalizeTools({
       ...turn,
       parts: turn.parts ?? [],
     })
@@ -436,26 +314,4 @@ function stripAttachmentData({
   ...metadata
 }: PromptAttachmentInput): PromptAttachmentMeta {
   return metadata
-}
-
-function terminalizeActiveTools(
-  turn: LandingTurn,
-  result: string = 'Tool did not return a result before the response completed.',
-): LandingTurn {
-  let changed = false
-  const parts = turn.parts.map((part) => {
-    if (
-      part.type !== 'tool_call' ||
-      (part.state !== 'running' && part.state !== 'start')
-    ) {
-      return part
-    }
-    changed = true
-    return {
-      ...part,
-      result: part.result ?? result,
-      state: 'error' as const,
-    }
-  })
-  return changed ? { ...turn, parts } : turn
 }

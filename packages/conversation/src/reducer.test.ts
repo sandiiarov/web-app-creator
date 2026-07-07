@@ -51,7 +51,12 @@ describe('replayClientEvents (hydration fold)', () => {
   it('upserts a tool_call by id, preserving prior optional fields', () => {
     const turns = replayClientEvents([
       prompt('turn-1'),
-      out('tool_call', { action: 'Edit hero', id: 'call-1', state: 'running', tool: 'edit' }),
+      out('tool_call', {
+        action: 'Edit hero',
+        id: 'call-1',
+        state: 'running',
+        tool: 'edit',
+      }),
       out('tool_call', { id: 'call-1', result: 'ok', state: 'done' }),
     ])
     expect(turns[0]?.parts).toEqual([
@@ -150,7 +155,9 @@ describe('replayClientEvents (hydration fold)', () => {
     const turns = replayClientEvents([
       prompt('turn-1'),
       out('attachments_update', {
-        attachments: [{ id: 'a', mediaType: 'image/png', name: 'pic', size: 1 }],
+        attachments: [
+          { id: 'a', mediaType: 'image/png', name: 'pic', size: 1 },
+        ],
       }),
     ])
     expect(turns[0]?.attachments).toEqual([
@@ -161,8 +168,9 @@ describe('replayClientEvents (hydration fold)', () => {
   it('keys the turn id on the prompt-in turnId, falling back to turn-N', () => {
     expect(replayClientEvents([prompt('abc')])[0]?.id).toBe('abc')
     expect(
-      replayClientEvents([{ dir: 'in', prompt: 'hi', ts: 't0', type: 'prompt' }])[0]
-        ?.id,
+      replayClientEvents([
+        { dir: 'in', prompt: 'hi', ts: 't0', type: 'prompt' },
+      ])[0]?.id,
     ).toBe('turn-1')
   })
 
@@ -206,7 +214,10 @@ describe('applyEventToTurn (per-event, immutable)', () => {
     }
     const before = JSON.parse(JSON.stringify(turn))
     applyEventToTurn(turn, out('text', { delta: 'x' }))
-    applyEventToTurn(turn, out('tool_call', { id: 'c', state: 'done', tool: 'edit' }))
+    applyEventToTurn(
+      turn,
+      out('tool_call', { id: 'c', state: 'done', tool: 'edit' }),
+    )
     expect(JSON.parse(JSON.stringify(turn))).toEqual(before)
   })
 })

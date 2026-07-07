@@ -1,6 +1,11 @@
-import type { ClientEvent, ConversationPart, ConversationTurn } from './types.ts'
+import type {
+  ClientEvent,
+  ConversationPart,
+  ConversationTurn,
+} from './types.ts'
 
-const DEFAULT_TOOL_RESULT = 'Tool did not return a result before the response completed.'
+const DEFAULT_TOOL_RESULT =
+  'Tool did not return a result before the response completed.'
 
 /**
  * Apply one outbound client event to a turn, returning a NEW turn (immutable).
@@ -13,37 +18,56 @@ const DEFAULT_TOOL_RESULT = 'Tool did not return a result before the response co
  * are client-side side-effects; `retry` is a live-only display part the server
  * skips on reload — see `reducer.test.ts`).
  */
-export function applyEventToTurn(
-  turn: ConversationTurn,
+export function applyEventToTurn<T extends ConversationTurn>(
+  turn: T,
   event: ClientEvent,
-): ConversationTurn {
+): T {
   const type = typeof event.event === 'string' ? event.event : ''
   const data = (event.payload ?? {}) as Record<string, unknown>
 
   switch (type) {
     case 'attachments_update': {
       if (!Array.isArray(data.attachments)) return turn
-      return { ...turn, attachments: data.attachments as ConversationTurn['attachments'] }
+      return { ...turn, attachments: data.attachments } as T
     }
     case 'done': {
-      return { ...turn, isStreaming: false, parts: terminalizeParts(turn.parts) }
+      return {
+        ...turn,
+        isStreaming: false,
+        parts: terminalizeParts(turn.parts),
+      } as T
     }
     case 'error': {
       const message = typeof data.message === 'string' ? data.message : ''
       if (!message || message === 'stopped') return turn
-      return { ...turn, error: message, parts: terminalizeParts(turn.parts, message) }
+      return {
+        ...turn,
+        error: message,
+        parts: terminalizeParts(turn.parts, message),
+      } as T
     }
     case 'stats': {
       return {
         ...turn,
-        parts: [...turn.parts, { ...(data as object), type: 'stats' } as ConversationPart],
-      }
+        parts: [
+          ...turn.parts,
+          { ...(data as object), type: 'stats' } as ConversationPart,
+        ],
+      } as T
     }
     case 'text': {
-      return appendDelta(turn, 'text', typeof data.delta === 'string' ? data.delta : '')
+      return appendDelta(
+        turn,
+        'text',
+        typeof data.delta === 'string' ? data.delta : '',
+      )
     }
     case 'thinking': {
-      return appendDelta(turn, 'thinking', typeof data.delta === 'string' ? data.delta : '')
+      return appendDelta(
+        turn,
+        'thinking',
+        typeof data.delta === 'string' ? data.delta : '',
+      )
     }
     case 'tool_call': {
       return applyToolCall(turn, data)
@@ -51,7 +75,10 @@ export function applyEventToTurn(
     case 'tool_call_drop': {
       const id = typeof data.id === 'string' ? data.id : ''
       if (!id) return turn
-      return { ...turn, parts: turn.parts.filter((p) => p.type !== 'tool_call' || p.id !== id) }
+      return {
+        ...turn,
+        parts: turn.parts.filter((p) => p.type !== 'tool_call' || p.id !== id),
+      } as T
     }
     default:
       return turn
@@ -76,7 +103,9 @@ export function replayClientEvents(events: ClientEvent[]): ConversationTurn[] {
         turns.push({
           htmlSwaps: 0,
           id:
-            typeof event.turnId === 'string' ? event.turnId : `turn-${turns.length + 1}`,
+            typeof event.turnId === 'string'
+              ? event.turnId
+              : `turn-${turns.length + 1}`,
           isStreaming: true,
           model: typeof event.model === 'string' ? event.model : '',
           parts: [],
@@ -93,7 +122,10 @@ export function replayClientEvents(events: ClientEvent[]): ConversationTurn[] {
 
   // Restore: any tool still running/started when the log ended is terminalized.
   for (let index = 0; index < turns.length; index++) {
-    turns[index] = { ...turns[index]!, parts: terminalizeParts(turns[index]!.parts) }
+    turns[index] = {
+      ...turns[index]!,
+      parts: terminalizeParts(turns[index]!.parts),
+    }
   }
   return turns
 }
@@ -103,25 +135,25 @@ export function replayClientEvents(events: ClientEvent[]): ConversationTurn[] {
  * `done`, on `error`, and on restore. `result` defaults to a generic
  * "did not return" message; an error path passes the error message through.
  */
-export function terminalizeTools(
-  turn: ConversationTurn,
+export function terminalizeTools<T extends ConversationTurn>(
+  turn: T,
   result: string = DEFAULT_TOOL_RESULT,
-): ConversationTurn {
+): T {
   const parts = terminalizeParts(turn.parts, result)
-  return parts === turn.parts ? turn : { ...turn, parts }
+  return parts === turn.parts ? turn : ({ ...turn, parts } as T)
 }
 
-function appendDelta(
-  turn: ConversationTurn,
+function appendDelta<T extends ConversationTurn>(
+  turn: T,
   kind: 'text' | 'thinking',
   delta: string,
-): ConversationTurn {
+): T {
   if (!delta) return turn
   const last = turn.parts[turn.parts.length - 1]
   if (last && last.type === kind) {
     const updated = [...turn.parts]
     updated[updated.length - 1] = { ...last, text: last.text + delta }
-    return { ...turn, parts: updated }
+    return { ...turn, parts: updated } as T
   }
   return {
     ...turn,
@@ -133,15 +165,18 @@ function appendDelta(
         type: kind,
       },
     ],
-  }
+  } as T
 }
 
-function applyToolCall(
-  turn: ConversationTurn,
+function applyToolCall<T extends ConversationTurn>(
+  turn: T,
   data: Record<string, unknown>,
-): ConversationTurn {
+): T {
   const payload = {
-    ...(data as unknown as Omit<Extract<ConversationPart, { type: 'tool_call' }>, 'type'>),
+    ...(data as unknown as Omit<
+      Extract<ConversationPart, { type: 'tool_call' }>,
+      'type'
+    >),
     type: 'tool_call' as const,
   }
   const idx = turn.parts.findIndex(
@@ -150,7 +185,10 @@ function applyToolCall(
 
   let parts: ConversationPart[]
   if (idx !== -1) {
-    const prev = turn.parts[idx] as Extract<ConversationPart, { type: 'tool_call' }>
+    const prev = turn.parts[idx] as Extract<
+      ConversationPart,
+      { type: 'tool_call' }
+    >
     const updated = [...turn.parts]
     updated[idx] = {
       ...prev,
@@ -165,10 +203,12 @@ function applyToolCall(
   }
 
   const htmlSwaps =
-    payload.tool === 'edit' && payload.state === 'done' ? turn.htmlSwaps + 1 : turn.htmlSwaps
+    payload.tool === 'edit' && payload.state === 'done'
+      ? turn.htmlSwaps + 1
+      : turn.htmlSwaps
   return htmlSwaps === turn.htmlSwaps && parts === turn.parts
     ? turn
-    : { ...turn, htmlSwaps, parts }
+    : ({ ...turn, htmlSwaps, parts } as T)
 }
 
 function terminalizeParts(
