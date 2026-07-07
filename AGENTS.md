@@ -83,6 +83,7 @@ Default section order:
 - TypeScript is strict ESM via shared config packages and `tsgo`; formatting/linting use Oxfmt/Oxlint.
 - Keep generated or ignored outputs out of source edits: `node_modules`, `dist`, `coverage`, `.turbo`, `.fallow`, Mastra DB files, and `apps/server/.mastra/{.build,output}`.
 - Environment files stay package-local; do not create a root `.env`.
+- A `pnpm patch` is applied to `@mastra/core` (`patches/@mastra__core@1.47.0.patch`, declared in `pnpm-workspace.yaml` `patchedDependencies`): it defers streaming tool-call finalization to end-of-stream instead of the vendored AI-SDK's mid-stream `isParsableJson` early-finalize, which dropped GLM-5.2's multi-fragment tool arguments as empty `{}`. Re-verify the patch (and whether upstream has fixed it) on every `@mastra/core` upgrade; re-create with `pnpm patch @mastra/core@<new>` if it still applies.
 
 ## Verification
 
@@ -109,7 +110,7 @@ When the user requests a durable behavior change, record it here or in the relev
 
 Root-owned paths without a child DOX:
 
-- Workspace orchestration/config: `package.json`, `pnpm-workspace.yaml`, `pnpm-lock.yaml`, `turbo.json`, `.gitignore`, `.fallowrc.jsonc`, `skills-lock.json`.
+- Workspace orchestration/config: `package.json`, `pnpm-workspace.yaml`, `pnpm-lock.yaml`, `turbo.json`, `.gitignore`, `.fallowrc.jsonc`, `skills-lock.json`, `patches/`.
 - Root docs/assets: `README.md`, `mastra-migration-plan.md`, `cv.html`, `self-healing-agent-loop.html`, `1440x900`.
 - `.commandcode/design/` — generated design review/checkup/smell report artifacts.
 - `.pi/skills/*` symlinks are managed by `.agents/` plus the root lockfile; edit the `.agents/skills/*` sources.
