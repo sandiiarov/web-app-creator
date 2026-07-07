@@ -7,19 +7,26 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { applyAnchorEdits } from './html-anchor-document.ts'
 import { saveImage } from './image-store.ts'
 import {
+  appendAgentMessages,
+  appendClientMessage,
   appendProjectMessageTurn,
+  appendVisionMessage,
   createProject,
   createProjectHtmlStore,
   deleteProject,
   getProject,
   listProjects,
   persistGeneratedImage,
+  readAgentMessages,
+  readClientMessages,
   readProjectImage,
   readProjectRawMessages,
+  readVisionMessages,
   saveProjectMessageTurn,
   saveProjectRawMessages,
   setTitleIfUntitled,
   updateProjectModel,
+  writeProjectScreenshotSync,
   type ProjectMessageTurn,
 } from './project-store.ts'
 
@@ -428,6 +435,153 @@ describe('project message storage', () => {
     expect(persistGeneratedImage(project.id, 'img-does-not-exist', '.jpg')).toBe(
       null,
     )
+  })
+})
+
+describe('append-only debug logs', () => {
+  it('reads empty logs for a fresh project', async () => {
+    const project = await createProject()
+    createdProjectIds.push(project.id)
+
+    await expect(readClientMessages(project.id)).resolves.toEqual([])
+    await expect(readAgentMessages(project.id)).resolves.toEqual([])
+    await expect(readVisionMessages(project.id)).resolves.toEqual([])
+  })
+
+  it('appends and reads client message entries in order (true append)', async () => {
+    const project = await createProject()
+    createdProjectIds.push(project.id)
+
+    await appendClientMessage(project.id, {
+      dir: 'in',
+      prompt: 'hi',
+      ts: 't0',
+      type: 'prompt',
+    })
+    await appendClientMessage(project.id, {
+      dir: 'out',
+      event: 'text',
+      payload: { delta: 'H' },
+      ts: 't1',
+    })
+    await appendClientMessage(project.id, {
+      dir: 'out',
+      event: 'text',
+      payload: { delta: 'i' },
+      ts: 't2',
+    })
+
+    await expect(readClientMessages(project.id)).resolves.toEqual([
+      { dir: 'in', prompt: 'hi', ts: 't0', type: 'prompt' },
+      { dir: 'out', event: 'text', payload: { delta: 'H' }, ts: 't1' },
+      { dir: 'out', event: 'text', payload: { delta: 'i' }, ts: 't2' },
+    ])
+  })
+
+  it('appends and reads per-step agent message snapshots', async () => {
+    const project = await createProject()
+    createdProjectIds.push(project.id)
+
+    await appendAgentMessages(project.id, {
+      dir: 'step',
+      messages: [{ role: 'assistant' }],
+      step: 1,
+      ts: 't1',
+      turnId: 'turn-1',
+    })
+    await appendAgentMessages(project.id, {
+      dir: 'step',
+      messages: [{ role: 'assistant' }, { role: 'tool' }],
+      step: 2,
+      ts: 't2',
+      turnId: 'turn-1',
+    })
+
+    await expect(readAgentMessages(project.id)).resolves.toEqual([
+      {
+        dir: 'step',
+        messages: [{ role: 'assistant' }],
+        step: 1,
+        ts: 't1',
+        turnId: 'turn-1',
+      },
+      {
+        dir: 'step',
+        messages: [{ role: 'assistant' }, { role: 'tool' }],
+        step: 2,
+        ts: 't2',
+        turnId: 'turn-1',
+      },
+    ])
+  })
+
+  it('appends and reads vision message entries', async () => {
+    const project = await createProject()
+    createdProjectIds.push(project.id)
+    const entry = {
+      costUsd: 0.001,
+      imagesAnalyzed: 2,
+      model: 'vision-x',
+      ok: true,
+      seq: 1,
+      source: 'attachment' as const,
+      text: 'a wireframe',
+      ts: 't1',
+      turnId: 'turn-1',
+      usage: { total: 10 },
+    }
+
+    await appendVisionMessage(project.id, entry)
+
+    await expect(readVisionMessages(project.id)).resolves.toEqual([entry])
+  })
+
+  it('serializes concurrent client appends without interleaving lines', async () => {
+    const project = await createProject()
+    createdProjectIds.push(project.id)
+
+    // Fire many appends concurrently; the per-file chain must keep each on its own line.
+    await Promise.all(
+      Array.from({ length: 20 }, (_, i) =>
+        appendClientMessage(project.id, {
+          dir: 'out',
+          event: 'text',
+          payload: { i },
+          ts: `t${i}`,
+        }),
+      ),
+    )
+
+    const entries = await readClientMessages(project.id)
+    expect(entries).toHaveLength(20)
+    const indices = entries
+      .map((e) => (e.payload as { i: number } | undefined)?.i)
+      .sort((a, b) => (a ?? 0) - (b ?? 0))
+    expect(indices).toEqual(Array.from({ length: 20 }, (_, i) => i))
+  })
+
+  it('writes screenshot bytes to screenshots/ and returns a project-relative path', async () => {
+    const project = await createProject()
+    createdProjectIds.push(project.id)
+    const bytes = Buffer.from([0x89, 0x50, 0x4e, 0x47])
+    const dataUrl = `data:image/png;base64,${bytes.toString('base64')}`
+
+    const result = writeProjectScreenshotSync(
+      project.id,
+      'req-1',
+      dataUrl,
+      'image/png',
+    )
+
+    expect(result.ext).toBe('.png')
+    expect(result.path).toBe(
+      `/api/projects/${project.id}/screenshots/001-req-1.png`,
+    )
+    await expect(
+      readFile(
+        join(PROJECTS_DIR, project.id, 'screenshots', '001-req-1.png'),
+      ),
+    ).resolves.toEqual(bytes)
   })
 })
 

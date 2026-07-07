@@ -15,11 +15,19 @@ import { randomUUID } from 'node:crypto'
 import {
   existsSync,
   mkdirSync,
+  readdirSync,
   readFileSync,
   rmSync,
   writeFileSync,
 } from 'node:fs'
-import { mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises'
+import {
+  appendFile,
+  mkdir,
+  readFile,
+  readdir,
+  rm,
+  writeFile,
+} from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -41,16 +49,40 @@ const PROJECTS_DIR = join(DATA_DIR, 'projects')
 const HTML_JSON = 'html.json'
 const INDEX_HTML = 'index.html'
 const PROJECT_JSON = 'project.json'
+// Legacy filenames (read-only fallback for projects persisted before the
+// append-log refactor). Never written by new code.
 const MESSAGES_JSON = 'messages.json'
 const RAW_MESSAGES_JSON = 'raw-messages.json'
+const CLIENT_MESSAGES_JSONL = 'client-messages.jsonl'
+const AGENT_MESSAGES_JSONL = 'agent-messages.jsonl'
+const VISION_MESSAGES_JSON = 'vision-messages.json'
 const IMAGES_DIR = 'images'
+const SCREENSHOTS_DIR = 'screenshots'
 
-/**
- * Opaque raw Mastra message JSON (`MastraDBMessage`-shaped) persisted per turn
- * for faithful history replay. Stored apart from `messages.json` (the UI turn)
- * because raw tool args/results can be large and the browser never needs them —
- * only the server-side agent replay path reads them.
- */
+// ── append-log entries ────────────────────────────────────────────
+// Each file is a chronological, timestamped record of one execution context,
+// appended per event/step so the exact data at any moment is preserved.
+
+/** One line in `agent-messages.jsonl`: the real Mastra message list snapshotted
+ * after an agent step (`onStepFinish`). `messages` is the verbatim
+ * `MastraDBMessage[]` from `stream.messageList.get.all.db()` (with screenshot
+ * images externalized to `screenshots/`). */
+export type AgentMessageEntry = {
+  dir: 'step'
+  messages: ProjectRawMessage[]
+  step: number
+  ts: string
+  turnId: string
+}
+
+/** One line in `client-messages.jsonl`: a client-facing SSE event (out) or an
+ * inbound client request (prompt POST, screenshot POST-back). The payload is
+ * the real client message data (SSE frame for out; request metadata for in). */
+export type ClientMessageEntry = {
+  /** 'out' = server→client SSE event (`event`+`payload`); 'in' = client→server request (`type`). */
+  dir: 'in' | 'out'
+  ts: string
+} & Record<string, unknown>
 
 export interface Project extends ProjectMeta {
   indexHtml: string
@@ -61,6 +93,13 @@ export interface ProjectInput {
   model?: string
   title?: string
 }
+
+/**
+ * Opaque raw Mastra message JSON (`MastraDBMessage`-shaped) persisted per turn
+ * for faithful history replay. Stored apart from `messages.json` (the UI turn)
+ * because raw tool args/results can be large and the browser never needs them —
+ * only the server-side agent replay path reads them.
+ */
 
 export interface ProjectMessageAttachment {
   analysisText?: string
@@ -141,9 +180,32 @@ export interface ProjectMeta {
  * only the server-side agent replay path reads them.
  */
 export type ProjectRawMessage = unknown
+
 export interface ProjectRawTurnMessages {
   messages: ProjectRawMessage[]
   turnId: string
+}
+
+/** A persisted screenshot file written under `screenshots/`. */
+export interface ProjectScreenshot {
+  ext: string
+  /** Project-relative URL (`/api/projects/<id>/screenshots/<file>`). */
+  path: string
+}
+/** One entry in `vision-messages.json`: a single OCR/vision call (`ocrImageInputs`).
+ * Text/usage/cost only — never image bytes. */
+export type VisionMessageEntry = {
+  costUsd: number
+  imagesAnalyzed: number
+  model: string
+  ok: boolean
+  reason?: string
+  seq: number
+  source: 'attachment' | 'scrape'
+  text: string
+  ts: string
+  turnId: string
+  usage: unknown
 }
 
 // ── async CRUD (HTTP handlers) ───────────────────────────────────
@@ -355,6 +417,80 @@ export async function saveProjectRawMessages(
   return next
 }
 
+// ── append-only debug logs (client / agent / vision) ──────────────
+// Each log is a chronological, per-event/per-step record of one execution
+// context, appended immediately so the exact data at any moment is
+// inspectable mid-run. JSONL for the high-frequency logs (true append, no
+// rewrite); JSON array for the infrequent vision log.
+
+const jsonlChains = new Map<string, Promise<void>>()
+
+/** Append one per-step Mastra message snapshot to `agent-messages.jsonl`. */
+export async function appendAgentMessages(
+  id: string,
+  entry: AgentMessageEntry,
+): Promise<void> {
+  await ensureProjectDir(id)
+  await appendJsonlLine(join(projectDir(id), AGENT_MESSAGES_JSONL), entry)
+}
+
+/** Append one client-facing event/request to `client-messages.jsonl`. */
+export async function appendClientMessage(
+  id: string,
+  entry: ClientMessageEntry,
+): Promise<void> {
+  await ensureProjectDir(id)
+  await appendJsonlLine(join(projectDir(id), CLIENT_MESSAGES_JSONL), entry)
+}
+
+/** Append one OCR/vision call to `vision-messages.json` (read-modify-write;
+ *  OCR is infrequent so a full rewrite per call is fine). */
+export async function appendVisionMessage(
+  id: string,
+  entry: VisionMessageEntry,
+): Promise<VisionMessageEntry[]> {
+  const existing = await readVisionMessages(id)
+  const next = [...existing, entry]
+  await ensureProjectDir(id)
+  await writeFile(
+    join(projectDir(id), VISION_MESSAGES_JSON),
+    JSON.stringify(next, null, 2),
+    'utf8',
+  )
+  return next
+}
+
+/** Read the full agent message log (oldest first). Empty when absent. */
+export async function readAgentMessages(
+  id: string,
+): Promise<AgentMessageEntry[]> {
+  return readJsonl<AgentMessageEntry>(
+    join(projectDir(id), AGENT_MESSAGES_JSONL),
+  )
+}
+
+/** Read the full client message log (oldest first). Empty when absent. */
+export async function readClientMessages(
+  id: string,
+): Promise<ClientMessageEntry[]> {
+  return readJsonl<ClientMessageEntry>(
+    join(projectDir(id), CLIENT_MESSAGES_JSONL),
+  )
+}
+
+/** Read the vision/OCR call log. Empty array when absent/malformed. */
+export async function readVisionMessages(
+  id: string,
+): Promise<VisionMessageEntry[]> {
+  try {
+    const raw = await readFile(join(projectDir(id), VISION_MESSAGES_JSON), 'utf8')
+    const parsed = JSON.parse(raw)
+    return Array.isArray(parsed) ? (parsed as VisionMessageEntry[]) : []
+  } catch {
+    return []
+  }
+}
+
 /** Set the title from the prompt if it is still the default. Sync, server-side. */
 export function setTitleIfUntitled(id: string, title: string): void {
   const meta = readMetaSync(id)
@@ -384,7 +520,41 @@ export async function updateProjectModel(
   return next
 }
 
-// ── image URL normalization (sync) ───────────────────────────────
+/**
+ * Persist a captured screenshot (base64 dataUrl from the client POST-back) to
+ * `screenshots/<seq>-<requestId>.<ext>` and return its project-relative URL.
+ * The single durable copy of the bytes — referenced by path from the logs so
+ * no base64 ever lands in a JSON file. Sync so the file exists before the
+ * agent message snapshot that points at it.
+ */
+export function writeProjectScreenshotSync(
+  id: string,
+  requestId: string,
+  dataUrl: string,
+  mediaType: string,
+): ProjectScreenshot {
+  const ext = mediaTypeToExt(mediaType)
+  const dir = join(projectDir(id), SCREENSHOTS_DIR)
+  mkdirSync(dir, { recursive: true })
+  const seq = readdirSync(dir).filter((name) => name.endsWith(ext)).length + 1
+  const fileName = `${String(seq).padStart(3, '0')}-${requestId}${ext}`
+  writeFileSync(join(dir, fileName), decodeBase64DataUrl(dataUrl, mediaType))
+  return { ext, path: `/api/projects/${id}/screenshots/${fileName}` }
+}
+
+/** Serialize appends to one JSONL file so concurrent calls never interleave
+ *  lines. Resolves once the line is durably appended. */
+function appendJsonlLine(filePath: string, value: unknown): Promise<void> {
+  const run = () => appendFile(filePath, `${JSON.stringify(value)}\n`, 'utf8')
+  const prev = jsonlChains.get(filePath) ?? Promise.resolve()
+  // Run even if the previous append rejected, so one bad line can't wedge the chain.
+  const next = prev.then(run, run)
+  jsonlChains.set(filePath, next)
+  void next.finally(() => {
+    if (jsonlChains.get(filePath) === next) jsonlChains.delete(filePath)
+  })
+  return next
+}
 
 function copyAgentImageSync(
   projectId: string,
@@ -402,15 +572,21 @@ function copyAgentImageSync(
   return `/api/projects/${projectId}/images/${fileName}`
 }
 
+function decodeBase64DataUrl(dataUrl: string, mediaType: string): Buffer {
+  const prefix = `data:${mediaType};base64,`
+  const start = dataUrl.startsWith(prefix) ? prefix.length : dataUrl.indexOf(',') + 1
+  return Buffer.from(dataUrl.slice(start), 'base64')
+}
+
 async function ensureProjectDir(id: string) {
   await mkdir(projectDir(id), { recursive: true })
 }
 
+// ── image URL normalization (sync) ───────────────────────────────
+
 async function ensureProjectsRoot() {
   await mkdir(PROJECTS_DIR, { recursive: true })
 }
-
-// ── sync fs helpers ──────────────────────────────────────────────
 
 function isProjectRawTurnMessages(value: unknown): value is ProjectRawTurnMessages {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false
@@ -427,6 +603,8 @@ function isSafeImageName(name: string): boolean {
     !name.includes('/')
   )
 }
+
+// ── sync fs helpers ──────────────────────────────────────────────
 
 function markHasHtmlSync(id: string) {
   const meta = readMetaSync(id)
@@ -450,6 +628,19 @@ function mediaTypeForName(name: string): string {
       return 'image/webp'
     default:
       return 'image/png'
+  }
+}
+
+function mediaTypeToExt(mediaType: string): string {
+  switch (mediaType) {
+    case 'image/gif':
+      return '.gif'
+    case 'image/jpeg':
+      return '.jpg'
+    case 'image/webp':
+      return '.webp'
+    default:
+      return '.png'
   }
 }
 
@@ -515,8 +706,6 @@ function projectDir(id: string) {
   return join(PROJECTS_DIR, id)
 }
 
-// ── async fs helpers (HTTP CRUD) ─────────────────────────────────
-
 async function readDirSafe(dir: string): Promise<string[]> {
   try {
     if (!existsSync(dir)) await ensureProjectsRoot()
@@ -528,6 +717,8 @@ async function readDirSafe(dir: string): Promise<string[]> {
     return []
   }
 }
+
+// ── async fs helpers (HTTP CRUD) ─────────────────────────────────
 
 async function readHtmlDocument(
   id: string,
@@ -558,6 +749,18 @@ function readIndexHtmlSync(id: string): null | string {
     return readFileSync(join(projectDir(id), INDEX_HTML), 'utf8')
   } catch {
     return null
+  }
+}
+
+async function readJsonl<T>(filePath: string): Promise<T[]> {
+  try {
+    const raw = await readFile(filePath, 'utf8')
+    return raw
+      .split('\n')
+      .filter((line) => line.trim().length > 0)
+      .map((line) => JSON.parse(line) as T)
+  } catch {
+    return []
   }
 }
 
