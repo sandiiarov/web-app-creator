@@ -351,6 +351,12 @@ export async function streamLandingAgent({
               ? editActionsFromArgs(args)
               : null
           if (editActions) {
+            // A `tool-call-input-streaming-start` may have already created a
+            // provisional block (display.id) for this providerId. The fan-out
+            // replaces it with N per-edit blocks — drop the provisional from
+            // the recorded turn and the UI so it is not orphaned as "no result".
+            removeToolCall(recordedTurn, display.id)
+            sendSse(response, 'tool_call_drop', { id: display.id })
             const subIds = editActions.map((_, index) =>
               editSubId(toolCallSeq, index),
             )
@@ -1225,6 +1231,15 @@ function recordToolCall(
 function recordTurnError(turn: ProjectMessageTurn, message: string) {
   if (message === 'stopped') return
   turn.error = message
+}
+
+/** Remove a recorded tool-call part by id (used when a fan-out supersedes a
+ * `tool-call-input-streaming-start` provisional block). */
+function removeToolCall(turn: ProjectMessageTurn, id: string) {
+  const index = turn.parts.findIndex(
+    (part) => part.type === 'tool_call' && part.id === id,
+  )
+  if (index !== -1) turn.parts.splice(index, 1)
 }
 
 function startToolCallDisplay(

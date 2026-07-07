@@ -347,6 +347,16 @@ export function useLandingPage({
                 }
                 break
               }
+              case 'tool_call_drop': {
+                const dropped = data as { id: string }
+                patchTurn(turnId, (turn) => ({
+                  ...turn,
+                  parts: turn.parts.filter(
+                    (p) => p.type !== 'tool_call' || p.id !== dropped.id,
+                  ),
+                }))
+                break
+              }
               default:
                 break
             }
