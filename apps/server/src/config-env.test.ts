@@ -40,6 +40,19 @@ describe('createConfigFromEnv', () => {
     })
   })
 
+  it('defaults the per-run cost cap to $1 and allows override/disable', () => {
+    expect(createConfigFromEnv(createEnv()).agentMaxCostUsd).toBe(1)
+    expect(
+      createConfigFromEnv(createEnv({ AGENT_MAX_COST_USD: '0.25' }))
+        .agentMaxCostUsd,
+    ).toBe(0.25)
+    // `0` disables the cap (route.ts treats <= 0 as no cap).
+    expect(
+      createConfigFromEnv(createEnv({ AGENT_MAX_COST_USD: '0' }))
+        .agentMaxCostUsd,
+    ).toBe(0)
+  })
+
   it('leaves mastra observability unset when env is absent', () => {
     const config = createConfigFromEnv(createEnv())
 

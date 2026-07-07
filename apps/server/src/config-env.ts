@@ -10,8 +10,8 @@ const DEFAULT_FIRECRAWL_CREDIT_USD = 0.002
 
 export function createConfigFromEnv(source: ConfigEnvironment) {
   return {
-    agentMaxCostUsd: parseOptionalNonNegativeNumber(
-      source,
+    agentMaxCostUsd: parseNonNegativeNumber(
+      optionalEnv(source, 'AGENT_MAX_COST_USD') ?? '1',
       'AGENT_MAX_COST_USD',
     ),
     agentRetry: {
@@ -89,14 +89,6 @@ function parseNonNegativeNumber(value: string, name: string) {
   }
 
   return parsed
-}
-
-function parseOptionalNonNegativeNumber(
-  source: ConfigEnvironment,
-  name: string,
-): number | undefined {
-  const value = optionalEnv(source, name)
-  return value ? parseNonNegativeNumber(value, name) : undefined
 }
 
 function parsePort(value: string) {

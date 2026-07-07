@@ -262,7 +262,7 @@ export async function streamLandingAgent({
   let fatalRunError: null | string = null
   // Optional per-run USD cap (config.agentMaxCostUsd). 0/undefined disables it.
   // Checked after each LLM/image/vision cost accrual; aborts the run if exceeded.
-  const costCapUsd = config.agentMaxCostUsd ?? 0
+  const costCapUsd = config.agentMaxCostUsd
   const checkCostCap = (): boolean => {
     if (costCapUsd <= 0) return false
     const runCostUsd = llmProviderCostUsd + imageCostUsd + visionCostUsd
