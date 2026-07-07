@@ -6,6 +6,12 @@ import {
   DropdownMenuRadioItem,
   DropdownMenuTrigger,
 } from '@workspace/ui/components/dropdown-menu'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@workspace/ui/components/tooltip'
 import { cn } from '@workspace/ui/lib/utils'
 import { ChevronDown, Eye, Image as ImageIcon, Type } from 'lucide-react'
 import { useState, type ComponentType } from 'react'
@@ -84,17 +90,24 @@ export function ModelDropdown({ models, onModelsChange }: ModelDropdownProps) {
             const Logo = option ? MODEL_ICONS[option.id] : undefined
             const RoleIcon = ROLE_META[role].Icon
             return (
-              <span
-                className={cn(
-                  'flex items-center gap-1 px-1',
-                  index > 0 && 'border-l border-border',
-                )}
-                key={role}
-                title={`${ROLE_META[role].label}: ${option?.label ?? models[role]}`}
-              >
-                <RoleIcon />
-                {Logo ? <Logo /> : null}
-              </span>
+              <TooltipProvider key={role}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span
+                      className={cn(
+                        'flex items-center gap-1 px-1',
+                        index > 0 && 'border-l border-border',
+                      )}
+                    >
+                      <RoleIcon />
+                      {Logo ? <Logo /> : null}
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent side="top">
+                    {ROLE_META[role].label}: {option?.label ?? models[role]}
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
             )
           })}
           <ChevronDown data-icon="inline-end" />
