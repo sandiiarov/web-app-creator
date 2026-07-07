@@ -22,6 +22,7 @@ import {
   getProject,
   listProjects,
   readProjectImage,
+  readProjectScreenshot,
   updateProjectModel,
   writeProjectScreenshotSync,
   type ClientMessageEntry,
@@ -249,6 +250,8 @@ async function routeRequest(
 }
 
 const PROJECT_LIST_RE = /^\/api\/projects\/?$/i
+const PROJECT_SCREENSHOT_RE =
+  /^\/api\/projects\/([a-f0-9-]+)\/screenshots\/([^/]+)$/i
 const SCREENSHOT_RESPONSE_RE = /^\/api\/screenshot-responses\/([a-f0-9-]+)$/i
 const PROJECT_ITEM_RE = /^\/api\/projects\/([a-f0-9-]+)$/i
 const PROJECT_IMAGE_RE = /^\/api\/projects\/([a-f0-9-]+)\/images\/([^/]+)$/i
@@ -418,6 +421,16 @@ async function routeProjects(
     return true
   }
 
+  const screenshotMatch = pathname.match(PROJECT_SCREENSHOT_RE)
+  if (screenshotMatch && request.method === 'GET') {
+    await serveProjectScreenshot(
+      screenshotMatch[1]!,
+      screenshotMatch[2]!,
+      response,
+    )
+    return true
+  }
+
   const itemMatch = pathname.match(PROJECT_ITEM_RE)
   if (itemMatch) {
     const id = itemMatch[1]!
@@ -512,6 +525,24 @@ async function serveProjectImage(
     'content-type': image.mediaType,
   })
   response.end(image.buffer)
+}
+
+async function serveProjectScreenshot(
+  projectId: string,
+  file: string,
+  response: ServerResponse,
+) {
+  const screenshot = await readProjectScreenshot(projectId, file)
+  if (!screenshot) {
+    sendJson(response, 404, { error: 'Screenshot not found', ok: false })
+    return
+  }
+  response.writeHead(200, {
+    'cache-control': 'public, max-age=86400, immutable',
+    'content-length': screenshot.buffer.length,
+    'content-type': screenshot.mediaType,
+  })
+  response.end(screenshot.buffer)
 }
 
 function setCorsHeaders(response: ServerResponse) {

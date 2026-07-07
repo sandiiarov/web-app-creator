@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { deleteProject } from './mastra/lib/project-store.ts'
 
-const PROJECT_ID = 'screenshot-route-test'
+const PROJECT_ID = '11111111-1111-1111-1111-111111111111'
 const SCREENSHOT = {
   dataUrl: 'data:image/jpeg;base64,/9j/4AAQSkZJRg==',
   height: 900,
@@ -39,6 +39,57 @@ describe('POST /api/screenshot-responses/:requestId', () => {
 
       await expect(response.json()).resolves.toEqual({ ok: true })
       await expect(promise).resolves.toEqual(SCREENSHOT)
+    })
+  })
+
+  it('persists the screenshot bytes and serves them back under /screenshots/', async () => {
+    await withServer(async ({ baseUrl, createPendingBrowserScreenshot }) => {
+      const { requestId } = createPendingBrowserScreenshot({
+        projectId: PROJECT_ID,
+        timeoutMs: 1_000,
+      })
+
+      const post = await fetch(
+        `${baseUrl}/api/screenshot-responses/${requestId}`,
+        {
+          body: JSON.stringify(SCREENSHOT),
+          headers: { 'content-type': 'application/json' },
+          method: 'POST',
+        },
+      )
+      await expect(post.json()).resolves.toEqual({ ok: true })
+
+      const fileName = `001-${requestId}.jpg`
+      const get = await fetch(
+        `${baseUrl}/api/projects/${PROJECT_ID}/screenshots/${fileName}`,
+      )
+
+      expect(get.status).toBe(200)
+      expect(get.headers.get('content-type')).toBe('image/jpeg')
+      const expected = Buffer.from('/9j/4AAQSkZJRg==', 'base64')
+      expect(new Uint8Array(await get.arrayBuffer())).toEqual(
+        new Uint8Array(expected),
+      )
+    })
+  })
+
+  it('returns 404 for an unknown screenshot file name', async () => {
+    await withServer(async ({ baseUrl, createPendingBrowserScreenshot }) => {
+      const { requestId } = createPendingBrowserScreenshot({
+        projectId: PROJECT_ID,
+        timeoutMs: 1_000,
+      })
+
+      await fetch(`${baseUrl}/api/screenshot-responses/${requestId}`, {
+        body: JSON.stringify(SCREENSHOT),
+        headers: { 'content-type': 'application/json' },
+        method: 'POST',
+      })
+
+      const get = await fetch(
+        `${baseUrl}/api/projects/${PROJECT_ID}/screenshots/999-${requestId}.jpg`,
+      )
+      expect(get.status).toBe(404)
     })
   })
 

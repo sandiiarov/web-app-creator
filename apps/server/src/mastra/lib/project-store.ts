@@ -368,6 +368,22 @@ export async function readProjectRawMessages(
   }
 }
 
+/** Read a persisted screenshot under `screenshots/`. Returns bytes + content-type, or null. */
+export async function readProjectScreenshot(
+  id: string,
+  file: string,
+): Promise<null | { buffer: Buffer; mediaType: string }> {
+  if (!isSafeScreenshotName(file)) return null
+  const filePath = join(projectDir(id), SCREENSHOTS_DIR, file)
+
+  try {
+    const buffer = await readFile(filePath)
+    return { buffer, mediaType: mediaTypeForName(file) }
+  } catch {
+    return null
+  }
+}
+
 // ── agent-facing project HTML store (sync, write-through) ─────────
 
 /**
@@ -782,6 +798,14 @@ function isProjectRawTurnMessages(value: unknown): value is ProjectRawTurnMessag
 function isSafeImageName(name: string): boolean {
   return (
     /^(img-\d+|img-\d+\.[a-z0-9]+|[a-z0-9_-]+\.[a-z0-9]+)$/i.test(name) &&
+    !name.includes('..') &&
+    !name.includes('/')
+  )
+}
+
+function isSafeScreenshotName(name: string): boolean {
+  return (
+    /^\d+-[a-f0-9-]+\.(gif|jpe?g|png|webp)$/i.test(name) &&
     !name.includes('..') &&
     !name.includes('/')
   )
