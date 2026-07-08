@@ -57,12 +57,18 @@ catalogs:
     cmdk:
       specifier: ^1.1.1
       version: 1.1.1
+    diff:
+      specifier: ^9.0.0
+      version: 9.0.0
     firecrawl:
       specifier: ^4.28.3
       version: 4.28.3
     happy-dom:
       specifier: ^20.10.6
       version: 20.10.6
+    lru-cache:
+      specifier: ^11.5.1
+      version: 11.5.1
     lucide-react:
       specifier: ^1.17.0
       version: 1.17.0
@@ -111,6 +117,9 @@ catalogs:
     vitest:
       specifier: ^4.1.7
       version: 4.1.7
+    xxhash-wasm:
+      specifier: ^1.1.0
+      version: 1.1.0
     zod:
       specifier: ^4.4.3
       version: 4.4.3
@@ -228,9 +237,18 @@ importers:
       '@workspace/conversation':
         specifier: workspace:*
         version: link:../../packages/conversation
+      diff:
+        specifier: 'catalog:'
+        version: 9.0.0
       firecrawl:
         specifier: 'catalog:'
         version: 4.28.3
+      lru-cache:
+        specifier: 'catalog:'
+        version: 11.5.1
+      xxhash-wasm:
+        specifier: 'catalog:'
+        version: 1.1.0
       zod:
         specifier: 'catalog:'
         version: 4.4.3
@@ -3297,6 +3315,10 @@ packages:
 
   diff@8.0.4:
     resolution: {integrity: sha512-DPi0FmjiSU5EvQV0++GFDOJ9ASQUVFh5kD+OzOnYdi7n3Wpm9hWWGfB/O2blfHcMVTL5WkQXSnRiK9makhrcnw==}
+    engines: {node: '>=0.3.1'}
+
+  diff@9.0.0:
+    resolution: {integrity: sha512-svtcdpS8CgJyqAjEQIXdb3OjhFVVYjzGAPO8WGCmRbrml64SPw/jJD4GoE98aR7r25A0XcgrK3F02yw9R/vhQw==}
     engines: {node: '>=0.3.1'}
 
   dompurify@3.4.11:
@@ -8077,6 +8099,8 @@ snapshots:
       dequal: 2.0.3
 
   diff@8.0.4: {}
+
+  diff@9.0.0: {}
 
   dompurify@3.4.11:
     optionalDependencies:

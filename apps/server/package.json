@@ -22,7 +22,10 @@
     "@mastra/loggers": "catalog:",
     "@mastra/observability": "catalog:",
     "@workspace/conversation": "workspace:*",
+    "diff": "catalog:",
     "firecrawl": "catalog:",
+    "lru-cache": "catalog:",
+    "xxhash-wasm": "catalog:",
     "zod": "catalog:"
   },
   "devDependencies": {
