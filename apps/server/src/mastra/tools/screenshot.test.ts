@@ -1,6 +1,27 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
-import { recoverScreenshotArgs } from './screenshot.ts'
+import type { BrowserScreenshotResult } from '../lib/browser-screenshot.ts'
+import {
+  createScreenshotTool,
+  recoverScreenshotArgs,
+  type RequestBrowserScreenshot,
+} from './screenshot.ts'
+
+vi.mock('../lib/image-ocr.ts', () => ({
+  ocrImageInputs: vi.fn<
+    () => Promise<{
+      imagesAnalyzed: number
+      ok: boolean
+      text: string
+      usage: null
+    }>
+  >(async () => ({
+    imagesAnalyzed: 1,
+    ok: true,
+    text: 'transcript',
+    usage: null,
+  })),
+}))
 
 describe('recoverScreenshotArgs', () => {
   it('passes a clean typed object through untouched', () => {
@@ -52,5 +73,62 @@ describe('recoverScreenshotArgs', () => {
 
   it('returns an empty object when nothing recognizable is present', () => {
     expect(recoverScreenshotArgs({ frobnicate: 42 })).toEqual({})
+  })
+})
+
+describe('createScreenshotTool execute — elementMap', () => {
+  const stubScreenshot: BrowserScreenshotResult = {
+    dataUrl: 'data:image/jpeg;base64,/9j/4AAQSkZJRg==',
+    elementMap: '0 link "Start subscription" @10,20 100×40',
+    height: 800,
+    mediaType: 'image/jpeg',
+    width: 1200,
+  }
+
+  it('forwards the captured elementMap on a successful screenshot', async () => {
+    const requestScreenshot = vi.fn<RequestBrowserScreenshot>(
+      async () => stubScreenshot,
+    )
+    const tool = createScreenshotTool(requestScreenshot, 'test-vision-model')
+    const res = (await tool.execute?.(
+      { selector: 'main', viewportSize: 'desktop' },
+      undefined as never,
+    )) as { elementMap: string; ok: boolean }
+
+    expect(res.ok).toBe(true)
+    expect(res.elementMap).toBe('0 link "Start subscription" @10,20 100×40')
+  })
+
+  it('returns an empty elementMap when selector/viewportSize are missing', async () => {
+    const requestScreenshot = vi.fn<RequestBrowserScreenshot>(
+      async () => stubScreenshot,
+    )
+    const tool = createScreenshotTool(requestScreenshot, 'test-vision-model')
+    const res = (await tool.execute?.({}, undefined as never)) as {
+      elementMap: string
+    }
+    expect(res.elementMap).toBe('')
+  })
+
+  it('returns an empty elementMap when no requestScreenshot is wired', async () => {
+    const tool = createScreenshotTool(undefined, 'test-vision-model')
+    const res = (await tool.execute?.(
+      { selector: 'main', viewportSize: 'desktop' },
+      undefined as never,
+    )) as { elementMap: string }
+    expect(res.elementMap).toBe('')
+  })
+
+  it('returns an empty elementMap when capture throws', async () => {
+    const requestScreenshot = vi.fn<RequestBrowserScreenshot>(async () => {
+      throw new Error('capture failed')
+    })
+    const tool = createScreenshotTool(requestScreenshot, 'test-vision-model')
+    const res = (await tool.execute?.(
+      { selector: 'main', viewportSize: 'desktop' },
+      undefined as never,
+    )) as { elementMap: string; ok: boolean }
+    expect(res.ok).toBe(false)
+    expect(res.elementMap).toBe('')
   })
 })
