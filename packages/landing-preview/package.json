@@ -31,6 +31,7 @@
     "@workspace/oxlint-config": "workspace:*",
     "@workspace/typescript-config": "workspace:*",
     "@workspace/vitest-preset": "workspace:*",
+    "happy-dom": "catalog:",
     "oxfmt": "catalog:",
     "oxlint": "catalog:",
     "react": "catalog:",
