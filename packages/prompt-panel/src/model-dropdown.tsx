@@ -55,7 +55,7 @@ const ROLE_META: Record<
 > = {
   image: { color: 'text-emerald-500', Icon: ImageIcon, label: 'Image' },
   text: { color: 'text-blue-500', Icon: Type, label: 'Text' },
-  vision: { color: 'text-amber-500', Icon: Eye, label: 'Vision' },
+  vision: { color: 'text-violet-500', Icon: Eye, label: 'Vision' },
 }
 
 export interface ModelDropdownProps {

@@ -13,6 +13,7 @@ import {
   FileText,
   Globe,
   Image,
+  LoaderCircle,
   Pencil,
   Search,
   Wrench,
@@ -170,7 +171,7 @@ function DisclosureIcon({
       aria-hidden="true"
       className={cn(
         'mt-0.5 ml-auto inline-flex shrink-0 items-center text-muted-foreground transition-colors',
-        isActiveState(state) && 'text-amber-700 dark:text-amber-300',
+        isActiveState(state) && 'text-sky-700 dark:text-sky-300',
         state === 'error' && 'text-destructive',
       )}
     >
@@ -272,15 +273,16 @@ function ToolBodyText({
 }
 
 function ToolIcon({ Icon, state }: { Icon: LucideIcon; state: ToolCallState }) {
+  const active = isActiveState(state)
   return (
     <MarkerIcon
       className={cn(
         'mt-0.5 text-muted-foreground transition-colors',
-        isActiveState(state) && 'text-amber-700 dark:text-amber-300',
+        active && 'text-sky-700 dark:text-sky-300',
         state === 'error' && 'text-destructive',
       )}
     >
-      <Icon />
+      {active ? <LoaderCircle className="animate-spin" /> : <Icon />}
     </MarkerIcon>
   )
 }
@@ -314,7 +316,7 @@ function toolShellClassName(state: ToolCallState) {
     state === 'error'
       ? 'border-destructive/45 bg-destructive/10 dark:bg-destructive/15'
       : isActiveState(state)
-        ? 'border-amber-500/45 bg-amber-500/10'
+        ? 'border-sky-500/45 bg-sky-500/10'
         : state === 'done'
           ? 'border-border/70 bg-muted/10'
           : 'border-border/60',

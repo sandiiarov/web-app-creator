@@ -12,7 +12,7 @@ import {
 import { Message, MessageContent } from '@workspace/ui/components/message'
 import { Separator } from '@workspace/ui/components/separator'
 import { cn } from '@workspace/ui/lib/utils'
-import { Brain, ChevronRight } from 'lucide-react'
+import { Brain, ChevronRight, LoaderCircle } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
 import {
@@ -154,10 +154,10 @@ function RetryNotice({
   }, [retry.delayMs, retry.startedAt])
 
   return (
-    <div className="border border-amber-500/45 bg-amber-500/10 px-2.5 py-2 text-[11px] leading-relaxed shadow-[inset_3px_0_0_rgb(245_158_11/0.75)]">
+    <div className="border border-sky-500/45 bg-sky-500/10 px-2.5 py-2 text-[11px] leading-relaxed shadow-[inset_3px_0_0_rgb(14_165_233/0.75)]">
       <div className="flex items-baseline justify-between gap-3">
         <span className="font-medium text-foreground">Model retry</span>
-        <span className="font-mono text-amber-700 tabular-nums dark:text-amber-300">
+        <span className="font-mono text-sky-700 tabular-nums dark:text-sky-300">
           {remainingMs > 0
             ? `Retrying in ${formatRetryDelay(remainingMs)}`
             : isStreaming
@@ -175,9 +175,9 @@ function RetryNotice({
       <div className="mt-1 wrap-break-word text-foreground/85">
         {retry.issue}
       </div>
-      <div className="mt-2 h-1 border border-amber-500/25 bg-background/70">
+      <div className="mt-2 h-1 border border-sky-500/25 bg-background/70">
         <div
-          className="h-full bg-amber-500 transition-[width] duration-100 ease-linear"
+          className="h-full bg-sky-500 transition-[width] duration-100 ease-linear"
           style={{ width: `${progress}%` }}
         />
       </div>
@@ -199,7 +199,7 @@ function ThinkingBlock({
       className={cn(
         'overflow-hidden rounded-none border bg-background/50',
         isStreaming
-          ? 'border-amber-500/45 bg-amber-500/10'
+          ? 'border-sky-500/45 bg-sky-500/10'
           : 'border-border/70 bg-muted/10',
       )}
       onOpenChange={setOpen}
@@ -217,10 +217,14 @@ function ThinkingBlock({
             <MarkerIcon
               className={cn(
                 'text-muted-foreground transition-colors',
-                isStreaming && 'text-amber-700 dark:text-amber-300',
+                isStreaming && 'text-sky-700 dark:text-sky-300',
               )}
             >
-              <Brain />
+              {isStreaming ? (
+                <LoaderCircle className="animate-spin" />
+              ) : (
+                <Brain />
+              )}
             </MarkerIcon>
             <MarkerContent className="flex min-w-0 flex-1 items-center gap-2">
               <span className="text-left text-xs leading-snug font-medium text-foreground">
@@ -234,7 +238,7 @@ function ThinkingBlock({
               aria-hidden="true"
               className={cn(
                 'ml-auto inline-flex shrink-0 items-center text-muted-foreground transition-colors',
-                isStreaming && 'text-amber-700 dark:text-amber-300',
+                isStreaming && 'text-sky-700 dark:text-sky-300',
               )}
             >
               <ChevronRight
