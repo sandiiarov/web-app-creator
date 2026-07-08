@@ -21,6 +21,54 @@ export type RequestBrowserScreenshot = (
 export type ScreenshotViewportSize =
   (typeof SCREENSHOT_VIEWPORT_SIZE_VALUES)[number]
 
+/**
+ * Recover screenshot args from malformed tool-call input. GLM-5.2 sometimes
+ * streams selector/viewportSize wrapped in arg_key/arg_value tags that
+ * collapse the JSON into one mangled key (the model meant a clean
+ * selector/viewportSize/action object), and occasionally passes the whole
+ * object as a JSON string. Regex-extract the intended values so a usable
+ * screenshot call lands instead of a validation error plus retry.
+ */
+export function recoverScreenshotArgs(value: unknown): unknown {
+  if (typeof value === 'string') {
+    try {
+      return recoverScreenshotArgs(JSON.parse(value))
+    } catch {
+      /* fall through to regex extraction below */
+    }
+  }
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    const candidate = value as Record<string, unknown>
+    if (
+      typeof candidate.selector === 'string' &&
+      typeof candidate.viewportSize === 'string'
+    ) {
+      return value
+    }
+  }
+  const text =
+    typeof value === 'string'
+      ? value
+      : value && typeof value === 'object'
+        ? Object.entries(value as Record<string, unknown>)
+            .map(
+              ([key, val]) =>
+                `${key}=${typeof val === 'string' ? val : JSON.stringify(val)}`,
+            )
+            .join(' ')
+        : String(value ?? '')
+  const recovered: Record<string, unknown> = {}
+  const viewport = /\b(mobile|tablet|desktop)\b/i.exec(text)
+  if (viewport) recovered.viewportSize = viewport[1]!.toLowerCase()
+  const selectorQuoted = /selector.*?=['"]([^'"]+)['"]/.exec(text)
+  const selectorTagged = /selector<\/arg_key>[^<]*<arg_value>([^<]+)/.exec(text)
+  const selector = selectorQuoted?.[1] ?? selectorTagged?.[1]
+  if (selector) recovered.selector = selector
+  const action = /action.*?=['"]([^'"]+)['"]/.exec(text)
+  if (action) recovered.action = action[1]
+  return recovered
+}
+
 const ImageOcrSchema = z.object({
   cost: z.number().optional(),
   imagesAnalyzed: z.number(),
@@ -44,7 +92,35 @@ export function createScreenshotTool(
   return createTool({
     description:
       'Request a browser-rendered screenshot of one element in the current project HTML document, then OCR/analyze it with vision. Accepts three arguments: a CSS element selector, viewportSize (mobile, tablet, or desktop), and an action describing what to inspect. The action becomes the vision prompt alongside the Z.AI ui_to_artifact system prompt, so state precisely what feedback you need (e.g. "check hero spacing and CTA contrast", "verify mobile nav wraps without clipping"). Use after substantial edits or when you need visual feedback about layout, text, spacing, contrast, clipping, or responsive issues. Returns a padded element screenshot OCR/visual transcript; it does not create files.',
-    execute: async ({ action, selector, viewportSize }) => {
+    execute: async (rawInput) => {
+      const { action, selector, viewportSize } = recoverScreenshotArgs(
+        rawInput,
+      ) as {
+        action?: string
+        selector?: string
+        viewportSize?: ScreenshotViewportSize
+      }
+      if (!selector || !viewportSize) {
+        return {
+          height: null,
+          imageOcr: {
+            imagesAnalyzed: 0,
+            ok: false,
+            reason:
+              'screenshot requires a selector and a viewportSize (mobile, tablet, or desktop).',
+            text: '',
+            usage: null,
+          },
+          mediaType: null,
+          ok: false,
+          reason:
+            'screenshot requires a selector and a viewportSize (mobile, tablet, or desktop).',
+          selector: selector ?? '',
+          text: '',
+          viewportSize: viewportSize ?? 'desktop',
+          width: null,
+        }
+      }
       if (!requestScreenshot) {
         return {
           height: null,
@@ -131,16 +207,18 @@ export function createScreenshotTool(
           .string()
           .min(1)
           .max(300)
+          .optional()
           .describe(
             'CSS selector for the element to capture, e.g. "body", "main", "#hero", ".pricing-card", or "button[type=submit]".',
           ),
         viewportSize: z
           .enum(SCREENSHOT_VIEWPORT_SIZE_VALUES)
+          .optional()
           .describe(
             'Responsive viewport size to render before capture: mobile, tablet, or desktop.',
           ),
       })
-      .strict(),
+      .passthrough(),
     outputSchema: z.object({
       height: z.number().nullable(),
       imageOcr: ImageOcrSchema,
