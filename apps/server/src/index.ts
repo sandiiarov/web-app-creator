@@ -698,5 +698,10 @@ function validateScreenshotResponse(
     return 'Expected screenshot height between 1 and 4096.'
   }
 
-  return { dataUrl, height, mediaType, width }
+  const elementMap =
+    typeof value.elementMap === 'string' && value.elementMap.length <= 8000
+      ? value.elementMap
+      : undefined
+
+  return { dataUrl, elementMap, height, mediaType, width }
 }

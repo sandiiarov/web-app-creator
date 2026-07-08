@@ -7,6 +7,8 @@ export type BrowserScreenshotMediaType =
 
 export interface BrowserScreenshotResult {
   dataUrl: string
+  /** Optional Set-of-Marks element map from the agent-map plugin; absent when the client did not send one. */
+  elementMap?: string
   height: number
   mediaType: BrowserScreenshotMediaType
   width: number

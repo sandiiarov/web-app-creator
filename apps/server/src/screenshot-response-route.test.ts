@@ -42,6 +42,54 @@ describe('POST /api/screenshot-responses/:requestId', () => {
     })
   })
 
+  it('forwards the Set-of-Marks elementMap when the client sends one', async () => {
+    await withServer(async ({ baseUrl, createPendingBrowserScreenshot }) => {
+      const { promise, requestId } = createPendingBrowserScreenshot({
+        projectId: PROJECT_ID,
+        timeoutMs: 1_000,
+      })
+
+      const response = await fetch(
+        `${baseUrl}/api/screenshot-responses/${requestId}`,
+        {
+          body: JSON.stringify({
+            ...SCREENSHOT,
+            elementMap: '0 link "X" @1,2 3×4',
+          }),
+          headers: { 'content-type': 'application/json' },
+          method: 'POST',
+        },
+      )
+
+      await expect(response.json()).resolves.toEqual({ ok: true })
+      await expect(promise).resolves.toMatchObject({
+        elementMap: '0 link "X" @1,2 3×4',
+      })
+    })
+  })
+
+  it('drops an over-length elementMap instead of failing the response', async () => {
+    await withServer(async ({ baseUrl, createPendingBrowserScreenshot }) => {
+      const { promise, requestId } = createPendingBrowserScreenshot({
+        projectId: PROJECT_ID,
+        timeoutMs: 1_000,
+      })
+
+      const response = await fetch(
+        `${baseUrl}/api/screenshot-responses/${requestId}`,
+        {
+          body: JSON.stringify({ ...SCREENSHOT, elementMap: 'x'.repeat(8001) }),
+          headers: { 'content-type': 'application/json' },
+          method: 'POST',
+        },
+      )
+
+      await expect(response.json()).resolves.toEqual({ ok: true })
+      await expect(promise).resolves.toMatchObject(SCREENSHOT)
+      await expect(promise).resolves.toEqual(SCREENSHOT)
+    })
+  })
+
   it('persists the screenshot bytes and serves them back under /screenshots/', async () => {
     await withServer(async ({ baseUrl, createPendingBrowserScreenshot }) => {
       const { requestId } = createPendingBrowserScreenshot({
