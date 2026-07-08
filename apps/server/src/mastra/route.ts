@@ -1019,11 +1019,6 @@ function defaultToolAction(tool: string, args: ToolArgs): string | undefined {
   return undefined
 }
 
-/**
- * Extract the per-edit intents from an `edit` tool-call args. Returns null
- * when the args are not the expected `{ edits: [{ action, ... }] }` shape or
- * the batch has 0/1 edits (single-block fallback handles those).
- */
 function getToolCallDisplay(
   displayByProviderId: Map<string, ToolCallDisplay>,
   providerId: string,
