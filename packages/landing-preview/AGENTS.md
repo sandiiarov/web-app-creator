@@ -10,7 +10,7 @@
 - `src/landing-preview.tsx`: `LandingPreview` component (React 19 `ref`-as-prop) and its `LandingPreviewProps`; controls `html` → `srcDoc` + morph, optional element picker, opt-in preview diagnostics, and an imperative `LandingPreviewHandle`.
 - `src/browser-screenshot.ts`: `captureElementScreenshot`, `captureProjectScreenshot`, viewport/padding helpers, and screenshot wire types (`ScreenshotResponseInput`, `ScreenshotViewportSize`, `ScreenshotMediaType`, `SCREENSHOT_VIEWPORT_SIZES`).
 - `src/preview-morph.ts`: DOM morphing, script signature comparison, and script rerun helpers.
-- `src/preview-srcdoc.ts`: `preparePreviewSrcDoc` base-tag injection used by both initial `srcDoc` and morph targets.
+- `src/preview-srcdoc.ts`: `preparePreviewSrcDoc` base-tag injection plus unclosed-`<style>` repair (closes unbalanced `<style>` before `<body>` so the parser keeps body content out of the head) used by both initial `srcDoc` and morph targets.
 - `src/index.ts`: public barrel over the above modules.
 - `src/landing-preview.test.ts`: pure helper tests for base-tag injection, script signature detection, and screenshot viewport/padding helpers.
 
