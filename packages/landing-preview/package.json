@@ -21,6 +21,7 @@
   "dependencies": {
     "@workspace/prompt-panel": "workspace:*",
     "@zumer/snapdom": "catalog:",
+    "@zumer/snapdom-plugins": "catalog:",
     "morphdom": "catalog:"
   },
   "devDependencies": {

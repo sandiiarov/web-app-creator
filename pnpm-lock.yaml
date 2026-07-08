@@ -48,6 +48,9 @@ catalogs:
     '@zumer/snapdom':
       specifier: ^2.12.9
       version: 2.12.9
+    '@zumer/snapdom-plugins':
+      specifier: ^2.2.0
+      version: 2.2.0
     class-variance-authority:
       specifier: ^0.7.1
       version: 0.7.1
@@ -322,6 +325,9 @@ importers:
       '@zumer/snapdom':
         specifier: 'catalog:'
         version: 2.12.9
+      '@zumer/snapdom-plugins':
+        specifier: 'catalog:'
+        version: 2.2.0(@zumer/snapdom@2.12.9)
       morphdom:
         specifier: 'catalog:'
         version: 2.7.8
@@ -2774,6 +2780,11 @@ packages:
 
   '@workflow/serde@4.1.0-beta.2':
     resolution: {integrity: sha512-8kkeoQKLDaKXefjV5dbhBj2aErfKp1Mc4pb6tj8144cF+Em5SPbyMbyLCHp+BVrFfFVCBluCtMx+jjvaFVZGww==}
+
+  '@zumer/snapdom-plugins@2.2.0':
+    resolution: {integrity: sha512-xuN+0bh+vu/LlBaLqNN7RgrsRo3ic9x7+oKrZsq6RyrZR8kUy2oEZ6d2m/Q+upYUzOqWR1ynLoYS6iOnQP/BvA==}
+    peerDependencies:
+      '@zumer/snapdom': '>=2.12.1'
 
   '@zumer/snapdom@2.12.9':
     resolution: {integrity: sha512-Zufl1vEthT931kcZfmAaRSnucAGIRLGi9N6JI8ZsdyHww5hHHLk4t5LU1DxS5pNAPi1MptPHcGON1pkXEBf5iw==}
@@ -7587,6 +7598,10 @@ snapshots:
   '@workflow/serde@4.1.0': {}
 
   '@workflow/serde@4.1.0-beta.2': {}
+
+  '@zumer/snapdom-plugins@2.2.0(@zumer/snapdom@2.12.9)':
+    dependencies:
+      '@zumer/snapdom': 2.12.9
 
   '@zumer/snapdom@2.12.9': {}
 
