@@ -4,7 +4,6 @@ import { fileURLToPath } from 'node:url'
 
 import { afterEach, describe, expect, it } from 'vitest'
 
-import { applyAnchorEdits } from './html-anchor-document.ts'
 import { saveImage } from './image-store.ts'
 import {
   appendAgentMessages,
@@ -106,15 +105,10 @@ describe('project message storage', () => {
     createdProjectIds.push(project.id)
     const projectDir = join(PROJECTS_DIR, project.id)
     const store = createProjectHtmlStore(project.id)
-    const result = applyAnchorEdits(store.getDocument(), [
-      {
-        action: 'Rename title',
-        code: '    <title>Anchored</title>',
-        from: 'a6',
-      },
-    ])
-
-    store.setDocument(result.document)
+    const nextHtml = store
+      .get()
+      .replace('<title>Untitled</title>', '<title>Anchored</title>')
+    store.set(nextHtml)
 
     const saved = await getProject(project.id)
     expect(saved?.indexHtml).toContain('<title>Anchored</title>')

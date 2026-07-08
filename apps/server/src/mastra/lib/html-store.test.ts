@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest'
 
-import { applyAnchorEdits } from './html-anchor-document.ts'
 import { createHtmlStore, PLACEHOLDER_INDEX_HTML } from './html-store.ts'
 
 describe('createHtmlStore', () => {
@@ -14,15 +13,8 @@ describe('createHtmlStore', () => {
       ['a3', '</main>'],
     ])
 
-    const result = applyAnchorEdits(store.getDocument(), [
-      {
-        action: 'edit',
-        code: '  <h1>Hi</h1>',
-        from: 'a2',
-      },
-    ])
-
-    expect(store.setDocument(result.document)).toBe(
+    const nextHtml = store.get().replace('  <h1>Hello</h1>', '  <h1>Hi</h1>')
+    expect(store.set(nextHtml)).toBe(
       Buffer.byteLength('<main>\n  <h1>Hi</h1>\n</main>\n', 'utf8'),
     )
     expect(store.get()).toBe('<main>\n  <h1>Hi</h1>\n</main>\n')
