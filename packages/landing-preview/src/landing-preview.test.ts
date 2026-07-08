@@ -32,6 +32,36 @@ describe('preparePreviewSrcDoc', () => {
 
     expect(twice.match(/data-preview-base="true"/g)).toHaveLength(1)
   })
+
+  it('closes an unclosed <style> before <body> so body content is not parsed into the head', () => {
+    const html =
+      '<!doctype html><html><head><style>body{color:red}</head><body><main>Hi</main></body></html>'
+    const repaired = preparePreviewSrcDoc(html)
+    const open = (repaired.match(/<style\b/gi) ?? []).length
+    const close = (repaired.match(/<\/style\s*>/gi) ?? []).length
+
+    expect(open).toBe(close)
+    expect(repaired.indexOf('</style>')).toBeLessThan(repaired.indexOf('<body'))
+    expect(repaired).toContain('<main>Hi</main>')
+  })
+
+  it('leaves already-balanced <style> blocks untouched', () => {
+    const html =
+      '<!doctype html><html><head><style>body{color:red}</style></head><body><main>Hi</main></body></html>'
+    const repaired = preparePreviewSrcDoc(html)
+
+    expect((repaired.match(/<\/style\s*>/gi) ?? []).length).toBe(1)
+  })
+
+  it('closes multiple unclosed <style> tags before <body>', () => {
+    const html =
+      '<html><head><style>a{}<style>b{}</head><body><main>Hi</main></body></html>'
+    const repaired = preparePreviewSrcDoc(html)
+    const open = (repaired.match(/<style\b/gi) ?? []).length
+    const close = (repaired.match(/<\/style\s*>/gi) ?? []).length
+
+    expect(open).toBe(close)
+  })
 })
 
 describe('preview morph helpers', () => {
