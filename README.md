@@ -40,7 +40,7 @@ Root files are workspace/orchestration only. TS, Vite, Oxlint, and Oxfmt config 
 - `GET /api/projects/:id/images/:file` — serve a persisted project image.
 - `GET /images/:id` — serve a generated image (`http://<host>/images/img-1.jpg`).
 
-**The agent** is a Mastra agent backed by OpenRouter. It builds the page with these tools: `scrape` (Firecrawl a reference URL + OCR its images), `read`/`find` (inspect the current HTML as compact `anchor|text` lines), `edit` (anchor-based HTML edits), `screenshot` (ask the browser to render and visually QA the page), and `generate_image` (OpenRouter image model). A `design` skill is injected as system-prompt guidance.
+**The agent** is a Mastra agent backed by OpenRouter. It builds the page with these tools: `scrape` (Firecrawl a reference URL + OCR its images), `read`/`find` (inspect the current HTML as line-numbered, snapshot-tagged views), `edit` (apply a snapshot-verified line diff; stale tags and unbalanced HTML are rejected), `screenshot` (ask the browser to render the page, annotate interactive elements with numbered badges, and return visual-QA notes plus a Set-of-Marks element map), and `generate_image` (OpenRouter image model). A `design` skill is injected as system-prompt guidance.
 
 **Per-project data** lives under `.data/projects/<id>/`: `project.json` (metadata), `html.json` (current document), `client-messages.jsonl` (append-only client wire — one line per SSE event out + inbound request), `agent-messages.jsonl` (per-step Mastra message snapshots), `vision-messages.json` (OCR calls), `screenshots/` (captured bytes), and `images/` (generated images). Legacy `messages.json` / `raw-messages.json` are read-only fallbacks for older projects.
 
