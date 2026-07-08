@@ -56,6 +56,11 @@ export async function deleteProject(id: string): Promise<void> {
   if (!json.ok) throw new Error('Failed to delete project')
 }
 
+/** Trigger a download of the project's portable single-file HTML (images inlined). */
+export function downloadProjectHtml(id: string): void {
+  window.location.href = `${SERVER_URL}/api/projects/${id}/html`
+}
+
 /**
  * Expand root-relative project image URLs to absolute so they load inside
  * sandboxed `srcDoc` preview iframes. Stored HTML uses

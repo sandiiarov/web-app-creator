@@ -51,10 +51,12 @@ const MAX_ATTACHMENT_TOTAL_SIZE = 16 * 1024 * 1024
 const PANEL_POSITION_STORAGE_KEY = 'landing.promptPanel.position.v1'
 
 export type PromptPanelProps = {
+  canDownload: boolean
   elementSelectionActive: boolean
   isStreaming: boolean
   models: LandingModels
   onAllProjects: () => void
+  onDownloadHtml: () => void
   onElementSelectionToggle: () => void
   onModelsChange: (models: LandingModels) => void
   onSelectedElementAttachmentConsumed: () => void
@@ -80,10 +82,12 @@ type StoredPanelState = Partial<PanelPosition> & {
 }
 
 export function PromptPanel({
+  canDownload,
   elementSelectionActive,
   isStreaming,
   models,
   onAllProjects,
+  onDownloadHtml,
   onElementSelectionToggle,
   onModelsChange,
   onSelectedElementAttachmentConsumed,
@@ -384,10 +388,12 @@ export function PromptPanel({
     >
       {shouldRenderCollapsed ? (
         <PanelHeader
+          canDownload={canDownload}
           collapsed={collapsed}
           dragging={dragging}
           layout={layout}
           onAllProjects={handleAllProjects}
+          onDownloadHtml={onDownloadHtml}
           onDragEnd={handleDragEnd}
           onDragMove={handleDragMove}
           onDragStart={handleDragStart}
@@ -402,10 +408,12 @@ export function PromptPanel({
       ) : (
         <div className="flex h-full min-h-0 flex-col">
           <PanelHeader
+            canDownload={canDownload}
             collapsed={collapsed}
             dragging={dragging}
             layout={layout}
             onAllProjects={handleAllProjects}
+            onDownloadHtml={onDownloadHtml}
             onDragEnd={handleDragEnd}
             onDragMove={handleDragMove}
             onDragStart={handleDragStart}

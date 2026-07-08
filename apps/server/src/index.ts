@@ -20,6 +20,7 @@ import {
   createProject,
   deleteProject,
   getProject,
+  getProjectHtmlInlined,
   listProjects,
   readProjectImage,
   readProjectScreenshot,
@@ -255,6 +256,7 @@ const PROJECT_SCREENSHOT_RE =
 const SCREENSHOT_RESPONSE_RE = /^\/api\/screenshot-responses\/([a-f0-9-]+)$/i
 const PROJECT_ITEM_RE = /^\/api\/projects\/([a-f0-9-]+)$/i
 const PROJECT_IMAGE_RE = /^\/api\/projects\/([a-f0-9-]+)\/images\/([^/]+)$/i
+const PROJECT_HTML_RE = /^\/api\/projects\/([a-f0-9-]+)\/html$/i
 
 async function handleCreateProject(
   request: IncomingMessage,
@@ -431,6 +433,12 @@ async function routeProjects(
     return true
   }
 
+  const htmlMatch = pathname.match(PROJECT_HTML_RE)
+  if (htmlMatch && request.method === 'GET') {
+    await serveProjectHtml(htmlMatch[1]!, response)
+    return true
+  }
+
   const itemMatch = pathname.match(PROJECT_ITEM_RE)
   if (itemMatch) {
     const id = itemMatch[1]!
@@ -507,6 +515,21 @@ function serveImage(id: string, response: ServerResponse) {
     'content-type': image.mediaType,
   })
   response.end(image.buffer)
+}
+
+/** Serve the project HTML as a portable single-file download (images inlined). */
+async function serveProjectHtml(id: string, response: ServerResponse) {
+  const result = await getProjectHtmlInlined(id)
+  if (!result) {
+    sendJson(response, 404, { error: 'Project not found', ok: false })
+    return
+  }
+  response.writeHead(200, {
+    'cache-control': 'no-store',
+    'content-disposition': `attachment; filename="${result.filename}"`,
+    'content-type': 'text/html; charset=utf-8',
+  })
+  response.end(result.html)
 }
 
 async function serveProjectImage(

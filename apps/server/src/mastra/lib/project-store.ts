@@ -294,6 +294,26 @@ export async function readProjectImage(
   }
 }
 
+/** Match project-image refs (`/api/projects/<id>/images/<file>`) and capture the file. */
+const PROJECT_IMAGE_REF_RE =
+  /\/api\/projects\/[a-f0-9-]+\/images\/([^"')\]]+)/gi
+
+/**
+ * Rendered project HTML with project images inlined as base64 `data:` URLs, so
+ * the file is a portable single document (no `localhost` image refs). Returns
+ * a download filename + html, or null when the project has no generated HTML.
+ */
+export async function getProjectHtmlInlined(
+  id: string,
+): Promise<null | { filename: string; html: string }> {
+  const meta = await readMeta(id)
+  if (!meta || !meta.hasHtml) return null
+  const document = await readHtmlDocument(id)
+  if (!document) return null
+  const html = await inlineProjectImages(id, renderHtmlDocument(document))
+  return { filename: `${slugifyTitle(meta.title ?? '')}.html`, html }
+}
+
 /**
  * Read raw Mastra messages recorded per turn, for faithful agent history
  * replay. Returns an empty array when the file is missing or malformed. The
@@ -327,8 +347,6 @@ export async function readProjectScreenshot(
     return null
   }
 }
-
-// ── agent-facing project HTML store (sync, write-through) ─────────
 
 /**
  * Upsert a project conversation turn by id: replace an existing turn with the
@@ -378,6 +396,46 @@ export async function saveProjectRawMessages(
     'utf8',
   )
   return next
+}
+
+// ── agent-facing project HTML store (sync, write-through) ─────────
+
+/** Inline every `/api/projects/<id>/images/<file>` ref as a base64 `data:` URL. */
+async function inlineProjectImages(
+  projectId: string,
+  html: string,
+): Promise<string> {
+  const filenames = new Set<string>()
+  for (const match of html.matchAll(PROJECT_IMAGE_REF_RE)) {
+    const file = match[1]
+    if (file) filenames.add(file)
+  }
+  if (filenames.size === 0) return html
+
+  const dataUrlByFile = new Map<string, string>()
+  for (const file of filenames) {
+    const image = await readProjectImage(projectId, file)
+    if (!image) continue
+    dataUrlByFile.set(
+      file,
+      `data:${image.mediaType};base64,${image.buffer.toString('base64')}`,
+    )
+  }
+
+  return html.replace(
+    PROJECT_IMAGE_REF_RE,
+    (full, file: string) => dataUrlByFile.get(file) ?? full,
+  )
+}
+
+/** Slugify a project title into a safe download filename stem. */
+function slugifyTitle(title: string): string {
+  const slug = title
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+  return slug || 'landing-page'
 }
 
 // ── append-only debug logs (client / agent / vision) ──────────────

@@ -5,7 +5,13 @@ import {
   TooltipTrigger,
 } from '@workspace/ui/components/tooltip'
 import { cn } from '@workspace/ui/lib/utils'
-import { FolderOpen, GripVertical, Maximize2, Minimize2 } from 'lucide-react'
+import {
+  Download,
+  FolderOpen,
+  GripVertical,
+  Maximize2,
+  Minimize2,
+} from 'lucide-react'
 import { type PointerEvent as ReactPointerEvent } from 'react'
 
 import { KeyboardShortcut } from './keyboard-shortcut'
@@ -15,10 +21,12 @@ import type { PanelLayout, PanelStatus, PanelTheme } from './panel-constants'
 import { StatusPill } from './status-pill'
 
 export function PanelHeader({
+  canDownload,
   collapsed,
   dragging,
   layout,
   onAllProjects,
+  onDownloadHtml,
   onDragEnd,
   onDragMove,
   onDragStart,
@@ -30,10 +38,12 @@ export function PanelHeader({
   status,
   theme,
 }: {
+  canDownload: boolean
   collapsed: boolean
   dragging: boolean
   layout: PanelLayout
   onAllProjects: () => void
+  onDownloadHtml: () => void
   onDragEnd: () => void
   onDragMove: (event: ReactPointerEvent<HTMLDivElement>) => void
   onDragStart: (event: ReactPointerEvent<HTMLDivElement>) => void
@@ -84,6 +94,21 @@ export function PanelHeader({
               All projects
               <KeyboardShortcut shortcut={KEYBOARD_SHORTCUTS.allProjects} />
             </TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                aria-label="Download HTML"
+                disabled={!canDownload}
+                onClick={onDownloadHtml}
+                size="icon-sm"
+                type="button"
+                variant="ghost"
+              >
+                <Download />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">Download HTML</TooltipContent>
           </Tooltip>
           <PanelLayoutMenu
             layout={layout}

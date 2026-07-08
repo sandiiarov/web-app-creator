@@ -12,6 +12,7 @@ import { useTheme } from '#components/theme-provider'
 
 import { ErrorBanner } from './components/error-banner'
 import { useLandingPage } from './hooks/use-landing-page'
+import { downloadProjectHtml } from './lib/projects-api'
 
 export interface EditorPageProps {
   projectId: string
@@ -87,10 +88,12 @@ export function EditorPage({ projectId }: EditorPageProps) {
         onError={setErrorMessage}
       />
       <PromptPanel
+        canDownload={!!landing.html}
         elementSelectionActive={elementSelectionActive}
         isStreaming={landing.isStreaming}
         models={landing.models}
         onAllProjects={() => navigate('/')}
+        onDownloadHtml={() => downloadProjectHtml(projectId)}
         onElementSelectionToggle={handleElementSelectionToggle}
         onModelsChange={landing.setModels}
         onSelectedElementAttachmentConsumed={() =>
