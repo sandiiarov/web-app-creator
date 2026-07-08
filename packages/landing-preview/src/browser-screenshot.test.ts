@@ -1,6 +1,6 @@
-import type { AgentMapEntry } from '@zumer/snapdom-plugins/agent-map'
 import { describe, expect, it } from 'vitest'
 
+import type { AgentMapEntry } from './agent-map-plugin.ts'
 import {
   ELEMENT_CAPTURE_PADDING_PX,
   fitScreenshotSize,

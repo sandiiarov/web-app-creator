@@ -1,10 +1,11 @@
 import type { ScreenshotMediaType } from '@workspace/prompt-panel'
 import { type CaptureResult, snapdom } from '@zumer/snapdom'
+
 import {
   agentMap,
   type AgentMapEntry,
   type AgentMapResult,
-} from '@zumer/snapdom-plugins/agent-map'
+} from './agent-map-plugin.ts'
 
 export interface CaptureProjectScreenshotInput {
   html: string
