@@ -2,117 +2,112 @@ import { createTool } from '@mastra/core/tools'
 import { z } from 'zod'
 
 import {
-  applyAnchorEdits,
-  type ApplyAnchorEdit,
-} from '../lib/html-anchor-document.ts'
-import type { HtmlStore } from '../lib/html-store.ts'
-
-const anchorEditSchema = z.object({
-  action: z
-    .string()
-    .optional()
-    .describe(
-      'One short imperative line stating what THIS edit does, shown to the user as its label (think commit message), e.g. "swap hero headline to benefit-driven copy". Each edit in the batch has its own action.',
-    ),
-  code: z
-    .string()
-    .optional()
-    .describe(
-      'HTML to write into the from/to region (replace) or at the insert point. Omit to delete the from/to region. Required for insert and for whole-document replace.',
-    ),
-  from: z
-    .string()
-    .optional()
-    .describe(
-      'Start of the region (inclusive): a real anchor from read/find, or "start" for the document beginning. Omit (with code) for whole-document replace.',
-    ),
-  insert: z
-    .enum(['after', 'before'])
-    .optional()
-    .describe(
-      'Set to insert code instead of replacing: "before"/"after" the from anchor (or a document boundary when from is omitted). Omit to replace or delete the from/to region.',
-    ),
-  to: z
-    .string()
-    .optional()
-    .describe(
-      'End of the region (inclusive): a real anchor from read/find, or "end" for the document end. Omit to target only the from line. Order-insensitive.',
-    ),
-})
-
-const editInputSchema = z.object({
-  edits: z
-    .preprocess(parseStringifiedEdits, z.array(anchorEditSchema).min(1))
-    .describe(
-      'One or more edits. All from/to anchors resolve against the original document and apply atomically. Each edit carries its own action so the user sees one label per change.',
-    ),
-})
+  HASHLINE_EDIT_GUIDANCE,
+  HASHLINE_PATH,
+} from '../lib/hashline/edit-prompt.ts'
+import { formatHashlineHeader } from '../lib/hashline/format.ts'
+import type { Filesystem } from '../lib/hashline/fs.ts'
+import { checkHtmlBalance } from '../lib/hashline/html-balance-guard.ts'
+import { splitPatchInput } from '../lib/hashline/input.ts'
+import { Patcher } from '../lib/hashline/patcher.ts'
+import type { SnapshotStore } from '../lib/hashline/snapshots.ts'
 
 /**
- * Apply anchored line-range edits to the project HTML document. Batched edits
- * are resolved against the original anchored document, validated atomically,
- * and persisted through the project store on success. Each edit's `action` is
- * surfaced to the UI as its own block. Returns concise metadata and a bounded
- * changed anchored region, never the full HTML.
+ * Apply a hashline-DSL edit to the project HTML. The `diff` must start with the
+ * `[index.html#TAG]` header from the latest read/find; the engine verifies the
+ * snapshot tag (rejecting stale/drifted references with a re-read instruction),
+ * applies the `SWAP`/`DEL`/`INS` ops, runs an HTML-tag-balance guard, then
+ * persists through the store. Throws on stale tag, malformed diff, or
+ * balance failure so the agent re-reads and retries.
  */
-export function createEditTool(store: HtmlStore) {
+export function createEditTool(
+  fs: Filesystem,
+  snapshots: SnapshotStore,
+  path: string = HASHLINE_PATH,
+) {
   return createTool({
-    description:
-      'Edit the project HTML using anchors from read/find. Each edit is { action, from?, to?, code?, insert? }. from/to accept a real anchor or the "start"/"end" sentinels for document boundaries; omit both from and to (with code) to replace the whole document (scaffold shell only — never a full finished page; build the page up with targeted section edits). Discriminate by field presence: give from (and optional to) plus code to replace a region, or omit code to delete it; set insert to "before"/"after" to insert code relative to from (or a document boundary when from is omitted). from/to are order-insensitive (resolved by document position). Each edit carries its own action shown to the user. Combine related non-overlapping edits in one call. The preview updates automatically after a successful edit. The result is concise metadata, not the full file.',
-    execute: async ({ edits }) => {
-      const result = applyAnchorEdits(store.getDocument(), toAnchorEdits(edits))
-      const bytes = store.setDocument(result.document)
-      const storedDocument = store.getDocument()
+    description: HASHLINE_EDIT_GUIDANCE,
+    execute: async ({ diff }) => {
+      const { sections } = splitPatchInput(diff)
+      if (sections.length === 0) {
+        throw new Error(
+          `Edit failed: no [${path}#TAG] header found in diff. Start the diff with the header copied verbatim from your latest read, then SWAP/DEL/INS ops with +TEXT body rows.`,
+        )
+      }
+      const patcher = new Patcher({ fs, snapshots })
+      let firstChangedLine = 0
+      let warnings: string[] = []
+      let tag = ''
+      let before = ''
+      let after = ''
+      for (const section of sections) {
+        // prepare() validates the snapshot tag — throws MismatchError on stale.
+        const prepared = await patcher.prepare(section)
+        const nextHtml = prepared.applyResult.text
+        const balance = checkHtmlBalance(nextHtml)
+        if (!balance.ok) {
+          throw new Error(
+            `Edit rejected: it would produce unbalanced HTML (${balance.issues.join('; ')}). Re-read the file and narrow the SWAP range to only the lines whose content changes.`,
+          )
+        }
+        const result = await patcher.commit(prepared)
+        firstChangedLine = result.firstChangedLine ?? 0
+        warnings = result.warnings
+        tag = result.fileHash
+        before = result.before
+        after = result.after
+      }
+      const header = tag ? formatHashlineHeader(path, tag) : ''
       return {
-        bytes,
-        changedLines: result.changedLines,
-        changedText: result.changedText,
-        checksum: storedDocument.checksum,
-        edits: result.edits,
-        firstChangedAnchor: result.firstChangedAnchor,
-        firstChangedLine: result.firstChangedLine,
-        lastChangedAnchor: result.lastChangedAnchor,
+        bytes: Buffer.byteLength(after, 'utf8'),
+        diffPreview: buildPreview(before, after),
+        firstChangedLine,
+        header,
         ok: true as const,
-        operations: result.operations,
+        tag,
+        warnings,
       }
     },
     id: 'edit',
-    inputSchema: editInputSchema,
+    inputSchema: z.object({
+      action: z
+        .string()
+        .optional()
+        .describe(
+          "One short imperative line stating what this edit does, shown to the user as this step's label.",
+        ),
+      diff: z
+        .string()
+        .min(1)
+        .describe(
+          'Hashline DSL: `[index.html#TAG]` header (TAG from latest read) then ops — `SWAP N.=M:`/`DEL N.=M`/`INS.PRE|POST|HEAD|TAIL N:` with `+TEXT` body rows.',
+        ),
+    }),
     outputSchema: z.object({
       bytes: z.number(),
-      changedLines: z.number(),
-      changedText: z.string(),
-      checksum: z.string(),
-      edits: z.array(
-        z.object({
-          action: z.string().optional(),
-          changedLines: z.number(),
-          changedText: z.string(),
-          firstChangedAnchor: z.string().optional(),
-          lastChangedAnchor: z.string().optional(),
-        }),
-      ),
-      firstChangedAnchor: z.string().optional(),
+      diffPreview: z.string(),
       firstChangedLine: z.number(),
-      lastChangedAnchor: z.string().optional(),
+      header: z.string(),
       ok: z.literal(true),
-      operations: z.number(),
+      tag: z.string(),
+      warnings: z.array(z.string()),
     }),
   })
 }
 
-function parseStringifiedEdits(value: unknown): unknown {
-  // Models occasionally pass the `edits` array as a JSON string. Parse it so
-  // the array validation can proceed; a malformed string falls through and
-  // fails validation with the usual array-type error.
-  if (typeof value !== 'string') return value
-  try {
-    return JSON.parse(value)
-  } catch {
-    return value
+/** Compact before/after preview so the UI can show what changed. */
+function buildPreview(before: string, after: string): string {
+  const beforeLines = before.split('\n')
+  const afterLines = after.split('\n')
+  const max = Math.min(3, Math.max(beforeLines.length, afterLines.length))
+  const parts: string[] = []
+  for (let i = 0; i < max; i += 1) {
+    const b = beforeLines[i] ?? ''
+    const a = afterLines[i] ?? ''
+    if (b !== a) {
+      if (b) parts.push(`- ${b}`)
+      if (a) parts.push(`+ ${a}`)
+    }
   }
-}
-
-function toAnchorEdits(edits: unknown): ApplyAnchorEdit[] {
-  return (edits as ApplyAnchorEdit[]).map((edit) => ({ ...edit }))
+  return parts.length === 0 ? '(no visible change at head)' : parts.join('\n')
 }

@@ -1,151 +1,130 @@
 import { describe, expect, it } from 'vitest'
-import { z } from 'zod'
 
+import { HtmlStoreFilesystem } from '../lib/hashline/html-store-filesystem.ts'
+import { createSnapshotStore } from '../lib/hashline/snapshot-store.ts'
 import { createHtmlStore } from '../lib/html-store.ts'
 import { createEditTool } from './edit.ts'
+import { createReadTool } from './read.ts'
+
+const DOC = [
+  '<!doctype html>',
+  '<html>',
+  '  <body>',
+  '    <h1>Old</h1>',
+  '  </body>',
+  '</html>',
+].join('\n')
+
+/** Read the doc once and return its fresh snapshot tag. */
+async function freshTag(
+  read: ReturnType<typeof createReadTool>,
+): Promise<string> {
+  const res = (await read.execute?.(
+    { action: 'read' },
+    undefined as never,
+  )) as { tag: string }
+  return res.tag
+}
+
+function makeTools(seed: string = DOC) {
+  const store = createHtmlStore(seed)
+  const fs = new HtmlStoreFilesystem(store)
+  const snapshots = createSnapshotStore()
+  return {
+    edit: createEditTool(fs, snapshots),
+    read: createReadTool(fs, snapshots),
+    store,
+  }
+}
 
 describe('createEditTool', () => {
-  it('emits an OpenRouter-compatible JSON schema for from/to/code/insert edits', () => {
-    const tool = createEditTool(createHtmlStore())
-    const schemaText = JSON.stringify(
-      z.toJSONSchema(tool.inputSchema as z.ZodType),
-    )
-
-    // Named optional fields, not a positional range array.
-    expect(schemaText).toContain('"action"')
-    expect(schemaText).toContain('"enum":["after","before"]')
-    // action is optional; the only required field is the edits array.
-    expect(schemaText).toContain('"required":["edits"]')
-    expect(schemaText).not.toContain('"required":["action"]')
-    expect(schemaText).not.toContain('"items":[]')
-    expect(schemaText).not.toContain('"maxItems"')
-  })
-
-  it('coerces a stringified edits array into a real array', () => {
-    const tool = createEditTool(createHtmlStore())
-    const parsed = (tool.inputSchema as z.ZodType).parse({
-      edits: JSON.stringify([{ action: 'x', code: '<p>y</p>' }]),
-    }) as { edits: unknown }
-    expect(Array.isArray(parsed.edits)).toBe(true)
-    expect(
-      (parsed.edits as { action: string; code: string }[])[0],
-    ).toMatchObject({
-      action: 'x',
-      code: '<p>y</p>',
-    })
-  })
-
-  it('applies anchor-range edits and returns metadata without full HTML', async () => {
-    const store = createHtmlStore('<main>\n  <h1>Hello</h1>\n</main>\n')
-    const tool = createEditTool(store)
-
-    const result = await tool.execute?.(
+  it('SWAP a line with a fresh tag succeeds and returns a fresh tag', async () => {
+    const { edit, read, store } = makeTools()
+    const tag = await freshTag(read)
+    const res = (await edit.execute?.(
       {
-        edits: [
-          {
-            action: 'Update hero heading',
-            code: '  <h1>Hi</h1>',
-            from: 'a2',
-          },
-        ],
+        action: 'swap headline',
+        diff: `[index.html#${tag}]\nSWAP 4.=4:\n    <h1>New</h1>`,
       },
       undefined as never,
-    )
-
-    if (!result || !('changedText' in result)) {
-      throw new Error('Expected edit tool to return edit metadata')
-    }
-
-    expect(store.get()).toContain('<h1>Hi</h1>')
-    expect(result).toMatchObject({
-      changedLines: 1,
-      checksum: expect.stringMatching(/^sha256:/),
-      firstChangedAnchor: 'a4',
-      firstChangedLine: 2,
-      lastChangedAnchor: 'a4',
-      ok: true,
-      operations: 1,
-    })
-    expect(result.changedText).toContain('a4|  <h1>Hi</h1>')
-    expect(result).not.toHaveProperty('html')
-    expect(result).not.toHaveProperty('diff')
-    expect(result).not.toHaveProperty('patch')
+    )) as { ok: true; tag: string }
+    expect(res.ok).toBe(true)
+    expect(res.tag).toMatch(/^[0-9A-F]{4}$/)
+    expect(store.get()).toContain('<h1>New</h1>')
+    expect(store.get()).not.toContain('<h1>Old</h1>')
   })
 
-  it('applies multiple edit operations against the original anchors', async () => {
-    const store = createHtmlStore(
-      '<main>\n  <h1>Hello</h1>\n  <p>World</p>\n</main>\n',
-    )
-    const tool = createEditTool(store)
-
-    await tool.execute?.(
-      {
-        edits: [
-          {
-            action: 'Update hero copy',
-            code: '  <h1>Hi</h1>',
-            from: 'a2',
-          },
-          {
-            action: 'Insert CTA',
-            code: '  <a href="#cta">Start</a>',
-            from: 'a3',
-            insert: 'after',
-          },
-        ],
-      },
-      undefined as never,
-    )
-
-    expect(store.get()).toBe(
-      '<main>\n  <h1>Hi</h1>\n  <p>World</p>\n  <a href="#cta">Start</a>\n</main>\n',
-    )
-    expect(store.getDocument().lines).toEqual([
-      ['a1', '<main>'],
-      ['a5', '  <h1>Hi</h1>'],
-      ['a3', '  <p>World</p>'],
-      ['a6', '  <a href="#cta">Start</a>'],
-      ['a4', '</main>'],
-    ])
-  })
-
-  it('supports whole-document replacement with range []', async () => {
-    const store = createHtmlStore('<main>Old</main>\n')
-    const tool = createEditTool(store)
-
-    await tool.execute?.(
-      {
-        edits: [
-          {
-            action: 'Replace full document',
-            code: '<!doctype html>\n<html></html>',
-          },
-        ],
-      },
-      undefined as never,
-    )
-
-    expect(store.get()).toBe('<!doctype html>\n<html></html>')
-  })
-
-  it('rejects stale anchors without mutating the store', async () => {
-    const store = createHtmlStore('<main>\n  <h1>Hello</h1>\n</main>\n')
-    const tool = createEditTool(store)
-
+  it('rejects a fabricated tag (never read) with a re-read instruction', async () => {
+    const { edit, store } = makeTools()
+    const before = store.get()
     await expect(
-      tool.execute?.(
+      edit.execute?.(
         {
-          edits: [
-            {
-              action: 'Try stale edit',
-              code: '  <h1>Hi</h1>',
-              from: 'missing',
-            },
-          ],
+          action: 'fabricated',
+          diff: '[index.html#DEAD]\nSWAP 4.=4:\n    <h1>x</h1>',
         },
         undefined as never,
       ),
-    ).rejects.toThrow('missing anchor')
-    expect(store.get()).toBe('<main>\n  <h1>Hello</h1>\n</main>\n')
+    ).rejects.toThrow(/no read snapshot|fabricated|Re-read|mismatch/i)
+    expect(store.get()).toBe(before) // nothing written
+  })
+
+  it('rejects an edit that would unbalance <style> (eaten closer)', async () => {
+    const styleDoc = [
+      '<!doctype html>',
+      '<html>',
+      '  <head>',
+      '    <style>',
+      '      a { color: red; }',
+      '    </style>',
+      '  </head>',
+      '  <body>',
+      '  </body>',
+      '</html>',
+    ].join('\n')
+    const { edit, read, store } = makeTools(styleDoc)
+    const tag = await freshTag(read)
+    const before = store.get()
+    // DEL line 6 (the </style> closer) → unbalanced <style>
+    await expect(
+      edit.execute?.(
+        { action: 'eat closer', diff: `[index.html#${tag}]\nDEL 6.=6` },
+        undefined as never,
+      ),
+    ).rejects.toThrow(/unbalanced/i)
+    expect(store.get()).toBe(before) // rejected before write
+  })
+
+  it('DEL a line removes it', async () => {
+    const { edit, read, store } = makeTools()
+    const tag = await freshTag(read)
+    await edit.execute?.(
+      { action: 'del h1', diff: `[index.html#${tag}]\nDEL 4.=4` },
+      undefined as never,
+    )
+    expect(store.get()).not.toContain('<h1>Old</h1>')
+  })
+
+  it('INS.POST inserts after the anchor', async () => {
+    const { edit, read, store } = makeTools()
+    const tag = await freshTag(read)
+    await edit.execute?.(
+      {
+        action: 'add paragraph',
+        diff: `[index.html#${tag}]\nINS.POST 4:\n    <p>added</p>`,
+      },
+      undefined as never,
+    )
+    expect(store.get()).toContain('<p>added</p>')
+  })
+
+  it('throws on a diff without a [path#TAG] header', async () => {
+    const { edit } = makeTools()
+    await expect(
+      edit.execute?.(
+        { action: 'no header', diff: 'SWAP 1.=1:\n+x' },
+        undefined as never,
+      ),
+    ).rejects.toThrow(/no \[index\.html#TAG\] header/i)
   })
 })

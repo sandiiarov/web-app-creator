@@ -1,3 +1,7 @@
+import type { Filesystem } from '../lib/hashline/fs.ts'
+import { HtmlStoreFilesystem } from '../lib/hashline/html-store-filesystem.ts'
+import { createSnapshotStore } from '../lib/hashline/snapshot-store.ts'
+import type { SnapshotStore } from '../lib/hashline/snapshots.ts'
 import type { HtmlStore } from '../lib/html-store.ts'
 import { createEditTool } from './edit.ts'
 import { createFindTool } from './find.ts'
@@ -21,9 +25,11 @@ type LandingTool =
 
 interface LandingToolContext {
   baseUrl: string
+  fs: Filesystem
   imageModel?: string
   projectId?: string
   requestScreenshot?: RequestBrowserScreenshot
+  snapshots: SnapshotStore
   store: HtmlStore
   turnId?: string
   visionModel?: string
@@ -59,18 +65,18 @@ const LANDING_TOOL_DEFINITIONS = [
   ),
   tool(
     'read',
-    'Use `read` to inspect the current project HTML as compact `anchor|text` lines. Use the returned anchors in `edit` from/to; do not copy raw HTML snippets.',
-    ({ store }) => createReadTool(store),
+    'Use `read` to inspect the current project HTML as a hashline section: a `[index.html#TAG]` header (copy the TAG into your next edit) followed by `N:TEXT` rows. Reference those line numbers in edit SWAP/DEL/INS ops.',
+    ({ fs, snapshots }) => createReadTool(fs, snapshots),
   ),
   tool(
     'find',
-    'Use `find` to locate text or CSS anchors before editing. Literal search is the default; set `regex=true` only when needed. It returns compact `anchor|text` lines with optional context.',
-    ({ store }) => createFindTool(store),
+    'Use `find` to locate text in the project HTML before editing. Literal search is the default; set `regex=true` only when needed. Returns a hashline section (`[index.html#TAG]` + `N:TEXT` rows) for matches with optional context; copy the TAG into your next edit.',
+    ({ fs, snapshots }) => createFindTool(fs, snapshots),
   ),
   tool(
     'edit',
-    'Use `edit` to change the project HTML with `edits: [{ action, from?, to?, code?, insert? }]`. Set `from`/`to` to target a region; give `code` to replace it or omit `code` to delete it; set `insert: "before"/"after"` to add code relative to `from`. Omit `from`/`to` and give `code` to replace the whole document (initial page). `from`/`to` are order-insensitive. For a new placeholder draft: `edit({ edits: [{ action: "Create initial page", code: "<!doctype html>..." }] })`. Combine related non-overlapping changes in one call. Use `read` or `find` first for follow-up edits, then target the smallest safe regions. Never call `edit` with an empty `edits` array. After every successful edit the project document is written and the preview updates automatically. The edit result is concise metadata, not the full file; use `read` or `find` again before follow-up edits.',
-    ({ store }) => createEditTool(store),
+    'Use `edit` to change the project HTML with `{ action, diff }`. `diff` is hashline DSL: a `[index.html#TAG]` header (TAG from your latest read/find) then `SWAP N.=M:`/`DEL N.=M`/`INS.PRE|POST|HEAD|TAIL N:` ops with `+TEXT` body rows. Line numbers come from read/find and refer to the original file. Touch only lines your read displayed; ranges cover only changed lines (pure additions use INS, never a widened SWAP). For a new draft: `edit({ action: "Create initial page", diff: "[index.html#TAG]\\nINS.HEAD:\\n+<!doctype html>..." })` using a fresh read tag, or scaffold then build up with targeted section edits. On stale-tag rejection, re-read before retrying. The preview updates automatically after a successful edit; the result is concise metadata plus the fresh TAG for your next edit.',
+    ({ fs, snapshots }) => createEditTool(fs, snapshots),
   ),
   tool(
     'screenshot',
@@ -106,14 +112,18 @@ export function createLandingTools(
     visionModel?: string
   } = {},
 ): Record<string, LandingTool> {
+  const fs = new HtmlStoreFilesystem(store)
+  const snapshots = createSnapshotStore()
   return Object.fromEntries(
     LANDING_TOOL_DEFINITIONS.map(({ create, id }) => [
       id,
       create({
         baseUrl,
+        fs,
         imageModel: options.imageModel,
         projectId: options.projectId,
         requestScreenshot,
+        snapshots,
         store,
         turnId: options.turnId,
         visionModel: options.visionModel,

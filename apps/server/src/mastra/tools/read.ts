@@ -1,26 +1,56 @@
 import { createTool } from '@mastra/core/tools'
 import { z } from 'zod'
 
-import { readHtmlDocumentLines } from '../lib/html-anchor-document.ts'
-import type { HtmlStore } from '../lib/html-store.ts'
+import {
+  HASHLINE_PATH,
+  HASHLINE_READ_GUIDANCE,
+} from '../lib/hashline/edit-prompt.ts'
+import { formatHashlineHeader } from '../lib/hashline/format.ts'
+import type { Filesystem } from '../lib/hashline/fs.ts'
+import { splitLines } from '../lib/hashline/shared.ts'
+import type { SnapshotStore } from '../lib/hashline/snapshots.ts'
 
 /**
- * Read lines of the project HTML as compact anchored text (`anchor|text`).
- * `from`/`to` select an inclusive anchor region (order-insensitive); omit
- * both to read from the start. `limit` caps the line count (default 2000).
- * `action` is surfaced to the UI as the label for this step.
+ * Read the project HTML as a hashline section: a `[index.html#TAG]` snapshot
+ * header followed by `N:TEXT` rows. Records a content-hash snapshot so the
+ * next `edit` can verify the tag (rejecting stale references). `offset`/`limit`
+ * page through large documents.
  */
-export function createReadTool(store: HtmlStore) {
+export function createReadTool(
+  fs: Filesystem,
+  snapshots: SnapshotStore,
+  path: string = HASHLINE_PATH,
+) {
   return createTool({
-    description:
-      'Read the current project HTML as compact anchored lines in the form anchor|text. Use the returned anchors in edit from/to; do not copy raw HTML snippets. Omit from/to to read from the start; set from (and optional to) to read a region (order-insensitive). limit caps the line count. Always pass an action: one short imperative line on what you are checking (shown to the user as the label for this step).',
-    execute: async ({ from, limit, to }) => {
-      const result = readHtmlDocumentLines(store.getDocument(), {
-        from,
-        limit,
-        to,
-      })
-      return { ...result, ok: true as const }
+    description: HASHLINE_READ_GUIDANCE,
+    execute: async ({ limit, offset }) => {
+      const html = await fs.readText(path)
+      const lines = splitLines(html)
+      const startLine = offset ?? 1
+      const endLine = limit
+        ? Math.min(startLine + limit - 1, lines.length)
+        : lines.length
+      const visible = lines.slice(startLine - 1, endLine)
+      const seenLines: number[] = []
+      for (let n = startLine; n <= endLine; n += 1) seenLines.push(n)
+      const tag = await snapshots.record(path, html, seenLines)
+      const header = formatHashlineHeader(path, tag)
+      const body = visible
+        .map((text, index) => `${startLine + index}:${text}`)
+        .join('\n')
+      const truncated = endLine < lines.length
+      const notice = truncated
+        ? `\n[Showing lines ${startLine}-${endLine} of ${lines.length}; call read with offset=${endLine + 1} to continue]`
+        : ''
+      return {
+        endLine,
+        ok: true as const,
+        startLine,
+        tag,
+        text: `${header}\n${body}${notice}`,
+        totalLines: lines.length,
+        truncated,
+      }
     },
     id: 'read',
     inputSchema: z.object({
@@ -28,36 +58,29 @@ export function createReadTool(store: HtmlStore) {
         .string()
         .optional()
         .describe(
-          'One short imperative line stating what you are reading, shown to the user as this step\'s label (think commit message), e.g. "review current hero markup anchors"',
-        ),
-      from: z
-        .string()
-        .optional()
-        .describe(
-          'Start of the region (inclusive): a real anchor from read/find, or "start" for the document beginning. Omit to read from the start.',
+          "One short imperative line on what you are reading, shown to the user as this step's label.",
         ),
       limit: z
         .number()
         .int()
         .positive()
         .optional()
-        .describe('Max lines to return (default 2000)'),
-      to: z
-        .string()
+        .describe('Max lines to return (default: whole document).'),
+      offset: z
+        .number()
+        .int()
+        .positive()
         .optional()
-        .describe(
-          'End of the region (inclusive): a real anchor from read/find, or "end" for the document end. Omit to read only the from line. Order-insensitive.',
-        ),
+        .describe('1-based line to start reading from (default 1).'),
     }),
     outputSchema: z.object({
-      checksum: z.string(),
-      endAnchor: z.string().optional(),
-      lines: z.number(),
+      endLine: z.number(),
       ok: z.literal(true),
-      startAnchor: z.string().optional(),
+      startLine: z.number(),
+      tag: z.string(),
       text: z.string(),
       totalLines: z.number(),
-      truncatedLines: z.boolean(),
+      truncated: z.boolean(),
     }),
   })
 }

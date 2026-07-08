@@ -1,50 +1,76 @@
 import { describe, expect, it } from 'vitest'
 
+import { HtmlStoreFilesystem } from '../lib/hashline/html-store-filesystem.ts'
+import { createSnapshotStore } from '../lib/hashline/snapshot-store.ts'
 import { createHtmlStore } from '../lib/html-store.ts'
 import { createFindTool } from './find.ts'
 
+type FindResult = {
+  matchCount: number
+  matchLimitReached: boolean
+  ok: true
+  returnedLines: number
+  tag: string
+  text: string
+  totalLines: number
+}
+
+function makeTools(seed?: string) {
+  const store = createHtmlStore(seed)
+  return {
+    find: createFindTool(new HtmlStoreFilesystem(store), createSnapshotStore()),
+    store,
+  }
+}
+
 describe('createFindTool', () => {
-  it('finds literal text and returns compact anchored context', async () => {
-    const store = createHtmlStore(
-      '<main>\n  <h1>Hello</h1>\n  <p>World</p>\n</main>',
+  it('returns matching N:TEXT rows + a snapshot tag', async () => {
+    const { find } = makeTools(
+      '<html>\n<body>\n<h1>Title</h1>\n<p>Body</p>\n</body>\n</html>',
     )
-    const tool = createFindTool(store)
-
-    const result = await tool.execute?.(
-      { action: 'Find heading anchors', context: 1, text: 'Hello' },
+    const res = (await find.execute?.(
+      { action: 'find title', text: 'Title' },
       undefined as never,
-    )
-
-    expect(result).toMatchObject({
-      checksum: expect.stringMatching(/^sha256:/),
-      matchCount: 1,
-      ok: true,
-      returnedLines: 3,
-      text: 'a1|<main>\na2|  <h1>Hello</h1>\na3|  <p>World</p>',
-      totalLines: 4,
-      truncatedLines: false,
-    })
+    )) as FindResult
+    expect(res.ok).toBe(true)
+    expect(res.matchCount).toBe(1)
+    expect(res.tag).toMatch(/^[0-9A-F]{4}$/)
+    expect(res.text.startsWith('[index.html#')).toBe(true)
+    expect(res.text).toContain('Title')
   })
 
-  it('supports regex mode without throwing on invalid regex', async () => {
-    const store = createHtmlStore('<main><h1>Hello</h1></main>')
-    const tool = createFindTool(store)
-
-    const match = await tool.execute?.(
-      { action: 'Find heading tags', regex: true, text: '<h\\d>' },
+  it('reports no matches without erroring', async () => {
+    const { find } = makeTools('<html>\n<body>\n<p>x</p>\n</body>\n</html>')
+    const res = (await find.execute?.(
+      { action: 'find missing', text: 'nope' },
       undefined as never,
-    )
-    const invalid = await tool.execute?.(
-      { action: 'Try invalid pattern', regex: true, text: '[' },
-      undefined as never,
-    )
+    )) as FindResult
+    expect(res.ok).toBe(true)
+    expect(res.matchCount).toBe(0)
+    expect(res.text).toContain('no matches')
+  })
 
-    expect(match).toMatchObject({ matchCount: 1, ok: true })
-    expect(invalid).toMatchObject({
-      error: expect.stringContaining('Invalid regex'),
-      matchCount: 0,
-      ok: false,
-      text: '',
-    })
+  it('regex search respects the pattern', async () => {
+    const { find } = makeTools('<ul>\n<li>apple</li>\n<li>banana</li>\n</ul>')
+    const res = (await find.execute?.(
+      { action: 'find li', regex: true, text: '<li>' },
+      undefined as never,
+    )) as FindResult
+    expect(res.matchCount).toBe(2)
+  })
+
+  it('context lines are included in the output', async () => {
+    const { find } = makeTools(
+      '<main>\n  <h1>Hello</h1>\n  <p>World</p>\n</main>',
+    )
+    const res = (await find.execute?.(
+      { action: 'find with ctx', context: 1, text: 'Hello' },
+      undefined as never,
+    )) as FindResult
+    expect(res.matchCount).toBe(1)
+    // context=1 → the match line plus one before and one after
+    expect(res.returnedLines).toBe(3)
+    expect(res.text).toContain('Hello')
+    expect(res.text).toContain('World')
   })
 })
