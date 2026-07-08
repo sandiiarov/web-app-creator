@@ -66,6 +66,9 @@ catalogs:
     lucide-react:
       specifier: ^1.17.0
       version: 1.17.0
+    morphdom:
+      specifier: ^2.7.8
+      version: 2.7.8
     oxfmt:
       specifier: ^0.52.0
       version: 0.52.0
@@ -301,6 +304,9 @@ importers:
       '@zumer/snapdom':
         specifier: 'catalog:'
         version: 2.12.9
+      morphdom:
+        specifier: 'catalog:'
+        version: 2.7.8
     devDependencies:
       '@types/node':
         specifier: 'catalog:'
@@ -4342,6 +4348,9 @@ packages:
 
   minimist@1.2.8:
     resolution: {integrity: sha512-2yyAR8qBkN3YuheJanUpWC5U3bb5osDywNB8RzDVlDwDHbocAJveqqj1u8+SVD7jkWT4yvsHCpWqqWqAxb0zCA==}
+
+  morphdom@2.7.8:
+    resolution: {integrity: sha512-D/fR4xgGUyVRbdMGU6Nejea1RFzYxYtyurG4Fbv2Fi/daKlWKuXGLOdXtl+3eIwL110cI2hz1ZojGICjjFLgTg==}
 
   ms@2.1.3:
     resolution: {integrity: sha512-6FlzubTLZG3J2a/NVCAleEhjzq5oxgHyaCU9yYXvcLsvoVaHJq/s5xXI6/XXP6tz7R9xAOtHnSO/tXtF3WRTlA==}
@@ -9362,6 +9371,8 @@ snapshots:
       brace-expansion: 5.0.6
 
   minimist@1.2.8: {}
+
+  morphdom@2.7.8: {}
 
   ms@2.1.3: {}
 

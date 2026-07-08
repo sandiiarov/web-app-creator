@@ -20,7 +20,8 @@
   },
   "dependencies": {
     "@workspace/prompt-panel": "workspace:*",
-    "@zumer/snapdom": "catalog:"
+    "@zumer/snapdom": "catalog:",
+    "morphdom": "catalog:"
   },
   "devDependencies": {
     "@types/node": "catalog:",
