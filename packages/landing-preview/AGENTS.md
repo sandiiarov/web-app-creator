@@ -27,7 +27,7 @@
 
 ## Work Guidance
 
-- Keep screenshot capture defensive: invalid selectors, missing/zero-size elements, decode failures, iframe load timeout, and dimensions over 4096 must throw actionable errors the caller can forward to the server.
+- Keep screenshot capture defensive: invalid selectors, missing/zero-size elements, decode failures, and iframe load timeout must throw actionable errors the caller can forward to the server. Oversized elements (any side over 4096) are NOT rejected — `fitScreenshotSize` downscales them (aspect-ratio preserved) so the OCR/vision model receives a model-safe image regardless of element size.
 - Preserve the `about:srcdoc` base-tag behavior so generated `#section` links resolve inside the iframe without mutating persisted project HTML.
 - When preview behavior changes, update `src/` plus tests here, and verify the client still typechecks/lints/builds.
 
