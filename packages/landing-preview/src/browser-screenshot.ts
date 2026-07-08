@@ -53,9 +53,8 @@ const SCREENSHOT_VIEWPORT_DIMENSIONS: Record<
 export async function captureElementScreenshot(
   target: Element,
 ): Promise<ElementScreenshotCapture> {
-  const targetSize = getElementScreenshotSize(target)
-  const paddedSize = getPaddedScreenshotSize(targetSize)
-  ensureSupportedScreenshotSize(paddedSize)
+  const fullSize = getElementScreenshotSize(target)
+  const { paddedSize, targetSize } = fitScreenshotSize(fullSize)
 
   const blob = await snapdom.toBlob(target, {
     backgroundColor: CAPTURE_BACKGROUND,
@@ -120,6 +119,37 @@ export async function captureProjectScreenshot({
   }
 }
 
+/**
+ * Fit an element capture within MAX_SCREENSHOT_DIMENSION by downscaling
+ * (aspect-ratio preserved) instead of rejecting tall/wide elements. The OCR /
+ * vision model receives a model-safe image no matter how tall the captured
+ * element is.
+ */
+export function fitScreenshotSize(targetSize: {
+  height: number
+  width: number
+}): {
+  paddedSize: { height: number; width: number }
+  targetSize: { height: number; width: number }
+} {
+  // Scale against the target dim (cap minus padding) so the padded result
+  // stays within MAX_SCREENSHOT_DIMENSION.
+  const maxTarget = MAX_SCREENSHOT_DIMENSION - ELEMENT_CAPTURE_PADDING_PX * 2
+  const longest = Math.max(targetSize.width, targetSize.height)
+  if (longest <= maxTarget) {
+    return { paddedSize: getPaddedScreenshotSize(targetSize), targetSize }
+  }
+  const scale = maxTarget / longest
+  const scaledTarget = {
+    height: Math.max(1, Math.floor(targetSize.height * scale)),
+    width: Math.max(1, Math.floor(targetSize.width * scale)),
+  }
+  return {
+    paddedSize: getPaddedScreenshotSize(scaledTarget),
+    targetSize: scaledTarget,
+  }
+}
+
 export function getPaddedScreenshotSize(
   size: { height: number; width: number },
   padding = ELEMENT_CAPTURE_PADDING_PX,
@@ -167,20 +197,6 @@ function dataUrlByteSize(dataUrl: string) {
   const base64 = dataUrl.split(',', 2)[1] ?? ''
   const padding = base64.endsWith('==') ? 2 : base64.endsWith('=') ? 1 : 0
   return Math.max(0, Math.floor((base64.length * 3) / 4) - padding)
-}
-
-function ensureSupportedScreenshotSize(size: {
-  height: number
-  width: number
-}) {
-  if (
-    size.width > MAX_SCREENSHOT_DIMENSION ||
-    size.height > MAX_SCREENSHOT_DIMENSION
-  ) {
-    throw new Error(
-      `Selected element screenshot is too large (${size.width}×${size.height}). Choose a smaller selector.`,
-    )
-  }
 }
 
 function getElementScreenshotSize(element: Element) {
