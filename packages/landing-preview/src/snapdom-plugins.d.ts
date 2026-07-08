@@ -7,42 +7,44 @@
 declare module '@zumer/snapdom-plugins/agent-map' {
   /** Minimal Set-of-Marks entry: index, accessible-name, role, bbox, state. */
   export interface AgentMapEntry {
+    /** Bounding box relative to the captured root: [x, y, width, height]. */
+    b: [number, number, number, number]
     /** Badge index (matches the number drawn on the annotated image). */
     i: number
     /** Accessible name (aria-label / text / title / label). */
     n: string
     /** Derived role (explicit role, else tag-derived, e.g. button/link/heading). */
     r: string
-    /** Bounding box relative to the captured root: [x, y, width, height]. */
-    b: [number, number, number, number]
     /** Meaningful states only (checked/disabled/focus/expanded/pressed/selected/value/covered). */
     s?: Record<string, unknown>
   }
 
-  export interface AgentMapResult {
-    dimensions: { height: number; width: number }
-    map: AgentMapEntry[]
-    /** Annotated/raw data URL; absent when `image: false`. */
-    image?: string
-  }
-
   export interface AgentMapOptions {
-    /** 'annotated' draws numbered badges; 'raw' omits badges; false skips rasterize. */
-    image?: 'annotated' | false | 'raw'
     /** 'minimal' = {i,n,r,b,s?}; 'full' adds text + attrs. */
     fields?: 'full' | 'minimal'
-    /** Include non-interactive semantic elements (headings, landmarks, paragraphs). */
-    semantic?: boolean
-    /** Downscale target for the rasterized image. */
-    maxImageWidth?: number
+    /** 'annotated' draws numbered badges; 'raw' omits badges; false skips rasterize. */
+    image?: 'annotated' | 'raw' | false
     imageFormat?: 'jpg' | 'png' | 'webp'
     imageQuality?: number
     interactiveSelector?: string
-    semanticSelector?: string
     labelStyle?: Record<string, string>
+    /** Downscale target for the rasterized image. */
+    maxImageWidth?: number
+    /** Include non-interactive semantic elements (headings, landmarks, paragraphs). */
+    semantic?: boolean
+    semanticSelector?: string
   }
 
-  export function agentMap(options?: AgentMapOptions): import('@zumer/snapdom').SnapdomPlugin
+  export interface AgentMapResult {
+    dimensions: { height: number; width: number }
+    /** Annotated/raw data URL; absent when `image: false`. */
+    image?: string
+    map: AgentMapEntry[]
+  }
+
+  export function agentMap(
+    options?: AgentMapOptions,
+  ): import('@zumer/snapdom').SnapdomPlugin
 }
 
 declare module '@zumer/snapdom-plugins' {

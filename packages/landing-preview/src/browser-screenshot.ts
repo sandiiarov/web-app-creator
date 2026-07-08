@@ -1,5 +1,10 @@
 import type { ScreenshotMediaType } from '@workspace/prompt-panel'
-import { snapdom } from '@zumer/snapdom'
+import { type CaptureResult, snapdom } from '@zumer/snapdom'
+import {
+  agentMap,
+  type AgentMapEntry,
+  type AgentMapResult,
+} from '@zumer/snapdom-plugins/agent-map'
 
 export interface CaptureProjectScreenshotInput {
   html: string
@@ -27,6 +32,8 @@ export type ScreenshotCapture = Exclude<
 export type ScreenshotResponseInput =
   | {
       dataUrl: string
+      /** Set-of-Marks element map (one line per interactive element); '' when empty. */
+      elementMap: string
       height: number
       mediaType: ScreenshotMediaType
       width: number
@@ -56,13 +63,20 @@ export async function captureElementScreenshot(
   const fullSize = getElementScreenshotSize(target)
   const { paddedSize, targetSize } = fitScreenshotSize(fullSize)
 
-  const blob = await snapdom.toBlob(target, {
+  // Instance snapdom form so the agent-map plugin's exports surface on the
+  // result. image:'annotated' draws numbered badges on the shared clone (so
+  // the OCR image carries them) and extracts the Set-of-Marks map in afterClone.
+  const result = await snapdom(target, {
     backgroundColor: CAPTURE_BACKGROUND,
     dpr: 1,
     height: targetSize.height,
+    plugins: [agentMap({ fields: 'minimal', image: 'annotated' })],
+    width: targetSize.width,
+  })
+
+  const blob = await result.toBlob({
     quality: CAPTURE_QUALITY,
     type: 'jpeg',
-    width: targetSize.width,
   })
   const { dataUrl, size } = await createPaddedDataUrl(
     blob,
@@ -70,8 +84,11 @@ export async function captureElementScreenshot(
     paddedSize,
   )
 
+  const elementMap = await readElementMap(result)
+
   return {
     dataUrl,
+    elementMap,
     height: paddedSize.height,
     mediaType: 'image/jpeg',
     size,
@@ -150,6 +167,17 @@ export function fitScreenshotSize(targetSize: {
   }
 }
 
+/**
+ * Format a Set-of-Marks entry list as `<i> <role> "<name>" @x,y w×h [state]`,
+ * one per line. Empty/missing map → ''. Bounding boxes are relative to the
+ * captured root (agent spatial grounding; the model receives the OCR transcript,
+ * not the raw image, so absolute scale is informational).
+ */
+export function formatElementMap(map: AgentMapEntry[] | undefined): string {
+  if (!map || map.length === 0) return ''
+  return map.map(formatElementMapEntry).join('\n')
+}
+
 export function getPaddedScreenshotSize(
   size: { height: number; width: number },
   padding = ELEMENT_CAPTURE_PADDING_PX,
@@ -197,6 +225,21 @@ function dataUrlByteSize(dataUrl: string) {
   const base64 = dataUrl.split(',', 2)[1] ?? ''
   const padding = base64.endsWith('==') ? 2 : base64.endsWith('=') ? 1 : 0
   return Math.max(0, Math.floor((base64.length * 3) / 4) - padding)
+}
+
+function formatElementMapEntry(entry: AgentMapEntry): string {
+  const [x, y, width, height] = entry.b
+  const name = entry.n ? ` "${entry.n}"` : ''
+  const state = entry.s
+    ? ` ${Object.entries(entry.s)
+        .map(([key, value]) => `${key}=${formatStateValue(value)}`)
+        .join(' ')}`
+    : ''
+  return `${entry.i} ${entry.r}${name} @${x},${y} ${width}×${height}${state}`
+}
+
+function formatStateValue(value: unknown): string {
+  return typeof value === 'string' ? value : String(value)
 }
 
 function getElementScreenshotSize(element: Element) {
@@ -251,6 +294,25 @@ function queryScreenshotTarget(doc: Document, selector: string): Element {
   }
 
   return target
+}
+
+/**
+ * Read the agent-map Set-of-Marks from a snapdom capture result and format it
+ * as a compact one-line-per-element string. Returns '' when the plugin did not
+ * attach its export or produced no entries. Never throws — a missing map must
+ * not fail the screenshot (the OCR transcript is still valuable).
+ */
+async function readElementMap(result: CaptureResult): Promise<string> {
+  const toAgentMap = result.toAgentMap as
+    | ((opts?: { image?: false }) => Promise<AgentMapResult>)
+    | undefined
+  if (typeof toAgentMap !== 'function') return ''
+  try {
+    const { map } = await toAgentMap({ image: false })
+    return formatElementMap(map)
+  } catch {
+    return ''
+  }
 }
 
 async function waitForFonts(doc: Document) {
