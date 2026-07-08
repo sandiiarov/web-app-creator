@@ -44,7 +44,7 @@ const MAX_EDIT_FAILURES = 10
 const MAX_STEPS = 30
 const REPEATED_EDIT_FAILURE_MESSAGE = `Edit failed ${MAX_EDIT_FAILURES} times in this turn. Stopping so the agent does not keep making blind edit attempts. Read/find the current project HTML and try again.`
 const INVALID_EDIT_RESULT_MESSAGE =
-  'Edit failed because the model did not provide a valid edits array. Retry with edit({ edits: [{ action, from?, to?, code?, insert? }] }).'
+  'Edit failed: the diff was missing or malformed. Retry with edit({ action, diff: "[index.html#TAG]\\nSWAP N.=M:\\n+TEXT" }) using the #TAG from your latest read/find.'
 const NO_GENERATED_HTML_MESSAGE =
   'Agent finished without generating project HTML. The draft still has no content because no successful edit changed the page.'
 const SCREENSHOT_UNAVAILABLE_REASON =
@@ -237,9 +237,6 @@ export async function streamLandingAgent({
   // Track per-call action from the tool-call chunk (tool-result args can be
   // absent), so we can echo it on the done/error states too.
   const callAction = new Map<string, null | string>()
-  // Fan-out: one provider `edit` call with N edits renders as N blocks. Map
-  // the provider toolCallId to the per-edit sub-ids so tool-result can match.
-  const editSubIds = new Map<string, string[]>()
   let toolCallSeq = 0
   // Track Firecrawl credits and calculate scrape cost from the configured rate.
   let scrapeCredits = 0
@@ -387,33 +384,6 @@ export async function streamLandingAgent({
           )
           callAction.set(chunk.payload.toolCallId, display.action)
 
-          // Edit fan-out: a batched edit call (N >= 2 edits) renders as N
-          // running blocks, each carrying its own action, instead of one.
-          const editActions =
-            chunk.payload.toolName === 'edit' ? editActionsFromArgs(args) : null
-          if (editActions) {
-            // A `tool-call-input-streaming-start` may have already created a
-            // provisional block (display.id) for this providerId. The fan-out
-            // replaces it with N per-edit blocks — drop the provisional from
-            // the recorded turn and the UI so it is not orphaned as "no result".
-            emit('tool_call_drop', { id: display.id })
-            const subIds = editActions.map((_, index) =>
-              editSubId(toolCallSeq, index),
-            )
-            editSubIds.set(chunk.payload.toolCallId, subIds)
-            for (const [index, action] of editActions.entries()) {
-              const toolPayload: RecordedToolPayload = {
-                action: action ?? null,
-                id: subIds[index]!,
-                providerId: chunk.payload.toolCallId,
-                state: 'running',
-                tool: chunk.payload.toolName,
-              }
-              emit('tool_call', toolPayload)
-            }
-            break
-          }
-
           const toolPayload: RecordedToolPayload = {
             action: display.action,
             detail: display.detail,
@@ -500,62 +470,6 @@ export async function streamLandingAgent({
             chunk.payload.result,
             isError,
           )
-          // Edit fan-out result: emit one terminal block per edit, each with
-          // its own action and per-edit diff slice (from result.edits[i]). On
-          // a whole-call error every edit block gets the shared error reason.
-          const fanOutSubIds = editSubIds.get(chunk.payload.toolCallId)
-          if (fanOutSubIds && chunk.payload.toolName === 'edit') {
-            const perEditResults = (
-              chunk.payload.result as {
-                edits?: { changedLines: number; changedText: string }[]
-              }
-            ).edits
-            const editArgsIntents = editActionsFromArgs(args) ?? []
-            for (const [index, subId] of fanOutSubIds.entries()) {
-              const perEdit = perEditResults?.[index]
-              const perResult = isError
-                ? result
-                : perEdit
-                  ? `Changed ${perEdit.changedLines} line${perEdit.changedLines === 1 ? '' : 's'}`
-                  : result
-              const toolPayload: RecordedToolPayload = {
-                action: editArgsIntents[index] ?? null,
-                id: subId!,
-                providerId: chunk.payload.toolCallId,
-                result: perResult,
-                state: isError ? 'error' : 'done',
-                tool: chunk.payload.toolName,
-              }
-              emit('tool_call', toolPayload)
-            }
-            editSubIds.delete(chunk.payload.toolCallId)
-            completedCallIds.add(chunk.payload.toolCallId)
-            if (chunk.payload.toolName === 'edit') {
-              if (isError) {
-                editFailures += 1
-                if (editFailures >= MAX_EDIT_FAILURES) {
-                  fatalRunError = REPEATED_EDIT_FAILURE_MESSAGE
-                  emit('error', { message: fatalRunError })
-                  controller.abort()
-                  break streamLoop
-                }
-              } else {
-                const nextHtml = store.get()
-                if (nextHtml !== lastHtmlUpdate) {
-                  htmlUpdateSequence += 1
-                  const htmlUpdate = createHtmlUpdatePayload({
-                    html: nextHtml,
-                    previousHtml: lastHtmlUpdate,
-                    projectId,
-                    sequence: htmlUpdateSequence,
-                  })
-                  emit('html_update', htmlUpdate)
-                  lastHtmlUpdate = nextHtml
-                }
-              }
-            }
-            break
-          }
           const toolPayload: RecordedToolPayload = {
             action,
             detail: display.detail,
@@ -1071,20 +985,9 @@ function createRecordedTurn(
 
 function defaultToolAction(tool: string, args: ToolArgs): string | undefined {
   if (tool === 'edit') {
-    // `edit` has no call-level action; the model puts one on each edit
-    // object. For a single-edit call use that action directly. A multi-edit
-    // batch is fanned out by `editActionsFromArgs` (each edit gets its own
-    // block), so the first edit's action here is only a fallback for the
-    // call-level display record.
-    const edits = args.edits
-    if (Array.isArray(edits) && edits.length >= 1) {
-      const first = edits[0]
-      if (first && typeof first === 'object' && !Array.isArray(first)) {
-        const action = stringValue((first as { action?: unknown }).action)
-        if (action) return action
-      }
-    }
-    return undefined
+    // `edit` carries one top-level `action` label (a single hashline diff
+    // per call); the SSE stream emits exactly one block per edit call.
+    return stringValue(args.action)
   }
 
   if (tool === 'screenshot') {
@@ -1121,28 +1024,6 @@ function defaultToolAction(tool: string, args: ToolArgs): string | undefined {
  * when the args are not the expected `{ edits: [{ action, ... }] }` shape or
  * the batch has 0/1 edits (single-block fallback handles those).
  */
-function editActionsFromArgs(args: ToolArgs): (string | undefined)[] | null {
-  const edits = args.edits
-  if (!Array.isArray(edits) || edits.length < 2) return null
-  const actions: (string | undefined)[] = []
-  for (const edit of edits) {
-    if (!edit || typeof edit !== 'object' || Array.isArray(edit)) return null
-    const action = (edit as { action?: unknown }).action
-    actions.push(
-      typeof action === 'string' && action.length > 0 ? action : undefined,
-    )
-  }
-  return actions
-}
-
-/**
- * Build stable per-edit sub-ids for a fanned-out `edit` call. The seq anchors
- * the provider call; the index distinguishes each edit within it.
- */
-function editSubId(baseSeq: number, index: number) {
-  return `tool-${baseSeq}-edit-${index + 1}`
-}
-
 function getToolCallDisplay(
   displayByProviderId: Map<string, ToolCallDisplay>,
   providerId: string,
@@ -1169,10 +1050,7 @@ function hashHtml(html: string): string {
 
 function isValidEditResult(result: unknown): boolean {
   const data = asToolArgs(result)
-  return (
-    booleanValue(data.ok) === true &&
-    numberValue(data.changedLines) !== undefined
-  )
+  return booleanValue(data.ok) === true
 }
 
 function numberValue(value: unknown): number | undefined {
@@ -1369,10 +1247,11 @@ function summarizeToolResult(
 
   switch (tool) {
     case 'edit': {
-      const changedLines = numberValue(data.changedLines)
-      return typeof changedLines === 'number'
-        ? `Changed ${changedLines} line${changedLines === 1 ? '' : 's'}`
-        : null
+      const bytes = numberValue(data.bytes)
+      const tag = stringValue(data.tag)
+      return typeof bytes === 'number'
+        ? `Edited · ${bytes}B${typeof tag === 'string' ? ` · #${tag}` : ''}`
+        : 'Edited'
     }
     case 'find':
     case 'grep': {

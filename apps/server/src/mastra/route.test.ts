@@ -674,8 +674,8 @@ describe('streamLandingAgent generated image persistence', () => {
   })
 })
 
-describe('streamLandingAgent edit fan-out', () => {
-  it('renders a batched edit call as one block per edit with distinct intents', async () => {
+describe('streamLandingAgent edit stream', () => {
+  it('renders an edit call as one running + one done block with the call action', async () => {
     vi.stubEnv('OPENROUTER_API_KEY', 'test-openrouter-key')
 
     vi.doMock('./index.ts', () => ({ mastra: {} }))
@@ -687,20 +687,10 @@ describe('streamLandingAgent edit fan-out', () => {
               yield {
                 payload: {
                   args: {
-                    edits: [
-                      {
-                        action: 'Rewrite headline',
-                        code: '<h1>Hi</h1>',
-                        from: 'a2',
-                      },
-                      {
-                        action: 'Rewrite paragraph',
-                        code: '<p>There</p>',
-                        from: 'a3',
-                      },
-                    ],
+                    action: 'Rewrite headline',
+                    diff: '[index.html#1A2B]\nSWAP 2.=2:\n  <h1>Hi</h1>',
                   },
-                  toolCallId: 'call-edit-batch-1',
+                  toolCallId: 'call-edit-1',
                   toolName: 'edit',
                 },
                 type: 'tool-call',
@@ -708,37 +698,20 @@ describe('streamLandingAgent edit fan-out', () => {
               yield {
                 payload: {
                   args: {
-                    edits: [
-                      {
-                        action: 'Rewrite headline',
-                        code: '<h1>Hi</h1>',
-                        from: 'a2',
-                      },
-                      {
-                        action: 'Rewrite paragraph',
-                        code: '<p>There</p>',
-                        from: 'a3',
-                      },
-                    ],
+                    action: 'Rewrite headline',
+                    diff: '[index.html#1A2B]\nSWAP 2.=2:\n  <h1>Hi</h1>',
                   },
                   isError: false,
                   result: {
-                    changedLines: 2,
-                    edits: [
-                      {
-                        action: 'Rewrite headline',
-                        changedLines: 1,
-                        changedText: 'a5|  <h1>Hi</h1>',
-                      },
-                      {
-                        action: 'Rewrite paragraph',
-                        changedLines: 1,
-                        changedText: 'a6|  <p>There</p>',
-                      },
-                    ],
+                    bytes: 128,
+                    diffPreview: '-   <h1>Old</h1>\n+   <h1>Hi</h1>',
+                    firstChangedLine: 2,
+                    header: '[index.html#3C4D]',
                     ok: true,
+                    tag: '3C4D',
+                    warnings: [],
                   },
-                  toolCallId: 'call-edit-batch-1',
+                  toolCallId: 'call-edit-1',
                   toolName: 'edit',
                 },
                 type: 'tool-result',
@@ -770,109 +743,30 @@ describe('streamLandingAgent edit fan-out', () => {
         'tool' in event.data &&
         event.data.tool === 'edit',
     )
-    // Two running + two done — one block per edit.
-    expect(editEvents).toHaveLength(4)
+    // One running + one done — a hashline edit is one diff per call (1:1, no fan-out).
+    expect(editEvents).toHaveLength(2)
     const running = editEvents.filter(
       (event) => (event.data as { state?: string }).state === 'running',
     )
     const done = editEvents.filter(
       (event) => (event.data as { state?: string }).state === 'done',
     )
-    expect(running).toHaveLength(2)
-    expect(done).toHaveLength(2)
-    // Distinct ids and per-edit intents.
+    expect(running).toHaveLength(1)
+    expect(done).toHaveLength(1)
+    // Same id for both blocks; the call's top-level action is surfaced.
     const ids = editEvents.map((event) => (event.data as { id?: string }).id)
-    expect(new Set(ids).size).toBe(2)
-    const intents = done.map(
-      (event) => (event.data as { action?: string }).action,
-    )
-    expect(intents).toEqual(
-      expect.arrayContaining(['Rewrite headline', 'Rewrite paragraph']),
-    )
-    // The persisted turn mirrors the fan-out (one tool_call part per edit).
+    expect(new Set(ids).size).toBe(1)
+    for (const event of editEvents) {
+      expect((event.data as { action?: string }).action).toBe(
+        'Rewrite headline',
+      )
+    }
+    // The persisted turn has one edit tool_call part.
     const saved = await getProject(project.id)
     const editParts = (saved?.messages[0]?.parts ?? []).filter(
       (part) => part.type === 'tool_call' && part.tool === 'edit',
     )
-    expect(editParts).toHaveLength(2)
-  })
-
-  it('surfaces the per-edit action for a single-edit edit call', async () => {
-    vi.stubEnv('OPENROUTER_API_KEY', 'test-openrouter-key')
-
-    vi.doMock('./index.ts', () => ({ mastra: {} }))
-    vi.doMock('./agents/landing-page-agent.ts', () => ({
-      createLandingPageAgent: () => ({
-        stream: async () =>
-          fakeAgentStream(
-            (async function* () {
-              yield {
-                payload: {
-                  args: {
-                    edits: [
-                      {
-                        action: 'Set the page title',
-                        code: '<title>X</title>',
-                      },
-                    ],
-                  },
-                  toolCallId: 'call-edit-single',
-                  toolName: 'edit',
-                },
-                type: 'tool-call',
-              }
-              yield {
-                payload: {
-                  args: {
-                    edits: [
-                      {
-                        action: 'Set the page title',
-                        code: '<title>X</title>',
-                      },
-                    ],
-                  },
-                  isError: false,
-                  result: { changedLines: 1, ok: true },
-                  toolCallId: 'call-edit-single',
-                  toolName: 'edit',
-                },
-                type: 'tool-result',
-              }
-            })(),
-          ),
-      }),
-    }))
-
-    const { createProject } = await import('./lib/project-store.ts')
-    const project = await createProject()
-    createdProjectIds.push(project.id)
-    const { streamLandingAgent } = await import('./route.ts')
-    const response = new FakeResponse()
-
-    await streamLandingAgent({
-      projectId: project.id,
-      prompt: 'Build it.',
-      request: fakeRequest(),
-      response: response as unknown as ServerResponse,
-      textModel: 'z-ai/glm-5.2',
-    })
-
-    const editEvents = parseSseEvents(response.body).filter(
-      (event) =>
-        event.event === 'tool_call' &&
-        !!event.data &&
-        typeof event.data === 'object' &&
-        'tool' in event.data &&
-        event.data.tool === 'edit',
-    )
-    // Single edit -> one block (start + done), no fan-out sub-ids.
-    expect(editEvents).toHaveLength(2)
-    // ...but its action comes from the edit object, not null.
-    for (const event of editEvents) {
-      expect((event.data as { action?: string }).action).toBe(
-        'Set the page title',
-      )
-    }
+    expect(editParts).toHaveLength(1)
   })
 })
 
@@ -1152,7 +1046,7 @@ describe('streamLandingAgent html updates', () => {
       expect.arrayContaining([
         expect.objectContaining({
           data: expect.objectContaining({
-            result: expect.stringContaining('valid edits array'),
+            result: expect.stringContaining('diff was missing or malformed'),
             state: 'error',
             tool: 'edit',
           }),
@@ -1185,7 +1079,7 @@ describe('streamLandingAgent html updates', () => {
     expect(saved?.messages[0]?.parts).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          result: expect.stringContaining('valid edits array'),
+          result: expect.stringContaining('diff was missing or malformed'),
           state: 'error',
           tool: 'edit',
           type: 'tool_call',
