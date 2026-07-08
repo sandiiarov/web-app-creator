@@ -7,6 +7,12 @@
       "skillPath": "fallow/skills/fallow/SKILL.md",
       "computedHash": "8d857d04d07fb78fc0e868c56d4335cc6e06e6ca0f4321a55875bed12666627a"
     },
+    "improve": {
+      "source": "shadcn/improve",
+      "sourceType": "github",
+      "skillPath": "skills/improve/SKILL.md",
+      "computedHash": "39a9358732dcff385e9e4d3e60b4547856f834e54a58b35e455aa9bd49928c13"
+    },
     "mastra": {
       "source": "mastra-ai/skills",
       "sourceType": "github",

@@ -8,6 +8,7 @@
 ## Ownership
 
 - `skills/fallow/`: Fallow analysis skill and references.
+- `skills/improve/`: Improve advisor skill — read-only codebase surveys producing implementation plans for other agents.
 - `skills/mastra/`: Mastra framework skill, references, and helper scripts.
 - `skills/shadcn/`: shadcn/ui skill, rules, assets, and registry docs.
 - `skills/turborepo/`: Turborepo skill and references.
