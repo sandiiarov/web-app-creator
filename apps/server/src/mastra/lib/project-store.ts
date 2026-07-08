@@ -35,10 +35,7 @@ import {
   replayClientEvents,
   type ClientEvent as ClientMessageEntry,
   type ConversationAttachment as ProjectMessageAttachment,
-  type ConversationPart as ProjectMessagePart,
   type ConversationStatsPart as ProjectMessageStatsPart,
-  type ConversationTextPart as ProjectMessageTextPart,
-  type ConversationThinkingPart as ProjectMessageThinkingPart,
   type ConversationToolCallPart as ProjectMessageToolCallPart,
   type ConversationTurn as ProjectMessageTurn,
 } from '@workspace/conversation'
@@ -46,10 +43,7 @@ import {
 export type {
   ClientMessageEntry,
   ProjectMessageAttachment,
-  ProjectMessagePart,
   ProjectMessageStatsPart,
-  ProjectMessageTextPart,
-  ProjectMessageThinkingPart,
   ProjectMessageToolCallPart,
   ProjectMessageTurn,
 }

@@ -28,7 +28,14 @@ export interface AgentMapEntry {
   s?: Record<string, unknown>
 }
 
-export interface AgentMapOptions {
+export interface AgentMapResult {
+  dimensions: { height: number; width: number }
+  /** Annotated/raw data URL; absent when `image: false`. */
+  image?: string
+  map: AgentMapEntry[]
+}
+
+interface AgentMapOptions {
   /** 'minimal' = {i,n,r,b,s?}; 'full' adds text + attrs. */
   fields?: 'full' | 'minimal'
   /** 'annotated' draws numbered badges; 'raw' omits badges; false skips rasterize. */
@@ -42,13 +49,6 @@ export interface AgentMapOptions {
   /** Include non-interactive semantic elements (headings, landmarks, paragraphs). */
   semantic?: boolean
   semanticSelector?: string
-}
-
-export interface AgentMapResult {
-  dimensions: { height: number; width: number }
-  /** Annotated/raw data URL; absent when `image: false`. */
-  image?: string
-  map: AgentMapEntry[]
 }
 
 // @ts-expect-error — @zumer/snapdom-plugins ships JavaScript only (no types).
