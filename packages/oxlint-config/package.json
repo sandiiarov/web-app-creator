@@ -11,7 +11,7 @@
     "format:check": "oxfmt -c oxfmt.config.ts --check .",
     "lint": "oxlint .",
     "lint:fix": "oxlint --fix .",
-    "typecheck": "tsgo --noEmit -p tsconfig.json"
+    "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
     "eslint-plugin-perfectionist": "^5.9.0",
@@ -21,9 +21,9 @@
   },
   "devDependencies": {
     "@types/node": "catalog:",
-    "@typescript/native-preview": "catalog:",
     "@workspace/oxfmt-config": "workspace:*",
     "@workspace/typescript-config": "workspace:*",
-    "oxfmt": "catalog:"
+    "oxfmt": "catalog:",
+    "typescript": "catalog:"
   }
 }

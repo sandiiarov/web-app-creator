@@ -21,7 +21,7 @@ The same event→turns reduction exists twice: `replayClientMessages` in `apps/s
   - Types: `ProjectMessageTurn`, `ProjectMessagePart` (+ stats/text/thinking/tool_call variants), `ClientMessageEntry`.
 - `apps/client/src/hooks/use-landing-page.ts`: an inline `switch (event)` over `done/error/html_update/retry/screenshot_request/stats/text/thinking/tool_call/tool_call_drop` (lines ~190–360) that mutates React state via `patchTurn`/`appendPart`. The pure transformation core (how one event changes a turns array) is what duplicates the server.
 - `packages/prompt-panel/src/domain.ts`: owns the client-side mirror types — `LandingTurn`, `TurnPart` (structurally identical to `ProjectMessageTurn`/`ProjectMessagePart`).
-- `pnpm-workspace.yaml`: workspace `packages/*` and `apps/*`; deps use the `catalog:` (catalogMode strict). A new package needs a `package.json` with `name: "@workspace/conversation"`, `"type": "module"`, and `tsgo`/oxlint/oxfmt config matching siblings (copy `packages/typescript-config` etc. usage from e.g. `packages/prompt-panel/package.json`).
+- `pnpm-workspace.yaml`: workspace `packages/*` and `apps/*`; deps use the `catalog:` (catalogMode strict). A new package needs a `package.json` with `name: "@workspace/conversation"`, `"type": "module"`, and `tsc`/oxlint/oxfmt config matching siblings (copy `packages/typescript-config` etc. usage from e.g. `packages/prompt-panel/package.json`).
 - The event payload shapes are defined by the server's `emit()` calls (`RecordedToolPayload`, `RecordedStatsPayload`, etc. in `route.ts`) — the reducer must accept those exact shapes.
 
 ## Commands you will need
@@ -52,7 +52,7 @@ The same event→turns reduction exists twice: `replayClientMessages` in `apps/s
 ## Steps
 
 ### Step 1: Create the `@workspace/conversation` package
-Create `packages/conversation/package.json` (copy the structure of `packages/prompt-panel/package.json`: `name: "@workspace/conversation"`, `"type": "module"`, `"main"/"types"` pointing to `src/index.ts`, devDeps `@workspace/typescript-config`, `@workspace/oxlint-config`, `@workspace/oxfmt-config`, `@typescript/native-preview`, and `tsgo`/`lint`/`format`/`typecheck` scripts matching siblings). Add `src/index.ts` re-exporting the public API.
+Create `packages/conversation/package.json` (copy the structure of `packages/prompt-panel/package.json`: `name: "@workspace/conversation"`, `"type": "module"`, `"main"/"types"` pointing to `src/index.ts`, devDeps `@workspace/typescript-config`, `@workspace/oxlint-config`, `@workspace/oxfmt-config`, `typescript`, and `tsc`/`lint`/`format`/`typecheck` scripts matching siblings). Add `src/index.ts` re-exporting the public API.
 
 ### Step 2: Move the types + reducer into it
 Create `packages/conversation/src/types.ts` with `Turn`, `Part` (union: text/thinking/tool_call/stats), and `ClientEvent` (the `{dir, event, payload, ...}` entry shape — copy `ClientMessageEntry`'s effective shape). Create `packages/conversation/src/reducer.ts` by MOVING `replayClientMessages` + `appendDelta` + `terminalizeTools` from `project-store.ts` verbatim, retyped against the shared types. Export `replayClientEvents(events: ClientEvent[]): Turn[]` and a single-event `applyClientEvent(turns, event): Turn[]` (factor the per-event transform out of the loop so the client can call it per SSE frame).

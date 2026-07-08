@@ -19,7 +19,7 @@
     "format:check": "oxfmt -c oxfmt.config.ts --check .",
     "lint": "oxlint .",
     "lint:fix": "oxlint --fix .",
-    "typecheck": "tsgo --noEmit -p tsconfig.json"
+    "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
     "@fontsource-variable/noto-sans": "catalog:",
@@ -38,7 +38,6 @@
     "@types/node": "catalog:",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
-    "@typescript/native-preview": "catalog:",
     "@workspace/oxfmt-config": "workspace:*",
     "@workspace/oxlint-config": "workspace:*",
     "@workspace/typescript-config": "workspace:*",
@@ -46,7 +45,8 @@
     "oxlint": "catalog:",
     "react": "catalog:",
     "react-dom": "catalog:",
-    "tailwindcss": "^4.1.17"
+    "tailwindcss": "^4.1.17",
+    "typescript": "catalog:"
   },
   "peerDependencies": {
     "react": "^19.0.0",

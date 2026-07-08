@@ -16,7 +16,7 @@ packages/ui               shadcn/ui components and Tailwind v4 globals
 packages/prompt-panel     prompt-panel conversation model and React UI
 packages/landing-preview  shared HTML sanitization/expansion for the preview iframe
 packages/vite-config      shared Vite config factory
-packages/typescript-config shared tsgo/TypeScript configs
+packages/typescript-config shared TypeScript 7 (tsc) configs
 packages/oxlint-config    shared Oxlint config factory
 packages/oxfmt-config     shared Oxfmt config factory
 packages/vitest-preset    shared Vitest config

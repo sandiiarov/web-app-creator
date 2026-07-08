@@ -80,7 +80,7 @@ Default section order:
 - Workspaces live under `apps/*` and `packages/*`; root scripts must delegate through `turbo run`, while task logic belongs in package scripts.
 - The active product path is a React client that previews generated single-file HTML and a Node/Mastra server that streams a landing-page agent over custom SSE.
 - Dependencies use the root `pnpm-workspace.yaml` catalog with `catalogMode: strict`; add catalog entries for shared dependency versions.
-- TypeScript is strict ESM via shared config packages and `tsgo`; formatting/linting use Oxfmt/Oxlint.
+- TypeScript 7 (the native Go compiler, invoked as `tsc`) is strict ESM via shared config packages; formatting/linting use Oxfmt/Oxlint. The catalog pins `typescript`; `@typescript/native-preview`/`tsgo` was retired once TS 7 shipped as the stable `typescript` package.
 - Keep generated or ignored outputs out of source edits: `node_modules`, `dist`, `coverage`, `.turbo`, `.fallow`, Mastra DB files, and `apps/server/.mastra/{.build,output}`.
 - Environment files stay package-local; do not create a root `.env`.
 - A `pnpm patch` is applied to `@mastra/core` (`patches/@mastra__core@1.47.0.patch`, declared in `pnpm-workspace.yaml` `patchedDependencies`): it defers streaming tool-call finalization to end-of-stream instead of the vendored AI-SDK's mid-stream `isParsableJson` early-finalize, which dropped GLM-5.2's multi-fragment tool arguments as empty `{}`. Re-verify the patch (and whether upstream has fixed it) on every `@mastra/core` upgrade; re-create with `pnpm patch @mastra/core@<new>` if it still applies.

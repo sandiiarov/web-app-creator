@@ -12,17 +12,17 @@
     "lint": "oxlint .",
     "lint:fix": "oxlint --fix .",
     "test": "vitest run --config vitest.config.ts --coverage",
-    "typecheck": "tsgo --noEmit -p tsconfig.json"
+    "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "devDependencies": {
     "@types/node": "catalog:",
-    "@typescript/native-preview": "catalog:",
     "@workspace/oxfmt-config": "workspace:*",
     "@workspace/oxlint-config": "workspace:*",
     "@workspace/typescript-config": "workspace:*",
     "@workspace/vitest-preset": "workspace:*",
     "oxfmt": "catalog:",
     "oxlint": "catalog:",
+    "typescript": "catalog:",
     "vitest": "catalog:"
   }
 }
