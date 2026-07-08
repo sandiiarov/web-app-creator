@@ -1,8 +1,12 @@
 import * as path from 'node:path'
 
-import { HL_FILE_HASH_LENGTH, HL_FILE_PREFIX, HL_FILE_SUFFIX } from './format'
-import { parsePatch } from './parser'
-import type { Edit, SplitOptions } from './types'
+import {
+  HL_FILE_HASH_LENGTH,
+  HL_FILE_PREFIX,
+  HL_FILE_SUFFIX,
+} from './format.ts'
+import { parsePatch } from './parser.ts'
+import type { Edit, SplitOptions } from './types.ts'
 
 function unquoteHashlinePath(pathText: string): string {
   if (pathText.length < 2) return pathText

@@ -1,11 +1,11 @@
-import { STRUCTURAL_CLOSER_RE } from './apply'
+import { STRUCTURAL_CLOSER_RE } from './apply.ts'
 import {
   blockSingleLineMessage,
   blockUnresolvedMessage,
   insertAfterBlockCloserLoweredWarning,
   insertAfterBlockUnresolvedLoweredWarning,
-} from './messages'
-import type { BlockResolution, BlockResolver, Cursor, Edit } from './types'
+} from './messages.ts'
+import type { BlockResolution, BlockResolver, Cursor, Edit } from './types.ts'
 
 export interface ResolveBlockEditsOptions {
   onResolved?: (resolution: BlockResolution) => void

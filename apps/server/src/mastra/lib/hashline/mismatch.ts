@@ -3,8 +3,8 @@ import {
   HL_FILE_HASH_SEP,
   HL_FILE_PREFIX,
   HL_FILE_SUFFIX,
-} from './format'
-import { formatAnchoredContext } from './messages'
+} from './format.ts'
+import { formatAnchoredContext } from './messages.ts'
 
 const LINE_REF_RE = /^\s*[>+\-*]*\s*(\d+)(?::.*)?\s*$/
 

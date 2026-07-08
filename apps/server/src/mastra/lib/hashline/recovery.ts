@@ -1,12 +1,12 @@
 import * as Diff from 'diff'
 
-import { applyEdits } from './apply'
+import { applyEdits } from './apply.ts'
 import {
   RECOVERY_SESSION_CHAIN_WARNING,
   RECOVERY_SESSION_REPLAY_WARNING,
-} from './messages'
-import type { SnapshotStore } from './snapshots'
-import type { ApplyResult, Edit } from './types'
+} from './messages.ts'
+import type { SnapshotStore } from './snapshots.ts'
+import type { ApplyResult, Edit } from './types.ts'
 
 const RECOVERY_FUZZ_FACTOR = 0
 

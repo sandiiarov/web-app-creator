@@ -1,26 +1,31 @@
-import { applyEdits } from './apply'
-import { resolveBlockEdits } from './block'
-import { computeFileHash, formatHashlineHeader } from './format'
-import type { Filesystem, WriteResult } from './fs'
-import { isNotFound } from './fs'
-import type { Patch, PatchSection } from './input'
+import { applyEdits } from './apply.ts'
+import { resolveBlockEdits } from './block.ts'
+import { computeFileHash, formatHashlineHeader } from './format.ts'
+import type { Filesystem, WriteResult } from './fs.ts'
+import { isNotFound } from './fs.ts'
+import type { Patch, PatchSection } from './input.ts'
 import {
   HEADTAIL_DRIFT_WARNING,
   missingSnapshotTagMessage,
   unseenLinesMessage,
-} from './messages'
-import { MismatchError } from './mismatch'
+} from './messages.ts'
+import { MismatchError } from './mismatch.ts'
 import {
   detectLineEnding,
   type LineEnding,
   normalizeToLF,
   restoreLineEndings,
   stripBom,
-} from './normalize'
-import { parsePatch } from './parser'
-import type { RecoveryResult } from './recovery'
-import type { SnapshotStore } from './snapshots'
-import type { ApplyResult, BlockResolution, BlockResolver, Edit } from './types'
+} from './normalize.ts'
+import { parsePatch } from './parser.ts'
+import type { RecoveryResult } from './recovery.ts'
+import type { SnapshotStore } from './snapshots.ts'
+import type {
+  ApplyResult,
+  BlockResolution,
+  BlockResolver,
+  Edit,
+} from './types.ts'
 
 export interface PatcherApplyResult {
   sections: PatchSectionResult[]

@@ -17,9 +17,13 @@ import {
   HL_REPLACE_BLOCK_KEYWORD,
   HL_RANGE_SEP,
   HL_REPLACE_KEYWORD,
-} from './format'
-import { ABORT_MARKER, BEGIN_PATCH_MARKER, END_PATCH_MARKER } from './messages'
-import type { Anchor, Cursor, ParsedRange } from './types'
+} from './format.ts'
+import {
+  ABORT_MARKER,
+  BEGIN_PATCH_MARKER,
+  END_PATCH_MARKER,
+} from './messages.ts'
+import type { Anchor, Cursor, ParsedRange } from './types.ts'
 
 const CHAR_LINE_FEED = 10
 const CHAR_CARRIAGE_RETURN = 13

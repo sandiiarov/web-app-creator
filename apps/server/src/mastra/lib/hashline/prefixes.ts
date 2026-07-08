@@ -1,4 +1,4 @@
-import { HL_FILE_HASH_LENGTH } from './format'
+import { HL_FILE_HASH_LENGTH } from './format.ts'
 
 const HL_PREFIX_RE = /^\s*(?:>>>|>>)?\s*(?:[+*-]\s*)?\d+:/
 const HL_PREFIX_PLUS_RE = /^\s*(?:>>>|>>)?\s*\+\s*\d+:/

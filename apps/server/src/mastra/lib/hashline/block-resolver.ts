@@ -21,7 +21,7 @@
  * the prompts, so this is a convenience for hand-authored patches — when in
  * doubt it bails to `null`.
  */
-import type { BlockResolver, BlockSpan } from './types'
+import type { BlockResolver, BlockSpan } from './types.ts'
 
 const REGEX_PRECEDING_CHARS = new Set([
   '',

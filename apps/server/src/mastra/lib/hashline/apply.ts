@@ -1,4 +1,4 @@
-import type { ApplyResult, Edit } from './types'
+import type { ApplyResult, Edit } from './types.ts'
 
 /** An atomic edit operation with its target line for bottom-up sorting. */
 interface AtomicOp {

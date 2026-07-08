@@ -1,4 +1,4 @@
-import { HL_PAYLOAD_REPLACE, HL_RANGE_SEP } from './format'
+import { HL_PAYLOAD_REPLACE, HL_RANGE_SEP } from './format.ts'
 import {
   BARE_BODY_AUTO_PIPED_WARNING,
   DELETE_BLOCK_TAKES_NO_BODY,
@@ -6,15 +6,15 @@ import {
   EMPTY_BLOCK,
   EMPTY_INSERT,
   MINUS_ROW_REJECTED,
-} from './messages'
-import { stripOneLeadingHashlinePrefix } from './prefixes'
+} from './messages.ts'
+import { stripOneLeadingHashlinePrefix } from './prefixes.ts'
 import {
   type BlockTarget,
   cloneCursor,
   type Token,
   Tokenizer,
-} from './tokenizer'
-import type { Anchor, Cursor, Edit, ParsedRange } from './types'
+} from './tokenizer.ts'
+import type { Anchor, Cursor, Edit, ParsedRange } from './types.ts'
 
 function expandRange(range: ParsedRange): Anchor[] {
   const anchors: Anchor[] = []

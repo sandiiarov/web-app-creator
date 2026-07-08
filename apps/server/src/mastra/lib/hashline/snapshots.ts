@@ -1,6 +1,6 @@
 import { LRUCache } from 'lru-cache/raw'
 
-import { computeFileHash } from './format'
+import { computeFileHash } from './format.ts'
 
 export interface Snapshot {
   readonly hash: string
