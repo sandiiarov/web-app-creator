@@ -59,13 +59,13 @@
   "streamCount": 4,
   "totalDurationMs": 1094678,
   "sumStreamDurationMs": 1103103,
-  "cost": 0.04752652,
+  "cost": 0.42007852000000007,
   "costBreakdown": {
     "image": {
-      "cost": 0,
-      "count": 0
+      "cost": 0.16,
+      "count": 4
     },
-    "llm": 0.02467724,
+    "llm": 0.1257354,
     "scrape": {
       "calls": 0,
       "cost": 0,
@@ -75,11 +75,11 @@
       "ocrCost": 0,
       "ocrImages": 0
     },
-    "total": 0.04752652,
+    "total": 0.42007852000000007,
     "vision": {
-      "calls": 2,
-      "cost": 0.02284928,
-      "images": 2
+      "calls": 8,
+      "cost": 0.13434311999999998,
+      "images": 8
     }
   },
   "usage": {

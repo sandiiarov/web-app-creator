@@ -20,7 +20,7 @@
 
 ## Why this matters
 
-An e2e QA campaign (`screenshots/e2e-5run/REPORT.md`) showed the agent **over-scope a simple fix**: project 2's prompt *"fix hero contrast + center the reserve button"* became a full hero redesign with a generated background image (`generate_image` "Mediterranean grill over open fire"), taking >700s and causing the subsequent turn to be skipped. The instructions already constrain the *edit DSL* scope ("target only the lines that change", "never a widened SWAP") but say nothing about *request-level* scope — when a user asks for a fix, the agent should make the smallest change that satisfies the request, not redesign unmentioned sections. A one-line instruction addition reduces wasted cost/time and keeps the agent aligned with user intent.
+An e2e QA campaign (`screenshots/e2e-5run/REPORT.md`) showed the agent **over-produce on a simple fix**: project 2's T3 prompt *"fix hero contrast + center the reserve button"* ran **17.6 min, cost $0.136**, and ended with `finishReason=length` — it hit the output-token cap at **19,504 output + 7,753 reasoning tokens** (input was 532k, 62% cached). That single fix turn cost more than entire clean projects. The agent over-produced (verbose reasoning + repeated edits) instead of making the smallest change that satisfies the request. The instructions already constrain the *edit DSL* scope ("target only the lines that change", "never a widened SWAP") but say nothing about *request-level* scope or output volume for fix/refine turns. A one-line instruction addition reduces wasted cost/time and keeps the agent aligned with user intent.
 
 ## Current state
 

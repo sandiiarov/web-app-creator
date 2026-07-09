@@ -1,7 +1,7 @@
 {
   "projectId": "d9ecdebf-0b2c-4de5-89f2-24b767ee11c0",
   "model": "z-ai/glm-5.2",
-  "finishReason": "stop",
+  "finishReason": "length",
   "streams": [
     {
       "index": 1,
@@ -28,18 +28,31 @@
         "reasoningTokens": 3303,
         "totalTokens": 447563
       }
+    },
+    {
+      "index": 3,
+      "durationMs": 1058194,
+      "cost": 0.136203404,
+      "finishReason": "length",
+      "usage": {
+        "cachedInputTokens": 331840,
+        "inputTokens": 532344,
+        "outputTokens": 19504,
+        "reasoningTokens": 7753,
+        "totalTokens": 551848
+      }
     }
   ],
-  "streamCount": 2,
-  "totalDurationMs": 666723,
-  "sumStreamDurationMs": 513208,
-  "cost": 0.057708936,
+  "streamCount": 3,
+  "totalDurationMs": 1574454,
+  "sumStreamDurationMs": 1571402,
+  "cost": 0.295163592,
   "costBreakdown": {
     "image": {
-      "cost": 0,
-      "count": 0
+      "cost": 0.04,
+      "count": 1
     },
-    "llm": 0.023899736,
+    "llm": 0.15514503200000002,
     "scrape": {
       "calls": 0,
       "cost": 0,
@@ -49,19 +62,19 @@
       "ocrCost": 0,
       "ocrImages": 0
     },
-    "total": 0.057708936,
+    "total": 0.295163592,
     "vision": {
-      "calls": 2,
-      "cost": 0.0338092,
-      "images": 2
+      "calls": 6,
+      "cost": 0.10001855999999999,
+      "images": 6
     }
   },
   "usage": {
-    "cachedInputTokens": 337472,
-    "inputTokens": 593548,
-    "outputTokens": 11729,
-    "reasoningTokens": 4824,
-    "totalTokens": 605277
+    "cachedInputTokens": 669312,
+    "inputTokens": 1125892,
+    "outputTokens": 31233,
+    "reasoningTokens": 12577,
+    "totalTokens": 1157125
   },
   "htmlUpdates": 10,
   "screenshotRequests": 6,

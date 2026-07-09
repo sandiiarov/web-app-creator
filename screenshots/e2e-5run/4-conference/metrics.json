@@ -1,10 +1,55 @@
 {
   "projectId": "c0c12ef4-998a-4e2d-862d-64d46ad00f5d",
-  "streams": [],
-  "streamCount": 0,
-  "totalDurationMs": 724888,
-  "sumStreamDurationMs": 0,
-  "usage": {},
+  "model": "z-ai/glm-5.2",
+  "finishReason": "stop",
+  "streams": [
+    {
+      "index": 1,
+      "durationMs": 758907,
+      "cost": 0.19174465999999998,
+      "finishReason": "stop",
+      "usage": {
+        "cachedInputTokens": 259456,
+        "inputTokens": 342381,
+        "outputTokens": 9019,
+        "reasoningTokens": 1568,
+        "totalTokens": 351400
+      }
+    }
+  ],
+  "streamCount": 1,
+  "totalDurationMs": 742180,
+  "sumStreamDurationMs": 758907,
+  "cost": 0.19174465999999998,
+  "costBreakdown": {
+    "image": {
+      "cost": 0.12,
+      "count": 3
+    },
+    "llm": 0.0128429,
+    "scrape": {
+      "calls": 0,
+      "cost": 0,
+      "credits": 0,
+      "firecrawlCost": 0,
+      "ocrCalls": 0,
+      "ocrCost": 0,
+      "ocrImages": 0
+    },
+    "total": 0.19174465999999998,
+    "vision": {
+      "calls": 3,
+      "cost": 0.05890176,
+      "images": 3
+    }
+  },
+  "usage": {
+    "cachedInputTokens": 259456,
+    "inputTokens": 342381,
+    "outputTokens": 9019,
+    "reasoningTokens": 1568,
+    "totalTokens": 351400
+  },
   "htmlUpdates": 5,
   "screenshotRequests": 3,
   "screenshotFiles": 3,
