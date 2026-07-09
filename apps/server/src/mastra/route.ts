@@ -1127,18 +1127,16 @@ function stripReasoning(messages: MastraDBMessage[]): MastraDBMessage[] {
   })
 }
 
-function summarizeToolArgs(tool: string, args: ToolArgs): null | string {
-  const action = stringValue(args.action)
-
-  switch (tool) {
-    case 'edit':
-      return action ?? null
-    case 'find':
-      return compactLines([
-        action,
+const summarizeArgsForTool: Record<string, (args: ToolArgs) => null | string> =
+  {
+    edit: (args) => stringValue(args.action) ?? null,
+    find: (args) =>
+      compactLines([
+        stringValue(args.action),
         stringValue(args.text) ? `Text: ${stringValue(args.text)}` : null,
-      ])
-    case 'generate_image': {
+      ]),
+    generate_image: (args) => {
+      const action = stringValue(args.action)
       const prompt = stringValue(args.prompt)
       const aspectRatio = stringValue(args.aspectRatio)
       return compactLines([
@@ -1146,38 +1144,38 @@ function summarizeToolArgs(tool: string, args: ToolArgs): null | string {
         prompt && prompt !== action ? prompt : null,
         aspectRatio ? `Aspect ratio: ${aspectRatio}` : null,
       ])
-    }
-    case 'grep':
-      return compactLines([
-        action,
+    },
+    grep: (args) =>
+      compactLines([
+        stringValue(args.action),
         stringValue(args.pattern)
           ? `Pattern: ${stringValue(args.pattern)}`
           : null,
-      ])
-    case 'read': {
+      ]),
+    read: (args) => {
       const from = stringValue(args.from)
       const to = stringValue(args.to)
       const limit = numberValue(args.limit)
       return compactLines([
-        action,
+        stringValue(args.action),
         from || to ? `Anchors: ${from ?? 'start'}${to ? `..${to}` : ''}` : null,
         limit ? `Limit: ${limit}` : null,
       ])
-    }
-    case 'scrape':
-      return compactLines([action, stringValue(args.url)])
-    case 'screenshot': {
+    },
+    scrape: (args) =>
+      compactLines([stringValue(args.action), stringValue(args.url)]),
+    screenshot: (args) => {
       const selector = stringValue(args.selector)
       const viewportSize = stringValue(args.viewportSize)
       return compactLines([
-        action,
+        stringValue(args.action),
         selector ? `Selector: ${selector}` : null,
         viewportSize ? `Viewport: ${viewportSize}` : null,
       ])
-    }
-    case 'skill':
-      return stringValue(args.name) ? `Skill: ${stringValue(args.name)}` : null
-    case 'skill_read': {
+    },
+    skill: (args) =>
+      stringValue(args.name) ? `Skill: ${stringValue(args.name)}` : null,
+    skill_read: (args) => {
       const skillName = stringValue(args.skillName)
       const path = stringValue(args.path)
       const startLine = numberValue(args.startLine)
@@ -1189,17 +1187,26 @@ function summarizeToolArgs(tool: string, args: ToolArgs): null | string {
         skillName ? `Skill: ${skillName}` : null,
         path ? `Reference: ${path}${range}` : null,
       ])
-    }
-    case 'skill_search': {
+    },
+    skill_search: (args) => {
       const skillNames = stringArrayValue(args.skillNames)
       return compactLines([
         stringValue(args.query) ? `Query: ${stringValue(args.query)}` : null,
         skillNames.length > 0 ? `Skills: ${skillNames.join(', ')}` : null,
       ])
-    }
-    default:
-      return action ?? null
+    },
   }
+
+function summarizeFindOrGrepResult(data: ToolArgs): null | string {
+  const matchCount = numberValue(data.matchCount)
+  const truncated = booleanValue(data.truncatedLines)
+  return typeof matchCount === 'number'
+    ? `${matchCount} match${matchCount === 1 ? '' : 'es'}${truncated ? ' · truncated' : ''}`
+    : null
+}
+
+function summarizeToolArgs(tool: string, args: ToolArgs): null | string {
+  return summarizeArgsForTool[tool]?.(args) ?? stringValue(args.action) ?? null
 }
 
 function summarizeToolError(error: unknown): string {
@@ -1225,6 +1232,82 @@ function summarizeToolError(error: unknown): string {
   return 'Tool failed.'
 }
 
+const summarizeResultForTool: Record<
+  string,
+  (data: ToolArgs, reason: string | undefined) => null | string
+> = {
+  edit: (data) => {
+    const bytes = numberValue(data.bytes)
+    const tag = stringValue(data.tag)
+    return typeof bytes === 'number'
+      ? `Edited · ${bytes}B${typeof tag === 'string' ? ` · #${tag}` : ''}`
+      : 'Edited'
+  },
+  find: summarizeFindOrGrepResult,
+  generate_image: (data, reason) => {
+    if (booleanValue(data.ok) === false) return reason ?? 'No image generated.'
+    const count = numberValue(data.imagesGenerated)
+    const url = stringValue(data.url)
+    return compactLines([
+      typeof count === 'number'
+        ? `Generated ${count} image${count === 1 ? '' : 's'}`
+        : 'Generated image',
+      url,
+    ])
+  },
+  grep: summarizeFindOrGrepResult,
+  read: (data) => {
+    const lines = numberValue(data.lines)
+    const totalLines = numberValue(data.totalLines)
+    return typeof lines === 'number'
+      ? `Read ${lines} line${lines === 1 ? '' : 's'}${typeof totalLines === 'number' ? ` of ${totalLines}` : ''}`
+      : null
+  },
+  scrape: (data) => {
+    const imageOcr = asToolArgs(data.imageOcr)
+    const ocrImages = numberValue(imageOcr.imagesAnalyzed)
+    return [
+      stringValue(data.title) ?? stringValue(data.url),
+      numberValue(data.charCount) !== undefined
+        ? `${numberValue(data.charCount)} chars`
+        : null,
+      numberValue(data.linkCount) !== undefined
+        ? `${numberValue(data.linkCount)} links`
+        : null,
+      numberValue(data.imageCount) !== undefined
+        ? `${numberValue(data.imageCount)} images`
+        : null,
+      ocrImages && ocrImages > 0 ? `OCR ${ocrImages} images` : null,
+    ]
+      .filter((part): part is string => !!part)
+      .join(' · ')
+  },
+  screenshot: (data, reason) => {
+    if (booleanValue(data.ok) === false) {
+      return reason ?? 'Screenshot analysis failed.'
+    }
+    const imageOcr = asToolArgs(data.imageOcr)
+    const ocrImages = numberValue(imageOcr.imagesAnalyzed)
+    const selector = stringValue(data.selector)
+    const viewportSize = stringValue(data.viewportSize)
+    const width = numberValue(data.width)
+    const height = numberValue(data.height)
+    return compactLines([
+      width && height
+        ? `Captured ${width}×${height} screenshot`
+        : 'Captured screenshot',
+      selector ? `Selector: ${selector}` : null,
+      viewportSize ? `Viewport: ${viewportSize}` : null,
+      ocrImages && ocrImages > 0
+        ? `OCR ${ocrImages} image${ocrImages === 1 ? '' : 's'}`
+        : null,
+    ])
+  },
+  skill: () => 'Loaded skill instructions',
+  skill_read: () => 'Loaded reference content',
+  skill_search: () => 'Search complete',
+}
+
 function summarizeToolResult(
   tool: string,
   result: unknown,
@@ -1232,98 +1315,13 @@ function summarizeToolResult(
 ): null | string {
   const data = asToolArgs(result)
   const reason = stringValue(data.reason)
-
   if (isError) {
     if (tool === 'edit' && !isValidEditResult(result)) {
       return reason ?? INVALID_EDIT_RESULT_MESSAGE
     }
     return reason ?? summarizeToolError(result)
   }
-
-  switch (tool) {
-    case 'edit': {
-      const bytes = numberValue(data.bytes)
-      const tag = stringValue(data.tag)
-      return typeof bytes === 'number'
-        ? `Edited · ${bytes}B${typeof tag === 'string' ? ` · #${tag}` : ''}`
-        : 'Edited'
-    }
-    case 'find':
-    case 'grep': {
-      const matchCount = numberValue(data.matchCount)
-      const truncated = booleanValue(data.truncatedLines)
-      return typeof matchCount === 'number'
-        ? `${matchCount} match${matchCount === 1 ? '' : 'es'}${truncated ? ' · truncated' : ''}`
-        : null
-    }
-    case 'generate_image': {
-      const count = numberValue(data.imagesGenerated)
-      const url = stringValue(data.url)
-      if (booleanValue(data.ok) === false)
-        return reason ?? 'No image generated.'
-      return compactLines([
-        typeof count === 'number'
-          ? `Generated ${count} image${count === 1 ? '' : 's'}`
-          : 'Generated image',
-        url,
-      ])
-    }
-    case 'read': {
-      const lines = numberValue(data.lines)
-      const totalLines = numberValue(data.totalLines)
-      return typeof lines === 'number'
-        ? `Read ${lines} line${lines === 1 ? '' : 's'}${typeof totalLines === 'number' ? ` of ${totalLines}` : ''}`
-        : null
-    }
-    case 'scrape': {
-      const imageOcr = asToolArgs(data.imageOcr)
-      const ocrImages = numberValue(imageOcr.imagesAnalyzed)
-      return [
-        stringValue(data.title) ?? stringValue(data.url),
-        numberValue(data.charCount) !== undefined
-          ? `${numberValue(data.charCount)} chars`
-          : null,
-        numberValue(data.linkCount) !== undefined
-          ? `${numberValue(data.linkCount)} links`
-          : null,
-        numberValue(data.imageCount) !== undefined
-          ? `${numberValue(data.imageCount)} images`
-          : null,
-        ocrImages && ocrImages > 0 ? `OCR ${ocrImages} images` : null,
-      ]
-        .filter((part): part is string => !!part)
-        .join(' · ')
-    }
-    case 'screenshot': {
-      if (booleanValue(data.ok) === false) {
-        return reason ?? 'Screenshot analysis failed.'
-      }
-      const imageOcr = asToolArgs(data.imageOcr)
-      const ocrImages = numberValue(imageOcr.imagesAnalyzed)
-      const selector = stringValue(data.selector)
-      const viewportSize = stringValue(data.viewportSize)
-      const width = numberValue(data.width)
-      const height = numberValue(data.height)
-      return compactLines([
-        width && height
-          ? `Captured ${width}×${height} screenshot`
-          : 'Captured screenshot',
-        selector ? `Selector: ${selector}` : null,
-        viewportSize ? `Viewport: ${viewportSize}` : null,
-        ocrImages && ocrImages > 0
-          ? `OCR ${ocrImages} image${ocrImages === 1 ? '' : 's'}`
-          : null,
-      ])
-    }
-    case 'skill':
-      return 'Loaded skill instructions'
-    case 'skill_read':
-      return 'Loaded reference content'
-    case 'skill_search':
-      return 'Search complete'
-    default:
-      return null
-  }
+  return summarizeResultForTool[tool]?.(data, reason) ?? null
 }
 
 function toolResultIndicatesFailure(tool: string, result: unknown): boolean {
