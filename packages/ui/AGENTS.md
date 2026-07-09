@@ -8,7 +8,7 @@
 
 - `src/components/`: reusable UI primitives/components exported as `@workspace/ui/components/*`.
 - `src/lib/utils.ts`: shared `cn()` utility.
-- `src/styles/globals.css`: Tailwind v4 imports, theme tokens, app source scanning, base styles, UI utilities, and the registered `@property --landing-panel-width` (owned by/for `@workspace/prompt-panel`).
+- `src/styles/globals.css`: Tailwind v4 imports, theme tokens, app source scanning, base styles, UI utilities, the registered `@property --landing-panel-width` (owned by/for `@workspace/prompt-panel`), and the landing layout transitions (`[data-landing-prompt-panel]` height; `[data-landing-preview-area]` margin/width, disabled under `:has([data-resizing])`).
 - `components.json`: shadcn config for this package.
 
 ## Local Contracts
@@ -18,6 +18,7 @@
 - Add shadcn components through the client config when generating for the app: `pnpm dlx shadcn@latest add <component> -c apps/client`.
 - Keep Tailwind theme/global CSS centralized in `src/styles/globals.css`; do not create competing global stylesheets. Include source-consumed workspace package paths (for example `packages/prompt-panel/src`) plus any external runtime package `dist/*.js` paths in this file's `@source` list so Tailwind emits every class used by consumers.
 - `src/styles/globals.css` registers `@property --landing-panel-width` (`syntax: '<length>'`, `inherits: true`, `initial-value` = the default panel width). It is the runtime width of the prompt panel and the docked preview offset; `@workspace/prompt-panel` writes its value and owns it — do not redefine or drive it from anywhere else.
+- `src/styles/globals.css` also owns the landing editor layout transitions: `[data-landing-prompt-panel]` transitions `height` (changes only on dock/undock/collapse, so it is always safe), and `[data-landing-preview-area]` transitions its dock offset (`margin`/`width`) — disabled under `[data-project-id]:has([data-resizing])` so the offset tracks `--landing-panel-width` exactly while the panel is being width-resized. The `data-landing-prompt-panel`, `data-landing-preview-area`, and `data-resizing` hooks are set by `@workspace/prompt-panel` / `@workspace/client`.
 - Preserve the current `radix-lyra`, Tailwind v4, Lucide icon setup unless the preset is intentionally changed.
 - `TooltipProvider` (in `src/components/tooltip.tsx`) defaults `delayDuration=0` and `disableHoverableContent=true`. The two interact: with `delayDuration=0` and hoverable content enabled (the Radix default), moving between adjacent triggers leaves the previous tooltip open during its grace period while the next opens instantly, so tooltips stack/swap. Tooltips across this app are non-interactive (label + `kbd` hint), so hoverable content is disabled by default; a consumer can still override `disableHoverableContent={false}` per provider if it later needs an interactive tooltip. Dropdown-trigger tooltips that also open a menu must additionally force-close on open (`Tooltip open={open ? false : undefined}`), owned at the trigger site.
 

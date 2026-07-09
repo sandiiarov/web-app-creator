@@ -160,3 +160,25 @@
 @utility scrollbar-gutter-stable {
   scrollbar-gutter: stable;
 }
+
+/* ── Landing editor layout transitions ─────────────────────── */
+/* The prompt panel height changes only when docking/undocking/collapsing
+   (never mid-drag or mid-resize), so it is always safe to transition. */
+[data-landing-prompt-panel] {
+  transition: height 200ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* The preview area's dock offset (margin + width) animates when the panel
+   docks/undocks. */
+[data-landing-preview-area] {
+  transition:
+    margin 200ms cubic-bezier(0.4, 0, 0.2, 1),
+    width 200ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* While the panel is being width-resized the offset must track
+   --landing-panel-width exactly, with no transition lag between the panel
+   edge and the preview edge. */
+[data-project-id]:has([data-resizing]) [data-landing-preview-area] {
+  transition: none;
+}

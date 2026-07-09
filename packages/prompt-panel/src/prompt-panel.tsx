@@ -514,6 +514,7 @@ export function PromptPanel({
         dockedSide === 'right' && 'border-y-0 border-r-0',
         dragging || resizing ? 'select-none' : '',
       )}
+      data-landing-prompt-panel=""
       data-resizing={resizing || undefined}
       ref={sectionRef}
       style={panelStyle}

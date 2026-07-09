@@ -109,7 +109,7 @@ export function EditorPage({ projectId }: EditorPageProps) {
       data-project-id={projectId}
     >
       {error ? <ErrorBanner message={error} /> : null}
-      <div className={previewAreaClassName}>
+      <div className={previewAreaClassName} data-landing-preview-area="">
         <LandingPreview
           elementSelectionActive={elementSelectionActive}
           html={landing.html}
