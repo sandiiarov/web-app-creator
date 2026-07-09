@@ -274,7 +274,7 @@ describe('project message storage', () => {
     const turn = messageTurn(project.id)
 
     await appendProjectMessageTurn(project.id, turn)
-    await updateProjectModel(project.id, 'zai-org/GLM-5.2')
+    await updateProjectModel(project.id, { textModel: 'zai-org/GLM-5.2' })
 
     await expect(getProject(project.id)).resolves.toMatchObject({
       id: project.id,
@@ -299,7 +299,9 @@ describe('project message storage', () => {
     setTitleIfUntitled(project.id, 'My Landing')
 
     // A model PATCH must read the latest meta (hasHtml true, titled) and keep both.
-    const updated = await updateProjectModel(project.id, 'some/model-id')
+    const updated = await updateProjectModel(project.id, {
+      textModel: 'some/model-id',
+    })
     expect(updated).toMatchObject({
       hasHtml: true,
       model: 'some/model-id',
@@ -315,6 +317,41 @@ describe('project message storage', () => {
       model: 'some/model-id',
       title: 'My Landing',
     })
+  })
+
+  it('updateProjectModel persists each role and preserves the others', async () => {
+    const project = await createProject()
+    createdProjectIds.push(project.id)
+
+    await updateProjectModel(project.id, { visionModel: 'vision/v1' })
+    let saved = await getProject(project.id)
+    expect(saved).toMatchObject({
+      imageModel: '',
+      model: '',
+      visionModel: 'vision/v1',
+    })
+
+    await updateProjectModel(project.id, {
+      imageModel: 'image/i1',
+      textModel: 'text/t1',
+    })
+    saved = await getProject(project.id)
+    expect(saved).toMatchObject({
+      imageModel: 'image/i1',
+      model: 'text/t1',
+      visionModel: 'vision/v1',
+    })
+  })
+
+  it('updateProjectModel is a no-op when no selection field is provided', async () => {
+    const project = await createProject({ model: 'text/keep' })
+    createdProjectIds.push(project.id)
+    const before = await getProject(project.id)
+
+    const result = await updateProjectModel(project.id, {})
+
+    expect(result).toMatchObject({ model: 'text/keep' })
+    expect(result?.updatedAt).toBe(before?.updatedAt)
   })
 
   it('lists only generated projects newest first and tolerates missing projects', async () => {
@@ -334,7 +371,7 @@ describe('project message storage', () => {
       expect.objectContaining({ id: older.id, title: 'Older' }),
     ])
     await expect(
-      updateProjectModel('missing-project', 'model'),
+      updateProjectModel('missing-project', { textModel: 'model' }),
     ).resolves.toBeNull()
     await expect(deleteProject('missing-project')).resolves.toBeUndefined()
   })

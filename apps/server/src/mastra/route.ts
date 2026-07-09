@@ -151,7 +151,7 @@ export async function streamLandingAgent({
     return
   }
 
-  await updateProjectModel(projectId, textModel)
+  await updateProjectModel(projectId, { textModel })
   setTitleIfUntitled(projectId, prompt)
 
   const recordedTurn = createRecordedTurn(

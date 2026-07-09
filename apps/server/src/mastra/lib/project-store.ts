@@ -98,17 +98,28 @@ export interface Project extends ProjectMeta {
 }
 
 export interface ProjectInput {
+  imageModel?: string
   model?: string
   title?: string
+  visionModel?: string
 }
 
 export interface ProjectMeta {
   createdAt: string
   hasHtml: boolean
   id: string
+  imageModel: string
   model: string
   title: string
   updatedAt: string
+  visionModel: string
+}
+
+/** Per-role model selection to persist. Only provided fields are changed. */
+export interface ProjectModelSelection {
+  imageModel?: string
+  textModel?: string
+  visionModel?: string
 }
 
 /**
@@ -169,9 +180,11 @@ export async function createProject(
     createdAt: now,
     hasHtml: false,
     id,
+    imageModel: input.imageModel?.trim() ?? '',
     model: input.model?.trim() ?? '',
     title: input.title?.trim() || 'Untitled',
     updatedAt: now,
+    visionModel: input.visionModel?.trim() ?? '',
   }
 
   const document = createHtmlDocumentFromString(PLACEHOLDER_INDEX_HTML)
@@ -575,21 +588,29 @@ export function setTitleIfUntitled(id: string, title: string): void {
 /** Persist the current model selection for a project. */
 export async function updateProjectModel(
   id: string,
-  model: string,
+  selection: ProjectModelSelection,
 ): Promise<null | ProjectMeta> {
   // Synchronous read-modify-write so the single-threaded event loop serializes
   // this against the other sync project.json writers (markHasHtmlSync,
-  // setTitleIfUntitled). An `await readMeta` here used to let a concurrent edit's
-  // markHasHtmlSync write be lost (hasHtml reverted to false). See plan 017.
+  // setTitleIfUntitled) — see plan 017. Only provided selection fields change.
   const meta = readMetaSync(id)
   if (!meta) return null
 
-  const normalized = model.trim()
-  if (meta.model === normalized) return meta
+  const textModel = selection.textModel?.trim()
+  const imageModel = selection.imageModel?.trim()
+  const visionModel = selection.visionModel?.trim()
 
-  const next = {
+  const changed =
+    (textModel !== undefined && meta.model !== textModel) ||
+    (imageModel !== undefined && meta.imageModel !== imageModel) ||
+    (visionModel !== undefined && meta.visionModel !== visionModel)
+  if (!changed) return meta
+
+  const next: ProjectMeta = {
     ...meta,
-    model: normalized,
+    ...(textModel !== undefined ? { model: textModel } : {}),
+    ...(imageModel !== undefined ? { imageModel } : {}),
+    ...(visionModel !== undefined ? { visionModel } : {}),
     updatedAt: new Date().toISOString(),
   }
   writeMetaSync(id, next)
@@ -903,7 +924,7 @@ async function readMessages(id: string): Promise<ProjectMessageTurn[]> {
 async function readMeta(id: string): Promise<null | ProjectMeta> {
   try {
     const raw = await readFile(join(projectDir(id), PROJECT_JSON), 'utf8')
-    return JSON.parse(raw) as ProjectMeta
+    return withDefaultModelFields(JSON.parse(raw) as ProjectMeta)
   } catch {
     return null
   }
@@ -912,7 +933,7 @@ async function readMeta(id: string): Promise<null | ProjectMeta> {
 function readMetaSync(id: string): null | ProjectMeta {
   try {
     const raw = readFileSync(join(projectDir(id), PROJECT_JSON), 'utf8')
-    return JSON.parse(raw) as ProjectMeta
+    return withDefaultModelFields(JSON.parse(raw) as ProjectMeta)
   } catch {
     return null
   }
@@ -961,6 +982,17 @@ function stripOrigin(url: string): string {
 function truncateTitle(value: string): string {
   const trimmed = value.trim().replace(/\s+/g, ' ')
   return trimmed.length > 60 ? `${trimmed.slice(0, 60)}…` : trimmed
+}
+
+/** Normalize legacy project.json missing per-role model fields to ''. Legacy
+ *  files (persisted before image/vision model storage) self-heal on first read;
+ *  the next write persists the normalized form. */
+function withDefaultModelFields(meta: ProjectMeta): ProjectMeta {
+  return {
+    ...meta,
+    imageModel: meta.imageModel ?? '',
+    visionModel: meta.visionModel ?? '',
+  }
 }
 
 async function writeHtmlDocument(id: string, document: HtmlDocumentJsonV1) {

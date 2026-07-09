@@ -306,7 +306,31 @@ async function handlePatchProject(
     return
   }
 
-  const project = await updateProjectModel(id, resolveModelId(body.textModel))
+  for (const field of ['imageModel', 'visionModel'] as const) {
+    const value = body[field]
+    if (
+      value !== undefined &&
+      (typeof value !== 'string' || value.trim() === '')
+    ) {
+      sendJson(response, 400, {
+        error: `Expected { ${field}?: string }`,
+        ok: false,
+      })
+      return
+    }
+  }
+
+  const project = await updateProjectModel(id, {
+    imageModel:
+      typeof body.imageModel === 'string'
+        ? resolveModelId(body.imageModel)
+        : undefined,
+    textModel: resolveModelId(body.textModel),
+    visionModel:
+      typeof body.visionModel === 'string'
+        ? resolveModelId(body.visionModel)
+        : undefined,
+  })
   if (!project) {
     sendJson(response, 404, { error: 'Project not found', ok: false })
     return

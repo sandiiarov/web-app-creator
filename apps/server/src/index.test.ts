@@ -272,6 +272,52 @@ describe('server HTTP routes', () => {
     })
   })
 
+  it('PATCH persists vision and image models and they survive a GET (reload)', async () => {
+    await withServer(async ({ baseUrl }) => {
+      const createResponse = await postJson(`${baseUrl}/api/projects`, {
+        title: 'Models',
+      })
+      expect(createResponse.status).toBe(201)
+      const created = (await createResponse.json()) as {
+        project: { id: string }
+      }
+      createdProjectIds.push(created.project.id)
+
+      const patchResponse = await fetch(
+        `${baseUrl}/api/projects/${created.project.id}`,
+        {
+          body: JSON.stringify({
+            imageModel: 'openrouter/bytedance-seed/seedream-4.5',
+            textModel: 'openrouter/z-ai/glm-5.2',
+            visionModel: 'openrouter/z-ai/glm-5v-turbo',
+          }),
+          headers: { 'content-type': 'application/json' },
+          method: 'PATCH',
+        },
+      )
+      expect(patchResponse.status).toBe(200)
+      await expect(patchResponse.json()).resolves.toMatchObject({
+        project: {
+          imageModel: 'bytedance-seed/seedream-4.5',
+          model: 'z-ai/glm-5.2',
+          visionModel: 'z-ai/glm-5v-turbo',
+        },
+      })
+
+      // A fresh GET (simulating a reload) returns the persisted selection —
+      // previously the server dropped imageModel/visionModel on write.
+      await expect(
+        fetchJson(`${baseUrl}/api/projects/${created.project.id}`),
+      ).resolves.toMatchObject({
+        project: {
+          imageModel: 'bytedance-seed/seedream-4.5',
+          model: 'z-ai/glm-5.2',
+          visionModel: 'z-ai/glm-5v-turbo',
+        },
+      })
+    })
+  })
+
   it('serves in-memory and persisted project images', async () => {
     await withServer(async ({ baseUrl }) => {
       const { saveImage } = await import('./mastra/lib/image-store.ts')
