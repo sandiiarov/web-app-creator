@@ -599,6 +599,9 @@ export async function updateProjectModel(
  * no base64 ever lands in a JSON file. Sync so the file exists before the
  * agent message snapshot that points at it.
  */
+/** Bound the debug `screenshots/` dir per project (debug-only; not replay-critical). */
+const MAX_SCREENSHOTS_PER_PROJECT = 50
+
 export function writeProjectScreenshotSync(
   id: string,
   requestId: string,
@@ -608,9 +611,17 @@ export function writeProjectScreenshotSync(
   const ext = mediaTypeToExt(mediaType)
   const dir = join(projectDir(id), SCREENSHOTS_DIR)
   mkdirSync(dir, { recursive: true })
-  const seq = readdirSync(dir).filter((name) => name.endsWith(ext)).length + 1
+  const files = readdirSync(dir).filter((name) => name.endsWith(ext))
+  // max(prefix)+1 (not count+1) so sequence numbers stay monotonic + unique
+  // after pruning deletes older files.
+  const seq =
+    files.reduce((max, name) => {
+      const n = Number.parseInt(name.slice(0, 3), 10)
+      return Number.isFinite(n) && n > max ? n : max
+    }, 0) + 1
   const fileName = `${String(seq).padStart(3, '0')}-${requestId}${ext}`
   writeFileSync(join(dir, fileName), decodeBase64DataUrl(dataUrl, mediaType))
+  pruneScreenshots(dir, [...files, fileName])
   return { ext, path: `/api/projects/${id}/screenshots/${fileName}` }
 }
 
@@ -668,11 +679,11 @@ async function ensureProjectsRoot() {
   await mkdir(PROJECTS_DIR, { recursive: true })
 }
 
-// ── image URL normalization (sync) ───────────────────────────────
-
 function invalidateTurnCache(id: string): void {
   turnCache.delete(id)
 }
+
+// ── image URL normalization (sync) ───────────────────────────────
 
 function isProjectRawTurnMessages(
   value: unknown,
@@ -698,8 +709,6 @@ function isSafeScreenshotName(name: string): boolean {
   )
 }
 
-// ── sync fs helpers ──────────────────────────────────────────────
-
 function markHasHtmlSync(id: string) {
   const meta = readMetaSync(id)
   if (!meta) return
@@ -707,6 +716,8 @@ function markHasHtmlSync(id: string) {
   meta.updatedAt = new Date().toISOString()
   writeMetaSync(id, meta)
 }
+
+// ── sync fs helpers ──────────────────────────────────────────────
 
 function mediaTypeForName(name: string): string {
   const ext = name.split('.').pop()?.toLowerCase()
@@ -798,6 +809,23 @@ function preserveAnchorsForRenderedHtml(
 
 function projectDir(id: string) {
   return join(PROJECTS_DIR, id)
+}
+
+/** Keep only the newest MAX_SCREENSHOTS_PER_PROJECT screenshots (NNN-prefixed →
+ *  chronological by name). Best-effort: a failed unlink is swallowed so a
+ *  retention sweep can never break a capture. */
+function pruneScreenshots(dir: string, files: string[]): void {
+  if (files.length <= MAX_SCREENSHOTS_PER_PROJECT) return
+  const excess = [...files]
+    .sort()
+    .slice(0, files.length - MAX_SCREENSHOTS_PER_PROJECT)
+  for (const name of excess) {
+    try {
+      rmSync(join(dir, name), { force: true })
+    } catch {
+      // best-effort retention
+    }
+  }
 }
 
 async function readDirSafe(dir: string): Promise<string[]> {

@@ -1,4 +1,4 @@
-import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -611,6 +611,25 @@ describe('append-only debug logs', () => {
     await expect(
       readFile(join(PROJECTS_DIR, project.id, 'screenshots', '001-req-1.png')),
     ).resolves.toEqual(bytes)
+  })
+
+  it('prunes screenshots to the newest cap and keeps sequence numbers monotonic', async () => {
+    const project = await createProject()
+    createdProjectIds.push(project.id)
+    const bytes = Buffer.from([0x89, 0x50, 0x4e, 0x47])
+    const dataUrl = `data:image/png;base64,${bytes.toString('base64')}`
+    const dir = join(PROJECTS_DIR, project.id, 'screenshots')
+
+    // MAX_SCREENSHOTS_PER_PROJECT is 50; write one past the cap.
+    for (let i = 1; i <= 51; i++) {
+      writeProjectScreenshotSync(project.id, `req-${i}`, dataUrl, 'image/png')
+    }
+
+    const remaining = await readdir(dir)
+    expect(remaining).toHaveLength(50)
+    // oldest pruned, newest kept, and the 51st write did not reuse 001
+    expect(remaining).not.toContain('001-req-1.png')
+    expect(remaining).toContain('051-req-51.png')
   })
 })
 
