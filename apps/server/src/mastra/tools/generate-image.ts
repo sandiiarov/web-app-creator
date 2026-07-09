@@ -2,6 +2,7 @@ import { createTool } from '@mastra/core/tools'
 import { z } from 'zod'
 
 import { config } from '../../config.ts'
+import { boundedFetch } from '../lib/bounded-fetch.ts'
 import { providerReportedCost } from '../lib/cost.ts'
 import { getImage, saveImage } from '../lib/image-store.ts'
 
@@ -40,20 +41,36 @@ export function createGenerateImageTool(
         }
       }
 
-      const response = await fetch(config.openrouter.imageApiUrl, {
-        body: JSON.stringify({
-          aspect_ratio: aspectRatio ?? '16:9',
-          model,
-          prompt,
-        }),
-        headers: {
-          Authorization: `Bearer ${config.openrouter.apiKey}`,
-          'Content-Type': 'application/json',
-          'X-OpenRouter-Metadata': 'enabled',
+      const fetched = await boundedFetch(
+        config.openrouter.imageApiUrl,
+        {
+          body: JSON.stringify({
+            aspect_ratio: aspectRatio ?? '16:9',
+            model,
+            prompt,
+          }),
+          headers: {
+            Authorization: `Bearer ${config.openrouter.apiKey}`,
+            'Content-Type': 'application/json',
+            'X-OpenRouter-Metadata': 'enabled',
+          },
+          method: 'POST',
         },
-        method: 'POST',
-      })
+        { label: 'OpenRouter image generation' },
+      )
 
+      if (!fetched.ok) {
+        return {
+          cost: 0,
+          imagesGenerated: 0,
+          ok: false,
+          prompt,
+          reason: fetched.reason,
+          url: null,
+        }
+      }
+
+      const response = fetched.response
       if (!response.ok) {
         const text = await response.text().catch(() => '')
         return {

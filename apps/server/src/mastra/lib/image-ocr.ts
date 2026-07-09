@@ -1,6 +1,6 @@
 import { config } from '../../config.ts'
+import { boundedFetch } from './bounded-fetch.ts'
 import { providerReportedCost } from './cost.ts'
-import { fetchVisionCompletion } from './vision-fetch.ts'
 
 /**
  * System prompt for vision OCR, reused from Z.AI's `ui_to_artifact` tool (the
@@ -154,41 +154,45 @@ export async function ocrImageInputs(
   }
 
   const url = `${trimTrailingSlash(config.openrouter.chatApiUrl)}/chat/completions`
-  const fetched = await fetchVisionCompletion(url, {
-    body: JSON.stringify({
-      max_tokens: 4096,
-      messages: [
-        {
-          content: systemPrompt,
-          role: 'system',
-        },
-        {
-          content: [
-            {
-              text: buildUserMessage(
-                userPrompt,
-                imageRefs.map((image) => image.sourceLabel),
-              ),
-              type: 'text',
-            },
-            ...imageRefs.map((image) => ({
-              image_url: { url: image.dataUrl },
-              type: 'image_url',
-            })),
-          ],
-          role: 'user',
-        },
-      ],
-      model,
-      temperature: 0,
-    }),
-    headers: {
-      Authorization: `Bearer ${config.openrouter.apiKey}`,
-      'Content-Type': 'application/json',
-      'X-OpenRouter-Metadata': 'enabled',
+  const fetched = await boundedFetch(
+    url,
+    {
+      body: JSON.stringify({
+        max_tokens: 4096,
+        messages: [
+          {
+            content: systemPrompt,
+            role: 'system',
+          },
+          {
+            content: [
+              {
+                text: buildUserMessage(
+                  userPrompt,
+                  imageRefs.map((image) => image.sourceLabel),
+                ),
+                type: 'text',
+              },
+              ...imageRefs.map((image) => ({
+                image_url: { url: image.dataUrl },
+                type: 'image_url',
+              })),
+            ],
+            role: 'user',
+          },
+        ],
+        model,
+        temperature: 0,
+      }),
+      headers: {
+        Authorization: `Bearer ${config.openrouter.apiKey}`,
+        'Content-Type': 'application/json',
+        'X-OpenRouter-Metadata': 'enabled',
+      },
+      method: 'POST',
     },
-    method: 'POST',
-  })
+    { label: 'OpenRouter vision' },
+  )
   if (!fetched.ok) {
     return {
       imagesAnalyzed: imageRefs.length,
@@ -301,7 +305,17 @@ function extractMessageText(message: ChatCompletionChoice['message']): string {
 
 /** Fetch an image and return a base64 data URL suitable for OpenRouter vision. */
 async function fetchAsDataUrl(url: string): Promise<string> {
-  const response = await fetch(url)
+  // External CDN images: shorter timeout + fewer retries than the paid
+  // OpenRouter API, so one slow host doesn't stall the OCR batch for 90s.
+  const fetched = await boundedFetch(
+    url,
+    { method: 'GET' },
+    { label: 'image download', maxAttempts: 2, timeoutMs: 15_000 },
+  )
+  if (!fetched.ok) {
+    throw new Error(`${fetched.reason}: ${url}`)
+  }
+  const response = fetched.response
   if (!response.ok) {
     throw new Error(`Failed to fetch image (${response.status}): ${url}`)
   }

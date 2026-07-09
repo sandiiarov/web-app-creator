@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { fetchVisionCompletion } from './vision-fetch.ts'
+import { boundedFetch } from './bounded-fetch.ts'
 
 const PNG_DATA_URL = 'data:image/png;base64,iVBORw0KGgo='
 const WEBP_DATA_URL = 'data:image/webp;base64,UklGRg=='
@@ -290,9 +290,39 @@ describe('ocrImages', () => {
       reason: expect.stringContaining('URL is not a supported image'),
     })
   })
+
+  it('fails fast when a scraped image URL hangs', async () => {
+    const { ocrImages } = await loadImageOcr()
+    const fetch = vi.fn<FetchMock>(
+      (_url, init) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener(
+            'abort',
+            () => {
+              const err = new Error('The operation was aborted')
+              err.name = 'AbortError'
+              reject(err)
+            },
+            { once: true },
+          )
+        }),
+    )
+    vi.stubGlobal('fetch', fetch)
+
+    // fetchAsDataUrl uses a 15s timeout x 2 attempts; fast-forward fake timers
+    // so the abort/retry chain resolves deterministically.
+    vi.useFakeTimers()
+    const pending = ocrImages(['https://example.test/slow.png'])
+    await vi.advanceTimersByTimeAsync(40_000)
+    vi.useRealTimers()
+    const result = await pending
+
+    expect(result).toMatchObject({ ok: false })
+    expect(result.reason).toContain('https://example.test/slow.png')
+  })
 })
 
-describe('fetchVisionCompletion', () => {
+describe('boundedFetch', () => {
   it('retries on 5xx and returns the success response once it recovers', async () => {
     const fetch = vi.fn<FetchMock>(async () => jsonResponse({ ok: true }))
     fetch
@@ -305,7 +335,7 @@ describe('fetchVisionCompletion', () => {
       .mockReturnValueOnce(Promise.resolve(jsonResponse({ ok: true })))
     vi.stubGlobal('fetch', fetch)
 
-    const result = await fetchVisionCompletion(
+    const result = await boundedFetch(
       'https://x.test',
       { method: 'POST' },
       { baseDelayMs: 0, timeoutMs: 1000 },
@@ -321,7 +351,7 @@ describe('fetchVisionCompletion', () => {
       vi.fn<FetchMock>(async () => new Response('down', { status: 503 })),
     )
 
-    const result = await fetchVisionCompletion(
+    const result = await boundedFetch(
       'https://x.test',
       { method: 'POST' },
       { baseDelayMs: 0, maxAttempts: 3, timeoutMs: 1000 },
@@ -339,7 +369,7 @@ describe('fetchVisionCompletion', () => {
       vi.fn<FetchMock>(async () => new Response('bad', { status: 400 })),
     )
 
-    const result = await fetchVisionCompletion(
+    const result = await boundedFetch(
       'https://x.test',
       { method: 'POST' },
       { baseDelayMs: 0, timeoutMs: 1000 },
@@ -371,7 +401,7 @@ describe('fetchVisionCompletion', () => {
       ),
     )
 
-    const result = await fetchVisionCompletion(
+    const result = await boundedFetch(
       'https://x.test',
       { method: 'POST' },
       { baseDelayMs: 0, maxAttempts: 3, timeoutMs: 5 },

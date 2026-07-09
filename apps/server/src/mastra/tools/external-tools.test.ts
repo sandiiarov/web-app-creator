@@ -257,6 +257,80 @@ describe('createGenerateImageTool', () => {
       reason: 'OpenRouter returned no image data.',
     })
   })
+
+  it('retries image generation on a transient 5xx then succeeds', async () => {
+    const { createGenerateImageTool } = await loadGenerateImageTool({
+      OPENROUTER_API_KEY: 'openrouter-key',
+    })
+    const fetch = vi
+      .fn<FetchMock>()
+      .mockResolvedValueOnce(new Response('down', { status: 503 }))
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: [
+            {
+              b64_json: Buffer.from([0xff, 0xd8, 0xff, 0x00]).toString(
+                'base64',
+              ),
+            },
+          ],
+          usage: { cost: 0.031 },
+        }),
+      )
+    vi.stubGlobal('fetch', fetch)
+
+    const tool = createGenerateImageTool('http://server.test')
+    const result = await tool.execute?.(
+      {
+        action: 'Create hero image',
+        prompt: 'A cinematic product render on a clean desk',
+      },
+      undefined as never,
+    )
+
+    expect(result).toMatchObject({ cost: 0.031, ok: true })
+    expect(fetch).toHaveBeenCalledTimes(2)
+  })
+
+  it('surfaces a bounded-fetch timeout reason when the image API hangs', async () => {
+    const { createGenerateImageTool } = await loadGenerateImageTool({
+      OPENROUTER_API_KEY: 'openrouter-key',
+    })
+    // fetch that never resolves until aborted (honors the abort signal).
+    const fetch = vi.fn<FetchMock>(
+      (_url, init) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener(
+            'abort',
+            () => {
+              const err = new Error('The operation was aborted')
+              err.name = 'AbortError'
+              reject(err)
+            },
+            { once: true },
+          )
+        }),
+    )
+    vi.stubGlobal('fetch', fetch)
+
+    // The call site uses the helper's default 30s timeout x 3 attempts; fast-forward
+    // fake timers so the abort/retry chain resolves deterministically.
+    vi.useFakeTimers()
+    const pending = createGenerateImageTool('http://server.test').execute?.(
+      {
+        action: 'Create hero image',
+        prompt: 'A cinematic product render on a clean desk',
+      },
+      undefined as never,
+    )
+    await vi.advanceTimersByTimeAsync(120_000)
+    vi.useRealTimers()
+    const result = await pending
+
+    expect(result).toMatchObject({ ok: false })
+    if (!result || !('reason' in result)) throw new Error('expected reason')
+    expect(result.reason).toMatch(/timed out|image generation/i)
+  })
 })
 
 describe('createScrapeTool', () => {
