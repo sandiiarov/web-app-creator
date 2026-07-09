@@ -1,10 +1,16 @@
-import type { PanelLayout, PanelPosition } from './panel-constants'
+import {
+  type PanelLayout,
+  type PanelPosition,
+  PANEL_WIDTH,
+  clampPanelWidth,
+} from './panel-constants'
 
 export const PANEL_POSITION_STORAGE_KEY = 'landing.promptPanel.position.v1'
 
 export type StoredPanelState = Partial<PanelPosition> & {
   collapsed?: boolean
   layout?: PanelLayout
+  width?: number
 }
 
 const PANEL_LAYOUTS: readonly PanelLayout[] = [
@@ -22,6 +28,15 @@ export function readStoredPanelLayout(): PanelLayout {
   const state = readStoredPanelState()
   if (!state || state.collapsed || !state.layout) return 'floating'
   return PANEL_LAYOUTS.includes(state.layout) ? state.layout : 'floating'
+}
+
+/**
+ * Persisted panel width clamped to the allowed range, or the default.
+ */
+export function readStoredPanelWidth(): number {
+  const width = readStoredPanelState()?.width
+  if (typeof width !== 'number') return PANEL_WIDTH
+  return clampPanelWidth(width)
 }
 
 export function readStoredPanelState(): null | StoredPanelState {

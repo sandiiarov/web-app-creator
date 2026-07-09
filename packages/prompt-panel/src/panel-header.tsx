@@ -16,8 +16,17 @@ import { type PointerEvent as ReactPointerEvent } from 'react'
 
 import { KeyboardShortcut } from './keyboard-shortcut'
 import { KEYBOARD_SHORTCUTS } from './keyboard-shortcuts'
-import { PanelLayoutMenu, PanelSettingsMenu } from './panel-command-menu'
-import type { PanelLayout, PanelStatus, PanelTheme } from './panel-constants'
+import {
+  PanelLayoutMenu,
+  PanelSettingsMenu,
+  PreviewViewportMenu,
+} from './panel-command-menu'
+import type {
+  PanelLayout,
+  PanelStatus,
+  PanelTheme,
+  PreviewViewport,
+} from './panel-constants'
 import { StatusPill } from './status-pill'
 
 export function PanelHeader({
@@ -34,9 +43,11 @@ export function PanelHeader({
   onPanelMenuOpenChange,
   onToggleCollapsed,
   onToggleTheme,
+  onViewportChange,
   panelMenuOpen,
   status,
   theme,
+  viewport,
 }: {
   canDownload: boolean
   collapsed: boolean
@@ -51,9 +62,11 @@ export function PanelHeader({
   onPanelMenuOpenChange: (open: boolean) => void
   onToggleCollapsed: () => void
   onToggleTheme: () => void
+  onViewportChange: (viewport: PreviewViewport) => void
   panelMenuOpen: boolean
   status: PanelStatus
   theme: PanelTheme
+  viewport: PreviewViewport
 }) {
   return (
     <header
@@ -95,6 +108,10 @@ export function PanelHeader({
               <KeyboardShortcut shortcut={KEYBOARD_SHORTCUTS.allProjects} />
             </TooltipContent>
           </Tooltip>
+          <PreviewViewportMenu
+            onViewportChange={onViewportChange}
+            viewport={viewport}
+          />
           <Tooltip>
             <TooltipTrigger asChild>
               <Button

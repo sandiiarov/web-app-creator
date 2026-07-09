@@ -19,17 +19,31 @@ import {
   PanelRight,
   PanelsTopLeft,
   Settings,
+  Smartphone,
   Sun,
+  Tablet,
 } from 'lucide-react'
+import { useState } from 'react'
 
 import { KeyboardShortcut } from './keyboard-shortcut'
 import { KEYBOARD_SHORTCUTS } from './keyboard-shortcuts'
-import type { PanelLayout, PanelTheme } from './panel-constants'
+import type {
+  PanelLayout,
+  PanelTheme,
+  PreviewViewport,
+} from './panel-constants'
+import { PREVIEW_VIEWPORTS } from './panel-constants'
 
 const PANEL_LAYOUT_LABELS: Record<PanelLayout, string> = {
   floating: 'Floating',
   'left-sidebar': 'Left sidebar',
   'right-sidebar': 'Right sidebar',
+}
+
+const PREVIEW_VIEWPORT_LABELS: Record<PreviewViewport, string> = {
+  desktop: 'Desktop',
+  mobile: 'Mobile',
+  tablet: 'Tablet',
 }
 
 export function PanelLayoutMenu({
@@ -50,7 +64,7 @@ export function PanelLayoutMenu({
 
   return (
     <DropdownMenu onOpenChange={onOpenChange} open={open}>
-      <Tooltip>
+      <Tooltip open={open ? false : undefined}>
         <TooltipTrigger asChild>
           <DropdownMenuTrigger asChild>
             <Button
@@ -109,11 +123,12 @@ export function PanelSettingsMenu({
   onToggleTheme: () => void
   theme: PanelTheme
 }) {
+  const [open, setOpen] = useState(false)
   const ThemeIcon = themeToggleIcon(theme)
 
   return (
-    <DropdownMenu>
-      <Tooltip>
+    <DropdownMenu onOpenChange={setOpen} open={open}>
+      <Tooltip open={open ? false : undefined}>
         <TooltipTrigger asChild>
           <DropdownMenuTrigger asChild>
             <Button
@@ -147,6 +162,66 @@ export function PanelSettingsMenu({
       </DropdownMenuContent>
     </DropdownMenu>
   )
+}
+
+export function PreviewViewportMenu({
+  onViewportChange,
+  viewport,
+}: {
+  onViewportChange: (viewport: PreviewViewport) => void
+  viewport: PreviewViewport
+}) {
+  const [open, setOpen] = useState(false)
+  const TriggerIcon = previewViewportIcon(viewport)
+
+  return (
+    <DropdownMenu onOpenChange={setOpen} open={open}>
+      <Tooltip open={open ? false : undefined}>
+        <TooltipTrigger asChild>
+          <DropdownMenuTrigger asChild>
+            <Button
+              aria-label={`Preview viewport. Current: ${PREVIEW_VIEWPORT_LABELS[viewport]}.`}
+              size="icon-sm"
+              type="button"
+              variant="ghost"
+            >
+              <TriggerIcon />
+            </Button>
+          </DropdownMenuTrigger>
+        </TooltipTrigger>
+        <TooltipContent side="bottom">
+          Viewport · {PREVIEW_VIEWPORT_LABELS[viewport]}
+        </TooltipContent>
+      </Tooltip>
+      <DropdownMenuContent
+        align="end"
+        className="w-52"
+        onKeyDown={(event) => event.stopPropagation()}
+        sideOffset={6}
+      >
+        <DropdownMenuGroup>
+          {PREVIEW_VIEWPORTS.map((nextViewport) => {
+            const Icon = previewViewportIcon(nextViewport)
+            return (
+              <DropdownMenuItem
+                key={nextViewport}
+                onSelect={() => onViewportChange(nextViewport)}
+              >
+                <Icon />
+                {PREVIEW_VIEWPORT_LABELS[nextViewport]}
+              </DropdownMenuItem>
+            )
+          })}
+        </DropdownMenuGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+}
+
+function previewViewportIcon(viewport: PreviewViewport) {
+  if (viewport === 'mobile') return Smartphone
+  if (viewport === 'tablet') return Tablet
+  return Monitor
 }
 
 function themeToggleIcon(theme: PanelTheme) {

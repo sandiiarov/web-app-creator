@@ -18,6 +18,7 @@
 - Add shadcn components through the client config when generating for the app: `pnpm dlx shadcn@latest add <component> -c apps/client`.
 - Keep Tailwind theme/global CSS centralized in `src/styles/globals.css`; do not create competing global stylesheets. Include source-consumed workspace package paths (for example `packages/prompt-panel/src`) plus any external runtime package `dist/*.js` paths in this file's `@source` list so Tailwind emits every class used by consumers.
 - Preserve the current `radix-lyra`, Tailwind v4, Lucide icon setup unless the preset is intentionally changed.
+- `TooltipProvider` (in `src/components/tooltip.tsx`) defaults `delayDuration=0` and `disableHoverableContent=true`. The two interact: with `delayDuration=0` and hoverable content enabled (the Radix default), moving between adjacent triggers leaves the previous tooltip open during its grace period while the next opens instantly, so tooltips stack/swap. Tooltips across this app are non-interactive (label + `kbd` hint), so hoverable content is disabled by default; a consumer can still override `disableHoverableContent={false}` per provider if it later needs an interactive tooltip. Dropdown-trigger tooltips that also open a menu must additionally force-close on open (`Tooltip open={open ? false : undefined}`), owned at the trigger site.
 
 ## Work Guidance
 

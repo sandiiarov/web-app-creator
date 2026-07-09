@@ -1,14 +1,16 @@
 import { LandingPreview } from '@workspace/landing-preview'
 import {
+  DEFAULT_PREVIEW_VIEWPORT,
   type ElementAttachmentInput,
   type PanelLayout,
-  PANEL_WIDTH,
+  type PreviewViewport,
   PromptPanel,
   readStoredPanelLayout,
+  readStoredPanelWidth,
 } from '@workspace/prompt-panel'
 import { Button } from '@workspace/ui/components/button'
 import { ArrowLeft } from 'lucide-react'
-import { type CSSProperties, useCallback, useState } from 'react'
+import { useCallback, useLayoutEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
 import { useTheme } from '#components/theme-provider'
@@ -29,6 +31,10 @@ export function EditorPage({ projectId }: EditorPageProps) {
   const [panelLayout, setPanelLayout] = useState<PanelLayout>(
     readStoredPanelLayout,
   )
+  const [panelWidth, setPanelWidth] = useState<number>(readStoredPanelWidth)
+  const [viewport, setViewport] = useState<PreviewViewport>(
+    DEFAULT_PREVIEW_VIEWPORT,
+  )
   const [selectedElementAttachment, setSelectedElementAttachment] =
     useState<ElementAttachmentInput | null>(null)
 
@@ -40,6 +46,17 @@ export function EditorPage({ projectId }: EditorPageProps) {
     (layout: PanelLayout) => setPanelLayout(layout),
     [],
   )
+
+  const handlePanelWidthChange = useCallback((width: number) => {
+    setPanelWidth(width)
+  }, [])
+
+  useLayoutEffect(() => {
+    document.documentElement.style.setProperty(
+      '--landing-panel-width',
+      `${panelWidth}px`,
+    )
+  }, [panelWidth])
 
   const handleElementSelectionCancel = useCallback(() => {
     setElementSelectionActive(false)
@@ -85,28 +102,36 @@ export function EditorPage({ projectId }: EditorPageProps) {
 
   const hasLanding = landing.turns.length > 0
 
-  const previewClassName =
+  const previewAreaClassName =
     panelLayout === 'left-sidebar'
-      ? 'h-svh w-[calc(100vw-var(--landing-panel-width))] border-0 ml-[var(--landing-panel-width)]'
+      ? 'ml-[var(--landing-panel-width)] flex h-svh w-[calc(100vw-var(--landing-panel-width))] justify-center'
       : panelLayout === 'right-sidebar'
-        ? 'h-svh w-[calc(100vw-var(--landing-panel-width))] border-0 mr-[var(--landing-panel-width)]'
-        : 'h-svh w-screen border-0'
+        ? 'mr-[var(--landing-panel-width)] flex h-svh w-[calc(100vw-var(--landing-panel-width))] justify-center'
+        : 'flex h-svh w-screen justify-center'
+
+  const previewFrameClassName =
+    viewport === 'mobile'
+      ? 'h-full w-[390px] shrink-0 border-0'
+      : viewport === 'tablet'
+        ? 'h-full w-[768px] shrink-0 border-0'
+        : 'h-full w-full border-0'
 
   return (
     <main
       className="fixed inset-0 overflow-hidden bg-background"
       data-project-id={projectId}
-      style={{ '--landing-panel-width': `${PANEL_WIDTH}px` } as CSSProperties}
     >
       {error ? <ErrorBanner message={error} /> : null}
-      <LandingPreview
-        elementSelectionActive={elementSelectionActive}
-        html={landing.html}
-        iframeClassName={previewClassName}
-        onElementSelected={handleElementSelected}
-        onElementSelectionCancel={handleElementSelectionCancel}
-        onError={setErrorMessage}
-      />
+      <div className={previewAreaClassName}>
+        <LandingPreview
+          elementSelectionActive={elementSelectionActive}
+          html={landing.html}
+          iframeClassName={previewFrameClassName}
+          onElementSelected={handleElementSelected}
+          onElementSelectionCancel={handleElementSelectionCancel}
+          onError={setErrorMessage}
+        />
+      </div>
       <PromptPanel
         canDownload={!!landing.html}
         elementSelectionActive={elementSelectionActive}
@@ -116,6 +141,7 @@ export function EditorPage({ projectId }: EditorPageProps) {
         onDownloadHtml={() => downloadProjectHtml(projectId)}
         onElementSelectionToggle={handleElementSelectionToggle}
         onLayoutChange={handlePanelLayoutChange}
+        onWidthChange={handlePanelWidthChange}
         onModelsChange={landing.setModels}
         onSelectedElementAttachmentConsumed={() =>
           setSelectedElementAttachment(null)
@@ -129,9 +155,11 @@ export function EditorPage({ projectId }: EditorPageProps) {
               : 'dark',
           )
         }
+        onViewportChange={setViewport}
         selectedElementAttachment={selectedElementAttachment}
         theme={theme}
         turns={landing.turns}
+        viewport={viewport}
       />
       {!hasLanding ? (
         <p className="pointer-events-none fixed bottom-4 left-4 z-20 max-w-xs rounded-none border border-border bg-popover/90 px-2 py-1 text-[11px] text-muted-foreground backdrop-blur">

@@ -35,6 +35,7 @@ import {
   type PanelLayout,
   type PanelPosition,
   type PanelTheme,
+  type PreviewViewport,
 } from './panel-constants'
 import { PanelHeader } from './panel-header'
 import { panelStatus } from './panel-status'
@@ -67,9 +68,11 @@ export type PromptPanelProps = {
   onSend: (input: LandingAgentSendInput) => void
   onStop: () => void
   onToggleTheme: () => void
+  onViewportChange: (viewport: PreviewViewport) => void
   selectedElementAttachment: ElementAttachmentInput | null
   theme: PanelTheme
   turns: LandingTurn[]
+  viewport: PreviewViewport
 }
 
 type DragState = {
@@ -94,9 +97,11 @@ export function PromptPanel({
   onSend,
   onStop,
   onToggleTheme,
+  onViewportChange,
   selectedElementAttachment,
   theme,
   turns,
+  viewport,
 }: PromptPanelProps) {
   const [collapsed, setCollapsed] = useState(initialPanelCollapsed)
   const [panelMenuOpen, setPanelMenuOpen] = useState(false)
@@ -117,14 +122,15 @@ export function PromptPanel({
 
   useEffect(() => {
     if (!onLayoutChange) return
-    const docked = dockedPanelSide(position)
-    const reportedLayout: PanelLayout = collapsed
-      ? 'floating'
-      : docked
-        ? `${docked}-sidebar`
-        : 'floating'
+    const docked = dragging ? null : dockedPanelSide(position)
+    const reportedLayout: PanelLayout =
+      dragging || collapsed
+        ? 'floating'
+        : docked
+          ? `${docked}-sidebar`
+          : 'floating'
     onLayoutChange(reportedLayout)
-  }, [collapsed, onLayoutChange, position])
+  }, [collapsed, dragging, onLayoutChange, position])
 
   useEffect(() => {
     if (!selectedElementAttachment) return
@@ -363,7 +369,7 @@ export function PromptPanel({
     },
     [isStreaming, stopGeneration],
   )
-  const dockedSide = dockedPanelSide(position)
+  const dockedSide = dragging ? null : dockedPanelSide(position)
   const layout: PanelLayout = dockedSide ? `${dockedSide}-sidebar` : 'floating'
   const status = panelStatus({ isStreaming, turns })
   const shouldRenderCollapsed = collapsed
@@ -412,9 +418,11 @@ export function PromptPanel({
           onPanelMenuOpenChange={setPanelMenuOpen}
           onToggleCollapsed={() => setCollapsed(false)}
           onToggleTheme={onToggleTheme}
+          onViewportChange={onViewportChange}
           panelMenuOpen={panelMenuOpen}
           status={status}
           theme={theme}
+          viewport={viewport}
         />
       ) : (
         <div className="flex h-full min-h-0 flex-col">
@@ -432,9 +440,11 @@ export function PromptPanel({
             onPanelMenuOpenChange={setPanelMenuOpen}
             onToggleCollapsed={() => setCollapsed(true)}
             onToggleTheme={onToggleTheme}
+            onViewportChange={onViewportChange}
             panelMenuOpen={panelMenuOpen}
             status={status}
             theme={theme}
+            viewport={viewport}
           />
           <ResizablePanelGroup
             className="min-h-0 flex-1"

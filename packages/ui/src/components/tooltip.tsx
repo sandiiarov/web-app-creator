@@ -37,12 +37,18 @@ function TooltipContent({
 
 function TooltipProvider({
   delayDuration = 0,
+  disableHoverableContent = true,
   ...props
 }: React.ComponentProps<typeof TooltipPrimitive.Provider>) {
+  // delayDuration=0 plus hoverable content (Radix default) leaves the previous
+  // tooltip open during its grace period while the next opens instantly, so
+  // adjacent triggers stack/swap tooltips. Tooltips here are non-interactive
+  // (label + kbd hint), so disable hoverable content to close on pointer-leave.
   return (
     <TooltipPrimitive.Provider
       data-slot="tooltip-provider"
       delayDuration={delayDuration}
+      disableHoverableContent={disableHoverableContent}
       {...props}
     />
   )
