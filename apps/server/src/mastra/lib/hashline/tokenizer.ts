@@ -1,5 +1,4 @@
 import {
-  describeAnchorExamples,
   HL_DELETE_BLOCK_KEYWORD,
   HL_DELETE_KEYWORD,
   HL_FILE_HASH_LENGTH,
@@ -99,10 +98,6 @@ export type Token =
   | OpBlock
   | PayloadLiteral
   | Raw
-interface NumberScan {
-  line: number
-  nextIndex: number
-}
 export class Tokenizer {
   private lineNum = 0;
 
@@ -321,19 +316,7 @@ export function cloneCursor(cursor: Cursor): Cursor {
     return { anchor: { ...cursor.anchor }, kind: 'after_anchor' }
   return cursor
 }
-export function parseLid(raw: string, lineNum: number): Anchor {
-  const end = trimEndIndex(raw)
-  const numberStart = skipWhitespace(raw, 0, end)
-  const number = scanLineNumber(raw, numberStart, end)
-  if (number === null || skipWhitespace(raw, number.nextIndex, end) !== end) {
-    throw new Error(
-      `line ${lineNum}: expected a line number such as ${describeAnchorExamples('119')}; ` +
-        `got ${JSON.stringify(raw)}. Use ${HL_FILE_PREFIX}PATH${HL_FILE_HASH_SEP}hash${HL_FILE_SUFFIX} from your latest read for file-version binding.`,
-    )
-  }
-  return { line: number.line }
-}
-export function splitHashlineLines(text: string): string[] {
+function splitHashlineLines(text: string): string[] {
   if (text.length === 0) return ['']
   const lines: string[] = []
   let start = 0
@@ -368,10 +351,6 @@ function isHexDigitCode(code: number): boolean {
 
 // ── Scanning helpers ───────────────────────────────────────────────────────
 
-function isNonZeroDigitCode(code: number): boolean {
-  return code > CHAR_ZERO && code <= CHAR_NINE
-}
-
 function isWhitespaceCode(code: number): boolean {
   return (
     code === CHAR_SPACE || (code >= CHAR_TAB && code <= CHAR_CARRIAGE_RETURN)
@@ -381,34 +360,6 @@ function isWhitespaceCode(code: number): boolean {
 function markerLineEquals(line: string, marker: string): boolean {
   const end = trimEndIndex(line)
   return end === marker.length && line.startsWith(marker)
-}
-
-function scanLineNumber(
-  line: string,
-  index: number,
-  end: number,
-): null | NumberScan {
-  if (index >= end || !isNonZeroDigitCode(line.charCodeAt(index))) return null
-  let lineNumber = 0
-  let nextIndex = index
-  while (nextIndex < end) {
-    const code = line.charCodeAt(nextIndex)
-    if (!isDigitCode(code)) break
-    lineNumber = lineNumber * 10 + (code - CHAR_ZERO)
-    nextIndex++
-  }
-  return { line: lineNumber, nextIndex }
-}
-
-// ── Line splitter (CRLF-aware) ─────────────────────────────────────────────
-
-function skipWhitespace(
-  line: string,
-  index: number,
-  end = line.length,
-): number {
-  while (index < end && isWhitespaceCode(line.charCodeAt(index))) index++
-  return index
 }
 
 // ── Tokenizer ──────────────────────────────────────────────────────────────

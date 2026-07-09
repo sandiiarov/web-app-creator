@@ -13,7 +13,7 @@ export interface ResolveBlockEditsOptions {
   onWarning?: (message: string) => void
 }
 
-export function hasBlockEdit(edits: readonly Edit[]): boolean {
+function hasBlockEdit(edits: readonly Edit[]): boolean {
   return edits.some((edit) => edit.kind === 'block')
 }
 

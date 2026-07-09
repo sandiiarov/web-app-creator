@@ -1,13 +1,10 @@
 {
   "$schema": "https://raw.githubusercontent.com/fallow-rs/fallow/main/schema.json",
   "entry": ["**/oxfmt.config.ts"],
-  "ignorePatterns": ["apps/server/src/mastra/lib/hashline/**"],
   "ignoreDependencies": [
     "@workspace/typescript-config",
-    "diff",
     "eslint-plugin-perfectionist",
     "eslint-plugin-react-refresh",
-    "lru-cache",
     "oxlint-tailwindcss",
     "xxhash-wasm"
   ]

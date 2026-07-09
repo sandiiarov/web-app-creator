@@ -57,7 +57,7 @@ interface PendingComment {
   text: string
 }
 
-export class Executor {
+class Executor {
   #editIndex = 0
   #edits: Edit[] = []
   #pending: Pending | undefined
@@ -403,16 +403,6 @@ export function parsePatch(diff: string): {
   const executor = new Executor()
   for (const token of tokenizer.tokenize(diff)) executor.feed(token)
   return executor.end()
-}
-
-export function parsePatchStreaming(diff: string): {
-  edits: Edit[]
-  warnings: string[]
-} {
-  const tokenizer = new Tokenizer()
-  const executor = new Executor()
-  for (const token of tokenizer.tokenize(diff)) executor.feed(token)
-  return executor.endStreaming()
 }
 
 function detectApplyPatchContamination(

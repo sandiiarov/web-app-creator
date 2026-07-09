@@ -6,9 +6,9 @@ import {
   HL_RANGE_SEP,
 } from './format.ts'
 
-export const MISMATCH_CONTEXT = 2
+const MISMATCH_CONTEXT = 2
 
-export function formatAnchoredContext(
+function formatAnchoredContext(
   anchorLines: readonly number[],
   fileLines: readonly string[],
 ): string[] {
@@ -37,21 +37,14 @@ export const BEGIN_PATCH_MARKER = '*** Begin Patch'
 export const END_PATCH_MARKER = '*** End Patch'
 export const ABORT_MARKER = '*** Abort'
 
-export const REPLACE_PAIR_COALESCED_WARNING = `Two hunks targeted the same range; kept only the second. One \`SWAP N${HL_RANGE_SEP}M:\` hunk per range — the body is the final content.`
-
 export const BARE_BODY_AUTO_PIPED_WARNING =
   'Auto-prefixed bare body row(s) with `+`. Body rows must be `+TEXT` literal lines.'
 
 export const MINUS_ROW_REJECTED =
   '`-` rows are not valid; the range already names the lines being changed. For a literal `-` line, write `+-…`.'
 
-export const EMPTY_REPLACE = `\`SWAP N${HL_RANGE_SEP}M:\` needs at least one \`+TEXT\` body row. To delete lines, use \`DEL N${HL_RANGE_SEP}M\`.`
-
 export const EMPTY_BLOCK =
   '`SWAP.BLK N:` needs at least one `+TEXT` body row. To delete a block, use `DEL.BLK N`.'
-
-export const BLOCK_RESOLVER_UNAVAILABLE =
-  '`SWAP.BLK`/`DEL.BLK`/`INS.BLK.POST` are not available here (no block resolver configured). Use a concrete line range.'
 
 export function blockUnresolvedMessage(
   line: number,
@@ -81,34 +74,12 @@ export function insertAfterBlockUnresolvedLoweredWarning(line: number): string {
   return `\`INS.BLK.POST ${line}:\` could not resolve a syntactic block on line ${line}, so it was applied as plain \`INS.POST ${line}:\`. Verify the landing line; anchor on a line that OPENS a construct.`
 }
 
-export const UNRESOLVED_BLOCK_INTERNAL =
-  'internal error: unresolved `SWAP.BLK` edit reached the applier (resolveBlockEdits was not run).'
-
 export const DELETE_TAKES_NO_BODY = `\`DEL N${HL_RANGE_SEP}M\` does not take body rows. Remove the body, or use \`SWAP N${HL_RANGE_SEP}M:\`.`
 
 export const DELETE_BLOCK_TAKES_NO_BODY =
   '`DEL.BLK N` does not take body rows. Remove the body, or use `SWAP.BLK N:`.'
 
 export const EMPTY_INSERT = '`INS` needs at least one `+TEXT` body row.'
-
-export function afterInsertLandingShiftWarning(
-  anchorLine: number,
-  landingLine: number,
-  crossed: number,
-): string {
-  return `INS.POST ${anchorLine}: body indented shallower than the anchor, so the landing moved past ${crossed} closing line${crossed === 1 ? '' : 's'} to after line ${landingLine}. For the deeper position inside the block, re-issue with the body indented to match.`
-}
-
-export function blockInsertLandingShiftWarning(
-  blockStart: number,
-  closerLine: number,
-  landingLine: number,
-): string {
-  return `INS.BLK.POST ${blockStart}: body indented deeper than closing line ${closerLine}, so it was placed inside the block, after line ${landingLine}. \`INS.BLK.POST\` lands AFTER the block at sibling depth — if inside was intended, use plain \`INS.POST ${closerLine}:\`.`
-}
-
-export const RECOVERY_EXTERNAL_WARNING =
-  'Recovered from a stale file hash using a previous read snapshot (file changed externally between read and edit).'
 
 export const RECOVERY_SESSION_CHAIN_WARNING =
   'Recovered from a stale file hash using an earlier in-session snapshot (a prior edit in this session advanced the hash).'

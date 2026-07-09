@@ -38,17 +38,6 @@ export interface BlockSpan {
   start: number
 }
 
-export interface CompactDiffOptions {
-  maxAddedRunContext?: number
-  maxUnchangedRun?: number
-}
-
-export interface CompactDiffPreview {
-  addedLines: number
-  preview: string
-  removedLines: number
-}
-
 export type Cursor =
   | { kind: 'after_anchor'; anchor: Anchor }
   | { kind: 'before_anchor'; anchor: Anchor }
@@ -90,12 +79,3 @@ export interface SplitOptions {
   cwd?: string
   path?: string
 }
-
-export interface StreamOptions {
-  maxChunkBytes?: number
-  maxChunkLines?: number
-  startLine?: number
-}
-
-// Runtime marker — required by jiti ESM loader so Node accepts named type exports
-export const _typesRuntime = true as const

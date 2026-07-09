@@ -3,7 +3,7 @@ import { resolveBlockEdits } from './block.ts'
 import { computeFileHash, formatHashlineHeader } from './format.ts'
 import type { Filesystem, WriteResult } from './fs.ts'
 import { isNotFound } from './fs.ts'
-import type { Patch, PatchSection } from './input.ts'
+import type { PatchSection } from './input.ts'
 import {
   HEADTAIL_DRIFT_WARNING,
   missingSnapshotTagMessage,
@@ -26,10 +26,6 @@ import type {
   BlockResolver,
   Edit,
 } from './types.ts'
-
-export interface PatcherApplyResult {
-  sections: PatchSectionResult[]
-}
 
 export interface PatcherOptions {
   blockResolver?: BlockResolver
@@ -61,27 +57,6 @@ export class Patcher {
     this.fs = options.fs
     this.snapshots = options.snapshots
     this.blockResolver = options.blockResolver
-  }
-
-  async apply(patch: Patch): Promise<PatcherApplyResult> {
-    // All-or-nothing: prepare every section in memory first. If any section
-    // fails to prepare (hash mismatch, unseen lines, parse error, unresolved
-    // block, ...), no disk write happens for any section.
-    const prepared: PreparedSection[] = []
-    for (const section of patch.sections) {
-      prepared.push(await this.prepare(section))
-    }
-
-    const results: PatchSectionResult[] = []
-    for (const preparedSection of prepared) {
-      results.push(
-        preparedSection.isNoop
-          ? this.noopResult(preparedSection)
-          : await this.commit(preparedSection),
-      )
-    }
-
-    return { sections: results }
   }
 
   async commit(prepared: PreparedSection): Promise<PatchSectionResult> {
@@ -117,21 +92,6 @@ export class Patcher {
       firstChangedLine: applyResult.firstChangedLine,
       warnings: [...(applyResult.warnings ?? []), ...prepared.blockWarnings],
       blockResolutions: applyResult.blockResolutions,
-    }
-  }
-
-  noopResult(prepared: PreparedSection): PatchSectionResult {
-    return {
-      path: prepared.section.rawPath,
-      canonicalPath: prepared.canonicalPath,
-      op: 'noop',
-      before: prepared.normalized,
-      after: prepared.normalized,
-      persisted: prepared.rawContent,
-      written: prepared.rawContent,
-      fileHash: '',
-      header: '',
-      warnings: [],
     }
   }
 
@@ -329,7 +289,7 @@ export class Patcher {
   }
 }
 
-export class PreparedSection {
+class PreparedSection {
   readonly applyResult: ApplyResult
   readonly blockWarnings: readonly string[]
   readonly bom: string

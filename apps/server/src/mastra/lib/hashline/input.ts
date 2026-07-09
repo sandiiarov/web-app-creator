@@ -5,8 +5,7 @@ import {
   HL_FILE_PREFIX,
   HL_FILE_SUFFIX,
 } from './format.ts'
-import { parsePatch } from './parser.ts'
-import type { Edit, SplitOptions } from './types.ts'
+import type { SplitOptions } from './types.ts'
 
 function unquoteHashlinePath(pathText: string): string {
   if (pathText.length < 2) return pathText
@@ -28,25 +27,10 @@ export interface PatchSection {
   text: string
 }
 
-export interface RawSection {
+interface RawSection {
   fileHash?: string
   path: string
   rawPath: string
-}
-
-export class Patch {
-  readonly sections: PatchSection[]
-
-  constructor(input: string, cwd?: string) {
-    const { sections } = splitPatchInput(input, { cwd })
-    this.sections = sections
-  }
-
-  parseEdits(sectionIndex: number): { edits: Edit[]; warnings: string[] } {
-    const section = this.sections[sectionIndex]
-    if (!section) throw new Error(`Section ${sectionIndex} not found`)
-    return parsePatch(section.text)
-  }
 }
 
 export function splitPatchInput(
