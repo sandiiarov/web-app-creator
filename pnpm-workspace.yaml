@@ -66,5 +66,20 @@ minimumReleaseAgeExclude:
   - '@typescript/typescript-*'
   - typescript@7.0.2
 
+# ── @mastra/core patch (LOAD-BEARING) ──────────────────────────────────────
+# patches/@mastra__core@1.47.0.patch rewrites OpenAIChatLanguageModel so it does
+# NOT emit `tool-call` mid-stream (replaces the `isParsableJson(args)` checks
+# with `false`) and instead flushes every unfinished tool-call at stream finish
+# with fully-accumulated args. Without it, GLM-5.2 (default chat model) — which
+# streams tool-call args across many small fragments — gets mis-assembled args
+# and the agent's edit/read/screenshot tools break. Verified live.
+#
+# Upgrade safety: pnpm FAILS the install if this patch's context changes or if
+# @mastra/core moves off 1.47.0, so it can't silently disappear. On any
+# @mastra/core bump: (1) regenerate the patch against the new dist,
+# (2) run a real GLM-5.2 read→edit smoke to confirm tool args assemble,
+# (3) check whether upstream Mastra now defers tool-call emission — if so,
+# retire this patch. Retire when @mastra/core fixes the accumulator upstream,
+# or the default model switches to one that doesn't fragment tool-call args.
 patchedDependencies:
   '@mastra/core@1.47.0': patches/@mastra__core@1.47.0.patch
