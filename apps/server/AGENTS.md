@@ -21,7 +21,7 @@
   - `GET /api/projects` → list metadata, drafts (no HTML) hidden.
   - `POST /api/projects { title?, model? }` → create draft (seeded with the placeholder page).
   - `GET /api/projects/:id` → full project (metadata + `indexHtml` + persisted `messages`).
-  - `PATCH /api/projects/:id { model }` → persist the current model selection in project metadata.
+  - `PATCH /api/projects/:id { textModel, visionModel?, imageModel? }` → persist the per-role model selection (`textModel` required; `visionModel`/`imageModel` optional but validated when present); `project.json` RMW is synchronous, so this can't lose a concurrent edit's `hasHtml` write.
   - `DELETE /api/projects/:id` → remove project + images.
   - `GET /api/projects/:id/images/:file` → serve a persisted project image.
   - `GET /api/projects/:id/screenshots/:file` → serve a persisted screenshot under `screenshots/` (the URL pointer recorded in `client-messages.jsonl` for a resolved `screenshot_request`).
