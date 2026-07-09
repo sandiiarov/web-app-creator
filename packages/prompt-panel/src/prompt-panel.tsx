@@ -38,6 +38,10 @@ import {
 } from './panel-constants'
 import { PanelHeader } from './panel-header'
 import { panelStatus } from './panel-status'
+import {
+  PANEL_POSITION_STORAGE_KEY,
+  readStoredPanelState,
+} from './panel-storage'
 
 const ACCEPTED_ATTACHMENT_TYPES = new Set<ImageAttachmentMediaType>([
   'image/gif',
@@ -48,7 +52,6 @@ const ACCEPTED_ATTACHMENT_TYPES = new Set<ImageAttachmentMediaType>([
 const MAX_ATTACHMENT_COUNT = 4
 const MAX_ATTACHMENT_SIZE = 8 * 1024 * 1024
 const MAX_ATTACHMENT_TOTAL_SIZE = 16 * 1024 * 1024
-const PANEL_POSITION_STORAGE_KEY = 'landing.promptPanel.position.v1'
 
 export type PromptPanelProps = {
   canDownload: boolean
@@ -58,6 +61,7 @@ export type PromptPanelProps = {
   onAllProjects: () => void
   onDownloadHtml: () => void
   onElementSelectionToggle: () => void
+  onLayoutChange?: (layout: PanelLayout) => void
   onModelsChange: (models: LandingModels) => void
   onSelectedElementAttachmentConsumed: () => void
   onSend: (input: LandingAgentSendInput) => void
@@ -76,11 +80,6 @@ type DragState = {
   rafId: null | number
 }
 
-type StoredPanelState = Partial<PanelPosition> & {
-  collapsed?: boolean
-  layout?: PanelLayout
-}
-
 export function PromptPanel({
   canDownload,
   elementSelectionActive,
@@ -89,6 +88,7 @@ export function PromptPanel({
   onAllProjects,
   onDownloadHtml,
   onElementSelectionToggle,
+  onLayoutChange,
   onModelsChange,
   onSelectedElementAttachmentConsumed,
   onSend,
@@ -114,6 +114,17 @@ export function PromptPanel({
   useEffect(() => {
     writeStoredPanelState(position, collapsed)
   }, [collapsed, position])
+
+  useEffect(() => {
+    if (!onLayoutChange) return
+    const docked = dockedPanelSide(position)
+    const reportedLayout: PanelLayout = collapsed
+      ? 'floating'
+      : docked
+        ? `${docked}-sidebar`
+        : 'floating'
+    onLayoutChange(reportedLayout)
+  }, [collapsed, onLayoutChange, position])
 
   useEffect(() => {
     if (!selectedElementAttachment) return
@@ -662,22 +673,6 @@ function readStoredPanelPosition(): null | PanelPosition {
   if (state.layout === 'right-sidebar') return { x: rightDockX(), y: 0 }
 
   return clampPanelPosition({ x: state.x, y: state.y }, false)
-}
-
-function readStoredPanelState(): null | StoredPanelState {
-  try {
-    const raw = window.localStorage.getItem(PANEL_POSITION_STORAGE_KEY)
-    if (!raw) return null
-
-    const parsed = JSON.parse(raw)
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-      return null
-    }
-
-    return parsed as StoredPanelState
-  } catch {
-    return null
-  }
 }
 
 function rightDockX() {

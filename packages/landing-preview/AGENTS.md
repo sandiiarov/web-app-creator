@@ -23,7 +23,7 @@
 - Screenshot capture uses the instance `snapdom(el, {plugins})` API (not the static `snapdom.toBlob`, which cannot surface plugin exports) with `agentMap({image:'annotated', fields:'minimal'})`. It returns padded JPEG data URLs with explicit width/height/media type/size PLUS an `elementMap` string (Set-of-Marks: one line per interactive element, `index → role / name / bbox / state`); the consuming app posts both to the server screenshot-response route.
 - `LandingPreview` is presentational and controlled: callers own `html`, element-selection state, and diagnostics/error callbacks. Keep new behavior opt-in via props so consuming app UI stays explicit.
 - `LandingPreview` exposes a `LandingPreviewHandle` through the React 19 `ref` prop (not `forwardRef`): `captureScreenshot({ selector })` captures the requested element from the live preview iframe and `isReady()` reports document readiness. Do not reintroduce `forwardRef(function …)` — native `tsc` (TypeScript 7) and oxfmt fail to parse that wrapper inside `.tsx`.
-- `iframeClassName?` overrides the default full-viewport iframe sizing so consumers can fit the preview to a container.
+- `iframeClassName?` overrides the default full-viewport iframe sizing so consumers can fit the preview to a container. The same class also applies to the `LandingEmptyState` container (merged with its centering/background styles), so an empty preview tracks the consumer's layout the same way a rendered iframe does.
 - `onPreviewDiagnostic?` is opt-in and best-effort same-origin only: it emits `PreviewDiagnostic` events for iframe `load`, `ready`, runtime `error`, and unhandled promise rejection. It must not break generated-page scripts.
 
 ## Work Guidance

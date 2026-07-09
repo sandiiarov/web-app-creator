@@ -306,7 +306,11 @@ export function LandingPreview({
   }, [html, onPreviewDiagnostic])
 
   if (!html.trim()) {
-    return <LandingEmptyState />
+    return (
+      <LandingEmptyState
+        className={iframeClassName ?? 'h-svh w-screen border-0'}
+      />
+    )
   }
 
   return (
@@ -674,9 +678,11 @@ function isSelectableElement(doc: Document, element: Element) {
   return rect.width > 0 && rect.height > 0
 }
 
-function LandingEmptyState() {
+function LandingEmptyState({ className }: { className?: string }) {
   return (
-    <div className="grid h-svh w-screen place-items-center bg-muted/40 text-center">
+    <div
+      className={`grid place-items-center bg-muted/40 text-center ${className ?? 'h-svh w-screen border-0'}`}
+    >
       <div className="max-w-md px-6">
         <div
           aria-hidden="true"

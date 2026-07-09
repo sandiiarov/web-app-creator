@@ -7,17 +7,18 @@
 ## Ownership
 
 - `src/prompt-panel.tsx`: root `PromptPanel` component and its `PromptPanelProps`.
-- `src/`: panel UI components (`panel-header`, `panel-body`, `panel-command-menu`, `composer`, `turn-message`, `turn-metadata`, `turn-steps`, `streamdown-content`, `model-dropdown`, `status-pill`, `chat-empty-state`, icons) and helpers (`panel-constants`, `panel-status`, `format`, `keyboard-shortcut`).
+- `src/`: panel UI components (`panel-header`, `panel-body`, `panel-command-menu`, `composer`, `turn-message`, `turn-metadata`, `turn-steps`, `streamdown-content`, `model-dropdown`, `status-pill`, `chat-empty-state`, icons) and helpers (`panel-constants`, `panel-status`, `panel-storage`, `format`, `keyboard-shortcut`).
+- `src/panel-storage.ts`: read-only panel position/layout persistence — owns the `landing.promptPanel.position.v1` localStorage key, `StoredPanelState`, `readStoredPanelState`, and the public `readStoredPanelLayout` (effective layout, treating a collapsed panel as `floating` so a minimized panel does not reserve a docked column). The component keeps write logic (`writeStoredPanelState`) because it is intertwined with docked-side derivation.
 - `src/domain.ts`: landing conversation domain model — model options (text `LANDING_MODEL_OPTIONS`, plus `LANDING_VISION_MODEL_OPTIONS` and `LANDING_IMAGE_MODEL_OPTIONS`), the per-category `LandingModels` selection + `DEFAULT_LANDING_MODELS` + `resolveLandingModels`, attachment types, conversation model (`LandingTurn`, `TurnPart` variants, `RetryPart` inlined), cost/usage types, `LandingAgentSendInput`, and formatting helpers.
 - `src/keyboard-shortcuts.ts`: `KEYBOARD_SHORTCUTS` metadata + types.
-- `src/index.ts`: public barrel (`PromptPanel`, `PromptPanelProps`, domain model, keyboard-shortcuts, panel-constants types).
+- `src/index.ts`: public barrel (`PromptPanel`, `PromptPanelProps`, `readStoredPanelLayout`, `PANEL_WIDTH`, domain model, keyboard-shortcuts, panel-constants types).
 
 ## Local Contracts
 
 - Source-consumed like `@workspace/ui`: `exports` point at `./src/*`, there is no build step, and consumers import through package exports (`@workspace/prompt-panel`, `@workspace/prompt-panel/domain`, `@workspace/prompt-panel/keyboard-shortcuts`).
 - Depends on `@workspace/ui` and catalog deps (`lucide-react`, `react-hotkeys-hook`, `streamdown`, `@streamdown/code`); `react`/`react-dom` are peer deps. Tailwind design tokens come from `packages/ui/src/styles/globals.css` (referenced by this package's oxlint/oxfmt configs).
 - The package owns the **domain model only**. It must not import app code, reference `import.meta.env`, or contain SSE/transport logic. `RetryPart` is defined inline (not extending the app's wire `RetryEvent`) to avoid a package→app dependency.
-- App behavior is injected via props, never imported: navigation through `onAllProjects`, theme through `theme: PanelTheme` + `onToggleTheme`. The package imports no `react-router-dom` and no theme context.
+- App behavior is injected via props, never imported: navigation through `onAllProjects`, theme through `theme: PanelTheme` + `onToggleTheme`, and the current effective layout through the optional `onLayoutChange?: (layout: PanelLayout) => void` (reports `floating`/`left-sidebar`/`right-sidebar`; a collapsed panel reports `floating`). `readStoredPanelLayout` lets a consumer initialize its own preview layout from the persisted state without a first-paint flash. The package imports no `react-router-dom` and no theme context.
 - `PanelTheme = 'dark' | 'light' | 'system'` lives in `src/panel-constants.ts`.
 - Cost formatting renders USD with exactly four digits after the decimal point for zero, tiny, and larger costs; do not use less-than-cent shorthand.
 

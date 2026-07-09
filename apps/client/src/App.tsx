@@ -1,11 +1,14 @@
 import { LandingPreview } from '@workspace/landing-preview'
 import {
-  PromptPanel,
   type ElementAttachmentInput,
+  type PanelLayout,
+  PANEL_WIDTH,
+  PromptPanel,
+  readStoredPanelLayout,
 } from '@workspace/prompt-panel'
 import { Button } from '@workspace/ui/components/button'
 import { ArrowLeft } from 'lucide-react'
-import { useCallback, useState } from 'react'
+import { type CSSProperties, useCallback, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
 import { useTheme } from '#components/theme-provider'
@@ -23,12 +26,20 @@ export function EditorPage({ projectId }: EditorPageProps) {
   const { setTheme, theme } = useTheme()
   const [error, setError] = useState<null | string>(null)
   const [elementSelectionActive, setElementSelectionActive] = useState(false)
+  const [panelLayout, setPanelLayout] = useState<PanelLayout>(
+    readStoredPanelLayout,
+  )
   const [selectedElementAttachment, setSelectedElementAttachment] =
     useState<ElementAttachmentInput | null>(null)
 
   const setErrorMessage = useCallback((message: null | string) => {
     setError(message)
   }, [])
+
+  const handlePanelLayoutChange = useCallback(
+    (layout: PanelLayout) => setPanelLayout(layout),
+    [],
+  )
 
   const handleElementSelectionCancel = useCallback(() => {
     setElementSelectionActive(false)
@@ -74,15 +85,24 @@ export function EditorPage({ projectId }: EditorPageProps) {
 
   const hasLanding = landing.turns.length > 0
 
+  const previewClassName =
+    panelLayout === 'left-sidebar'
+      ? 'h-svh w-[calc(100vw-var(--landing-panel-width))] border-0 ml-[var(--landing-panel-width)]'
+      : panelLayout === 'right-sidebar'
+        ? 'h-svh w-[calc(100vw-var(--landing-panel-width))] border-0 mr-[var(--landing-panel-width)]'
+        : 'h-svh w-screen border-0'
+
   return (
     <main
       className="fixed inset-0 overflow-hidden bg-background"
       data-project-id={projectId}
+      style={{ '--landing-panel-width': `${PANEL_WIDTH}px` } as CSSProperties}
     >
       {error ? <ErrorBanner message={error} /> : null}
       <LandingPreview
         elementSelectionActive={elementSelectionActive}
         html={landing.html}
+        iframeClassName={previewClassName}
         onElementSelected={handleElementSelected}
         onElementSelectionCancel={handleElementSelectionCancel}
         onError={setErrorMessage}
@@ -95,6 +115,7 @@ export function EditorPage({ projectId }: EditorPageProps) {
         onAllProjects={() => navigate('/')}
         onDownloadHtml={() => downloadProjectHtml(projectId)}
         onElementSelectionToggle={handleElementSelectionToggle}
+        onLayoutChange={handlePanelLayoutChange}
         onModelsChange={landing.setModels}
         onSelectedElementAttachmentConsumed={() =>
           setSelectedElementAttachment(null)
