@@ -58,3 +58,7 @@ apps/server/.data
 .firecrawl
 .phases
 
+
+# e2e QA run artifacts (visual snapshots + inlined-image HTML; parsed data is in metrics.json + REPORT.md)
+screenshots/e2e-5run/**/*.png
+screenshots/e2e-5run/**/final.html
