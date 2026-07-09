@@ -1,10 +1,10 @@
 import { Agent, type Agent as AgentType } from '@mastra/core/agent'
 import type { Mastra } from '@mastra/core/mastra'
+import { design } from '@workspace/agent-skills'
 
 import { config } from '../../config.ts'
 import { createHtmlStore, type HtmlStore } from '../lib/html-store.ts'
 import { openrouterModel } from '../lib/openrouter-model.ts'
-import { designSkill } from '../skills/design-skill.ts'
 import {
   createLandingTools,
   type RequestBrowserScreenshot,
@@ -59,7 +59,7 @@ export function createLandingPageAgent(
     mastra,
     model: openrouterModel(textModel),
     name: 'Landing Page Agent',
-    skills: [designSkill],
+    skills: [design],
     tools: createLandingTools(store, baseUrl, requestScreenshot, options),
   })
 }
@@ -85,7 +85,7 @@ function createLandingPageAgentConfig(
     instructions: LANDING_AGENT_INSTRUCTIONS,
     model: openrouterModel(textModel),
     name: 'Landing Page Agent',
-    skills: [designSkill],
+    skills: [design],
     tools: createLandingTools(store, baseUrl, requestScreenshot, options),
   }
 }

@@ -112,5 +112,4 @@ Root-owned paths without a child DOX:
 
 - Workspace orchestration/config: `package.json`, `pnpm-workspace.yaml`, `pnpm-lock.yaml`, `turbo.json`, `.gitignore`, `.fallowrc.jsonc`, `skills-lock.json`, `patches/`.
 - Root docs/assets: `README.md`, `mastra-migration-plan.md`, `cv.html`, `self-healing-agent-loop.html`, `1440x900`.
-- `.commandcode/design/` — generated design review/checkup/smell report artifacts.
 - `.pi/skills/*` symlinks are managed by `.agents/` plus the root lockfile; edit the `.agents/skills/*` sources.
