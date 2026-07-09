@@ -1750,6 +1750,138 @@ describe('streamLandingAgent raw mastra message persistence', () => {
   })
 })
 
+describe('streamLandingAgent stream errors + cleanup', () => {
+  it('surfaces a mid-stream error as an SSE error event and still emits done', async () => {
+    vi.stubEnv('OPENROUTER_API_KEY', 'test-openrouter-key')
+    async function* throwingStream() {
+      yield { payload: { text: 'partial' }, type: 'text-delta' }
+      throw new Error('upstream exploded')
+    }
+    vi.doMock('./index.ts', () => ({ mastra: {} }))
+    vi.doMock('./agents/landing-page-agent.ts', () => ({
+      createLandingPageAgent: () => ({
+        stream: async () => fakeAgentStream(throwingStream()),
+      }),
+    }))
+    const { createProject } = await import('./lib/project-store.ts')
+    const project = await createProject()
+    createdProjectIds.push(project.id)
+    const { streamLandingAgent } = await import('./route.ts')
+    const request = fakeRequest()
+    const response = new FakeResponse()
+    await streamLandingAgent({
+      projectId: project.id,
+      prompt: 'Boom.',
+      request,
+      response: response as unknown as ServerResponse,
+      textModel: 'z-ai/glm-5.2',
+    })
+    const events = parseSseEvents(response.body)
+    expect(events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          data: { message: 'upstream exploded' },
+          event: 'error',
+        }),
+      ]),
+    )
+    expect(events.at(-1)).toEqual({ data: {}, event: 'done' })
+    expect(request.listenerCount('close')).toBe(0)
+  })
+
+  it('emits "stopped" and removes the close listener when the client disconnects mid-run', async () => {
+    vi.stubEnv('OPENROUTER_API_KEY', 'test-openrouter-key')
+    let resolveHang!: () => void
+    const hang = new Promise<void>((resolve) => {
+      resolveHang = resolve
+    })
+    async function* hangingStream() {
+      yield { payload: { text: 'working' }, type: 'text-delta' }
+      await hang
+      throw new Error('aborted mid-stream')
+    }
+    vi.doMock('./index.ts', () => ({ mastra: {} }))
+    vi.doMock('./agents/landing-page-agent.ts', () => ({
+      createLandingPageAgent: () => ({
+        stream: async () => fakeAgentStream(hangingStream()),
+      }),
+    }))
+    const { createProject } = await import('./lib/project-store.ts')
+    const project = await createProject()
+    createdProjectIds.push(project.id)
+    const { streamLandingAgent } = await import('./route.ts')
+    const request = fakeRequest()
+    const response = new FakeResponse()
+    const run = streamLandingAgent({
+      projectId: project.id,
+      prompt: 'Hang.',
+      request,
+      response: response as unknown as ServerResponse,
+      textModel: 'z-ai/glm-5.2',
+    })
+    // wait until the run has registered its close listener (mid-run)
+    const registered = Date.now() + 2000
+    while (request.listenerCount('close') === 0 && Date.now() < registered) {
+      await new Promise((r) => setImmediate(r))
+    }
+    expect(request.listenerCount('close')).toBe(1)
+    request.emit('close') // simulate client disconnect → controller.abort()
+    resolveHang() // unblock the stream → it throws → catch sees aborted=true
+    await run
+    const events = parseSseEvents(response.body)
+    expect(events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          data: { message: 'stopped' },
+          event: 'error',
+        }),
+      ]),
+    )
+    expect(events.at(-1)).toEqual({ data: {}, event: 'done' })
+    expect(request.listenerCount('close')).toBe(0)
+  })
+
+  it('emits the no-generated-html error when a run finishes without writing HTML', async () => {
+    vi.stubEnv('OPENROUTER_API_KEY', 'test-openrouter-key')
+    async function* textOnlyStream() {
+      yield {
+        payload: { text: 'I will not edit anything.' },
+        type: 'text-delta',
+      }
+    }
+    vi.doMock('./index.ts', () => ({ mastra: {} }))
+    vi.doMock('./agents/landing-page-agent.ts', () => ({
+      createLandingPageAgent: () => ({
+        stream: async () => fakeAgentStream(textOnlyStream()),
+      }),
+    }))
+    const { createProject } = await import('./lib/project-store.ts')
+    const project = await createProject()
+    createdProjectIds.push(project.id)
+    const { streamLandingAgent } = await import('./route.ts')
+    const response = new FakeResponse()
+    await streamLandingAgent({
+      projectId: project.id,
+      prompt: 'Do nothing.',
+      request: fakeRequest(),
+      response: response as unknown as ServerResponse,
+      textModel: 'z-ai/glm-5.2',
+    })
+    const events = parseSseEvents(response.body)
+    expect(events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          data: {
+            message:
+              'Agent finished without generating project HTML. The draft still has no content because no successful edit changed the page.',
+          },
+          event: 'error',
+        }),
+      ]),
+    )
+  })
+})
+
 class FakeResponse {
   readonly chunks: string[] = []
   headersSent = false
