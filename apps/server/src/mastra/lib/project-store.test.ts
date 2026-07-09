@@ -283,6 +283,40 @@ describe('project message storage', () => {
     })
   })
 
+  it('updateProjectModel preserves hasHtml and title set by sync writers (no lost update)', async () => {
+    // Regression guard (plan 017): updateProjectModel used to read project.json
+    // across an await, so a concurrent edit's markHasHtmlSync write (hasHtml=true)
+    // could be reverted when the stale snapshot was written back. The fix makes
+    // its read-modify-write synchronous; this characterizes the fresh-read
+    // contract that fields set by sibling sync writers survive a model PATCH.
+    const project = await createProject({ title: 'Untitled' })
+    createdProjectIds.push(project.id)
+
+    // Simulate a successful edit flipping hasHtml, and a title set from a prompt.
+    createProjectHtmlStore(project.id).set(
+      '<!doctype html><html><body><h1>Hi</h1></body></html>',
+    )
+    setTitleIfUntitled(project.id, 'My Landing')
+
+    // A model PATCH must read the latest meta (hasHtml true, titled) and keep both.
+    const updated = await updateProjectModel(project.id, 'some/model-id')
+    expect(updated).toMatchObject({
+      hasHtml: true,
+      model: 'some/model-id',
+      title: 'My Landing',
+    })
+
+    // The on-disk file agrees (hasHtml was not reverted to false).
+    const onDisk = JSON.parse(
+      await readFile(join(PROJECTS_DIR, project.id, 'project.json'), 'utf8'),
+    )
+    expect(onDisk).toMatchObject({
+      hasHtml: true,
+      model: 'some/model-id',
+      title: 'My Landing',
+    })
+  })
+
   it('lists only generated projects newest first and tolerates missing projects', async () => {
     const older = await createProject({ title: 'Older' })
     const newer = await createProject({ title: 'Newer' })

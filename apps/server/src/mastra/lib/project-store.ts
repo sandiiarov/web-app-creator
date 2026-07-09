@@ -577,7 +577,11 @@ export async function updateProjectModel(
   id: string,
   model: string,
 ): Promise<null | ProjectMeta> {
-  const meta = await readMeta(id)
+  // Synchronous read-modify-write so the single-threaded event loop serializes
+  // this against the other sync project.json writers (markHasHtmlSync,
+  // setTitleIfUntitled). An `await readMeta` here used to let a concurrent edit's
+  // markHasHtmlSync write be lost (hasHtml reverted to false). See plan 017.
+  const meta = readMetaSync(id)
   if (!meta) return null
 
   const normalized = model.trim()
@@ -588,7 +592,7 @@ export async function updateProjectModel(
     model: normalized,
     updatedAt: new Date().toISOString(),
   }
-  await writeMeta(id, next)
+  writeMetaSync(id, next)
   return next
 }
 
