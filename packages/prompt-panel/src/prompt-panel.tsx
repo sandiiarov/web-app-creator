@@ -8,8 +8,10 @@ import {
   type FormEvent,
   type KeyboardEvent,
   type PointerEvent as ReactPointerEvent,
+  type RefObject,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
 } from 'react'
@@ -31,7 +33,9 @@ import {
   COLLAPSED_HEIGHT,
   PANEL_HEIGHT,
   PANEL_MARGIN,
-  PANEL_WIDTH,
+  PANEL_WIDTH_CSS_VAR,
+  clampPanelWidth,
+  maxPanelWidth,
   type PanelLayout,
   type PanelPosition,
   type PanelTheme,
@@ -42,6 +46,7 @@ import { panelStatus } from './panel-status'
 import {
   PANEL_POSITION_STORAGE_KEY,
   readStoredPanelState,
+  readStoredPanelWidth,
 } from './panel-storage'
 
 const ACCEPTED_ATTACHMENT_TYPES = new Set<ImageAttachmentMediaType>([
@@ -83,6 +88,16 @@ type DragState = {
   rafId: null | number
 }
 
+type ResizeState = {
+  edge: 'left' | 'right'
+  lastWidth: number
+  pointerX: number
+  rafId: null | number
+  startLeft: number
+  startPointerX: number
+  startWidth: number
+}
+
 export function PromptPanel({
   canDownload,
   elementSelectionActive,
@@ -110,19 +125,26 @@ export function PromptPanel({
   const [attachments, setAttachments] = useState<PromptAttachmentInput[]>([])
   const [attachmentError, setAttachmentError] = useState<null | string>(null)
   const [dragging, setDragging] = useState(false)
+  const [resizing, setResizing] = useState(false)
 
   const sectionRef = useRef<HTMLElement | null>(null)
   const dragState = useRef<DragState | null>(null)
+  const resizeState = useRef<null | ResizeState>(null)
+  const widthRef = useRef<number>(initialPanelWidth())
 
-  useClampToViewport(position, setPosition, collapsed)
+  useLayoutEffect(() => {
+    setPanelWidthVar(widthRef.current)
+  }, [])
+
+  useClampToViewport(position, setPosition, collapsed, widthRef)
 
   useEffect(() => {
-    writeStoredPanelState(position, collapsed)
+    writeStoredPanelState(position, collapsed, widthRef.current)
   }, [collapsed, position])
 
   useEffect(() => {
     if (!onLayoutChange) return
-    const docked = dragging ? null : dockedPanelSide(position)
+    const docked = dragging ? null : dockedPanelSide(position, widthRef.current)
     const reportedLayout: PanelLayout =
       dragging || collapsed
         ? 'floating'
@@ -203,6 +225,7 @@ export function PromptPanel({
             y: current.pointerY - current.offsetY,
           },
           collapsed,
+          widthRef.current,
         )
         sectionRef.current.style.left = `${next.x}px`
         sectionRef.current.style.top = `${next.y}px`
@@ -226,6 +249,7 @@ export function PromptPanel({
             y: state.pointerY - state.offsetY,
           },
           collapsed,
+          widthRef.current,
         ),
       )
     }
@@ -242,13 +266,101 @@ export function PromptPanel({
       }
 
       if (nextLayout === 'right-sidebar') {
-        setPosition({ x: rightDockX(), y: 0 })
+        setPosition({ x: rightDockX(widthRef.current), y: 0 })
         return
       }
 
-      setPosition(floatingPositionFrom(position))
+      setPosition(floatingPositionFrom(position, widthRef.current))
     },
     [position],
+  )
+
+  const handleResizeStart = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>, side: 'left' | 'right') => {
+      event.stopPropagation()
+      resizeState.current = {
+        edge: side,
+        lastWidth: widthRef.current,
+        pointerX: event.clientX,
+        rafId: null,
+        startLeft: position.x,
+        startPointerX: event.clientX,
+        startWidth: widthRef.current,
+      }
+      setResizing(true)
+      event.currentTarget.setPointerCapture?.(event.pointerId)
+    },
+    [position.x],
+  )
+
+  const handleResizeMove = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      const state = resizeState.current
+      if (!state) return
+
+      state.pointerX = event.clientX
+      if (state.rafId !== null) return
+
+      state.rafId = window.requestAnimationFrame(() => {
+        const current = resizeState.current
+        if (!current || !sectionRef.current) {
+          if (current) current.rafId = null
+          return
+        }
+        current.rafId = null
+
+        const delta = current.pointerX - current.startPointerX
+        const candidate =
+          current.edge === 'right'
+            ? current.startWidth + delta
+            : current.startWidth - delta
+        const available = Math.min(
+          current.edge === 'right'
+            ? window.innerWidth - current.startLeft
+            : current.startLeft + current.startWidth,
+          maxPanelWidth(),
+        )
+        const next = clampPanelWidth(candidate, available)
+        current.lastWidth = next
+
+        setPanelWidthVar(next)
+        if (current.edge === 'left') {
+          const nextLeft = Math.max(
+            0,
+            current.startLeft + current.startWidth - next,
+          )
+          sectionRef.current.style.left = `${nextLeft}px`
+        }
+      })
+    },
+    [],
+  )
+
+  const handleResizeEnd = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      event.stopPropagation()
+      const state = resizeState.current
+      if (state?.rafId != null) {
+        window.cancelAnimationFrame(state.rafId)
+      }
+
+      const startLeft = state?.startLeft ?? position.x
+      const startWidth = state?.startWidth ?? widthRef.current
+      const edge = state?.edge
+      const next = clampPanelWidth(state?.lastWidth ?? widthRef.current)
+      resizeState.current = null
+      widthRef.current = next
+      setResizing(false)
+      setPanelWidthVar(next)
+
+      if (edge === 'left') {
+        const nextLeft = Math.max(0, startLeft + startWidth - next)
+        setPosition({ x: nextLeft, y: position.y })
+      } else {
+        writeStoredPanelState(position, collapsed, next)
+      }
+    },
+    [collapsed, position],
   )
 
   const handleAllProjects = useCallback(() => {
@@ -369,7 +481,9 @@ export function PromptPanel({
     },
     [isStreaming, stopGeneration],
   )
-  const dockedSide = dragging ? null : dockedPanelSide(position)
+  const dockedSide = dragging
+    ? null
+    : dockedPanelSide(position, widthRef.current)
   const layout: PanelLayout = dockedSide ? `${dockedSide}-sidebar` : 'floating'
   const status = panelStatus({ isStreaming, turns })
   const shouldRenderCollapsed = collapsed
@@ -384,7 +498,7 @@ export function PromptPanel({
     maxHeight: dockedSide ? '100svh' : `calc(100svh - ${PANEL_MARGIN * 2}px)`,
     maxWidth: '100vw',
     top: `${position.y}px`,
-    width: `min(${PANEL_WIDTH}px, 100vw)`,
+    width: `var(${PANEL_WIDTH_CSS_VAR})`,
   }
 
   return (
@@ -398,8 +512,9 @@ export function PromptPanel({
           : 'rounded-none shadow-2xl',
         dockedSide === 'left' && 'border-y-0 border-l-0',
         dockedSide === 'right' && 'border-y-0 border-r-0',
-        dragging ? 'select-none' : '',
+        dragging || resizing ? 'select-none' : '',
       )}
+      data-resizing={resizing || undefined}
       ref={sectionRef}
       style={panelStyle}
     >
@@ -489,6 +604,22 @@ export function PromptPanel({
           </ResizablePanelGroup>
         </div>
       )}
+      {shouldRenderCollapsed ? null : (
+        <>
+          <PanelResizeHandle
+            onResizeEnd={handleResizeEnd}
+            onResizeMove={handleResizeMove}
+            onResizeStart={handleResizeStart}
+            side="left"
+          />
+          <PanelResizeHandle
+            onResizeEnd={handleResizeEnd}
+            onResizeMove={handleResizeMove}
+            onResizeStart={handleResizeStart}
+            side="right"
+          />
+        </>
+      )}
     </section>
   )
 }
@@ -547,14 +678,15 @@ async function attachImageFiles(
 function clampPanelPosition(
   position: PanelPosition,
   collapsed: boolean,
+  width: number,
 ): PanelPosition {
-  const dockedSide = dockedPanelSide(position)
+  const dockedSide = dockedPanelSide(position, width)
   const height = collapsed
     ? COLLAPSED_HEIGHT
     : dockedSide
       ? window.innerHeight
       : PANEL_HEIGHT
-  const maxX = rightDockX()
+  const maxX = rightDockX(width)
   const maxY = Math.max(0, window.innerHeight - height)
   const x = dockedSide === 'right' ? maxX : Math.min(position.x, maxX)
   const y = Math.min(position.y, maxY)
@@ -571,11 +703,11 @@ function createAttachmentId() {
     : `image-${Date.now()}-${Math.random().toString(16).slice(2)}`
 }
 
-function defaultPanelPosition(): PanelPosition {
+function defaultPanelPosition(width: number): PanelPosition {
   return {
     x: Math.max(
       PANEL_MARGIN,
-      Math.min(32, window.innerWidth - PANEL_WIDTH - PANEL_MARGIN),
+      Math.min(32, window.innerWidth - width - PANEL_MARGIN),
     ),
     y: Math.max(
       PANEL_MARGIN,
@@ -584,7 +716,7 @@ function defaultPanelPosition(): PanelPosition {
   }
 }
 
-function dockedPanelSide(position: PanelPosition) {
+function dockedPanelSide(position: PanelPosition, width: number) {
   if (position.y !== 0) {
     return null
   }
@@ -593,7 +725,7 @@ function dockedPanelSide(position: PanelPosition) {
     return 'left'
   }
 
-  if (position.x === rightDockX()) {
+  if (position.x === rightDockX(width)) {
     return 'right'
   }
 
@@ -615,18 +747,21 @@ async function fileToImageAttachment(
   }
 }
 
-function floatingPositionFrom(position: PanelPosition): PanelPosition {
-  const dockedSide = dockedPanelSide(position)
+function floatingPositionFrom(
+  position: PanelPosition,
+  width: number,
+): PanelPosition {
+  const dockedSide = dockedPanelSide(position, width)
 
   if (dockedSide === 'left') {
     return { x: 16, y: 16 }
   }
 
   if (dockedSide === 'right') {
-    return { x: Math.max(0, rightDockX() - 16), y: 16 }
+    return { x: Math.max(0, rightDockX(width) - 16), y: 16 }
   }
 
-  return defaultPanelPosition()
+  return defaultPanelPosition(width)
 }
 
 function initialPanelCollapsed(): boolean {
@@ -634,7 +769,12 @@ function initialPanelCollapsed(): boolean {
 }
 
 function initialPanelPosition(): PanelPosition {
-  return readStoredPanelPosition() ?? defaultPanelPosition()
+  const width = readStoredPanelWidth()
+  return readStoredPanelPosition(width) ?? defaultPanelPosition(width)
+}
+
+function initialPanelWidth(): number {
+  return readStoredPanelWidth()
 }
 
 function isAcceptedAttachmentType(
@@ -645,6 +785,38 @@ function isAcceptedAttachmentType(
 
 function isFiniteNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value)
+}
+
+function PanelResizeHandle({
+  onResizeEnd,
+  onResizeMove,
+  onResizeStart,
+  side,
+}: {
+  onResizeEnd: (event: ReactPointerEvent<HTMLDivElement>) => void
+  onResizeMove: (event: ReactPointerEvent<HTMLDivElement>) => void
+  onResizeStart: (
+    event: ReactPointerEvent<HTMLDivElement>,
+    side: 'left' | 'right',
+  ) => void
+  side: 'left' | 'right'
+}) {
+  return (
+    <div
+      aria-label={
+        side === 'left' ? 'Resize panel left edge' : 'Resize panel right edge'
+      }
+      aria-orientation="vertical"
+      className={cn(
+        'absolute inset-y-0 z-40 w-1.5 cursor-col-resize touch-none hover:bg-accent/40',
+        side === 'left' ? 'left-0' : 'right-0',
+      )}
+      onPointerDown={(event) => onResizeStart(event, side)}
+      onPointerMove={onResizeMove}
+      onPointerUp={onResizeEnd}
+      role="separator"
+    />
+  )
 }
 
 function promptAttachmentSize(attachment: PromptAttachmentInput) {
@@ -674,32 +846,38 @@ function readStoredPanelCollapsed(): boolean | null {
   return typeof collapsed === 'boolean' ? collapsed : null
 }
 
-function readStoredPanelPosition(): null | PanelPosition {
+function readStoredPanelPosition(width: number): null | PanelPosition {
   const state = readStoredPanelState()
   if (!state) return null
   if (!isFiniteNumber(state.x) || !isFiniteNumber(state.y)) return null
 
   if (state.layout === 'left-sidebar') return { x: 0, y: 0 }
-  if (state.layout === 'right-sidebar') return { x: rightDockX(), y: 0 }
+  if (state.layout === 'right-sidebar') return { x: rightDockX(width), y: 0 }
 
-  return clampPanelPosition({ x: state.x, y: state.y }, false)
+  return clampPanelPosition({ x: state.x, y: state.y }, false, width)
 }
 
-function rightDockX() {
-  return Math.max(
-    0,
-    window.innerWidth - Math.min(PANEL_WIDTH, window.innerWidth),
-  )
+function rightDockX(width: number) {
+  return Math.max(0, window.innerWidth - Math.min(width, window.innerWidth))
+}
+
+function setPanelWidthVar(width: number) {
+  document.documentElement.style.setProperty(PANEL_WIDTH_CSS_VAR, `${width}px`)
 }
 
 function useClampToViewport(
   position: PanelPosition,
   setPosition: (next: PanelPosition) => void,
   collapsed: boolean,
+  widthRef: RefObject<number>,
 ) {
   useEffect(() => {
     const onResize = () => {
-      const nextPosition = clampPanelPosition(position, collapsed)
+      const nextPosition = clampPanelPosition(
+        position,
+        collapsed,
+        widthRef.current,
+      )
 
       if (nextPosition.x !== position.x || nextPosition.y !== position.y) {
         setPosition(nextPosition)
@@ -710,19 +888,23 @@ function useClampToViewport(
     window.addEventListener('resize', onResize)
 
     return () => window.removeEventListener('resize', onResize)
-  }, [collapsed, position, setPosition])
+  }, [collapsed, position, setPosition, widthRef])
 }
 
-function writeStoredPanelState(position: PanelPosition, collapsed: boolean) {
+function writeStoredPanelState(
+  position: PanelPosition,
+  collapsed: boolean,
+  width: number,
+) {
   try {
-    const dockedSide = dockedPanelSide(position)
+    const dockedSide = dockedPanelSide(position, width)
     const layout: PanelLayout = dockedSide
       ? `${dockedSide}-sidebar`
       : 'floating'
 
     window.localStorage.setItem(
       PANEL_POSITION_STORAGE_KEY,
-      JSON.stringify({ ...position, collapsed, layout }),
+      JSON.stringify({ ...position, collapsed, layout, width }),
     )
   } catch {
     // Ignore storage errors from private mode or blocked localStorage.

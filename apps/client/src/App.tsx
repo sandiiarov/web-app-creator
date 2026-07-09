@@ -6,11 +6,10 @@ import {
   type PreviewViewport,
   PromptPanel,
   readStoredPanelLayout,
-  readStoredPanelWidth,
 } from '@workspace/prompt-panel'
 import { Button } from '@workspace/ui/components/button'
 import { ArrowLeft } from 'lucide-react'
-import { useCallback, useLayoutEffect, useState } from 'react'
+import { useCallback, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
 import { useTheme } from '#components/theme-provider'
@@ -31,7 +30,6 @@ export function EditorPage({ projectId }: EditorPageProps) {
   const [panelLayout, setPanelLayout] = useState<PanelLayout>(
     readStoredPanelLayout,
   )
-  const [panelWidth, setPanelWidth] = useState<number>(readStoredPanelWidth)
   const [viewport, setViewport] = useState<PreviewViewport>(
     DEFAULT_PREVIEW_VIEWPORT,
   )
@@ -46,17 +44,6 @@ export function EditorPage({ projectId }: EditorPageProps) {
     (layout: PanelLayout) => setPanelLayout(layout),
     [],
   )
-
-  const handlePanelWidthChange = useCallback((width: number) => {
-    setPanelWidth(width)
-  }, [])
-
-  useLayoutEffect(() => {
-    document.documentElement.style.setProperty(
-      '--landing-panel-width',
-      `${panelWidth}px`,
-    )
-  }, [panelWidth])
 
   const handleElementSelectionCancel = useCallback(() => {
     setElementSelectionActive(false)
@@ -141,7 +128,6 @@ export function EditorPage({ projectId }: EditorPageProps) {
         onDownloadHtml={() => downloadProjectHtml(projectId)}
         onElementSelectionToggle={handleElementSelectionToggle}
         onLayoutChange={handlePanelLayoutChange}
-        onWidthChange={handlePanelWidthChange}
         onModelsChange={landing.setModels}
         onSelectedElementAttachmentConsumed={() =>
           setSelectedElementAttachment(null)

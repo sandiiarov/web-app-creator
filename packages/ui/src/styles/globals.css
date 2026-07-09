@@ -12,6 +12,14 @@
 @source '../../../../apps/client/node_modules/streamdown/dist/*.js';
 @source '../../../../apps/client/node_modules/@streamdown/code/dist/*.js';
 
+/* Registered so it carries a CSS default (no first-paint flash) and can be
+   transitioned/animated directly as a <length>. */
+@property --landing-panel-width {
+  syntax: '<length>';
+  inherits: true;
+  initial-value: 420px;
+}
+
 @theme inline {
   --font-heading: var(--font-sans);
   --color-sidebar-ring: var(--sidebar-ring);

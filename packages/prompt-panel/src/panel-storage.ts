@@ -30,15 +30,6 @@ export function readStoredPanelLayout(): PanelLayout {
   return PANEL_LAYOUTS.includes(state.layout) ? state.layout : 'floating'
 }
 
-/**
- * Persisted panel width clamped to the allowed range, or the default.
- */
-export function readStoredPanelWidth(): number {
-  const width = readStoredPanelState()?.width
-  if (typeof width !== 'number') return PANEL_WIDTH
-  return clampPanelWidth(width)
-}
-
 export function readStoredPanelState(): null | StoredPanelState {
   try {
     const raw = window.localStorage.getItem(PANEL_POSITION_STORAGE_KEY)
@@ -53,4 +44,13 @@ export function readStoredPanelState(): null | StoredPanelState {
   } catch {
     return null
   }
+}
+
+/**
+ * Persisted panel width clamped to the allowed range, or the default.
+ */
+export function readStoredPanelWidth(): number {
+  const width = readStoredPanelState()?.width
+  if (typeof width !== 'number') return PANEL_WIDTH
+  return clampPanelWidth(width)
 }
