@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
+import { fetchVisionCompletion } from './vision-fetch.ts'
+
 const PNG_DATA_URL = 'data:image/png;base64,iVBORw0KGgo='
 const WEBP_DATA_URL = 'data:image/webp;base64,UklGRg=='
 
@@ -292,7 +294,6 @@ describe('ocrImages', () => {
 
 describe('fetchVisionCompletion', () => {
   it('retries on 5xx and returns the success response once it recovers', async () => {
-    const { fetchVisionCompletion } = await loadImageOcr()
     const fetch = vi.fn<FetchMock>(async () => jsonResponse({ ok: true }))
     fetch
       .mockReturnValueOnce(
@@ -315,7 +316,6 @@ describe('fetchVisionCompletion', () => {
   })
 
   it('returns the last 5xx response after exhausting retries', async () => {
-    const { fetchVisionCompletion } = await loadImageOcr()
     vi.stubGlobal(
       'fetch',
       vi.fn<FetchMock>(async () => new Response('down', { status: 503 })),
@@ -334,7 +334,6 @@ describe('fetchVisionCompletion', () => {
   })
 
   it('does not retry 4xx responses', async () => {
-    const { fetchVisionCompletion } = await loadImageOcr()
     vi.stubGlobal(
       'fetch',
       vi.fn<FetchMock>(async () => new Response('bad', { status: 400 })),
@@ -353,7 +352,6 @@ describe('fetchVisionCompletion', () => {
   })
 
   it('times out, retries, and surfaces a timeout reason when fetch hangs', async () => {
-    const { fetchVisionCompletion } = await loadImageOcr()
     // Mock fetch that honors the abort signal (rejects with AbortError on abort).
     vi.stubGlobal(
       'fetch',
