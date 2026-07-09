@@ -290,6 +290,102 @@ describe('ocrImages', () => {
   })
 })
 
+describe('fetchVisionCompletion', () => {
+  it('retries on 5xx and returns the success response once it recovers', async () => {
+    const { fetchVisionCompletion } = await loadImageOcr()
+    const fetch = vi.fn<FetchMock>(async () => jsonResponse({ ok: true }))
+    fetch
+      .mockReturnValueOnce(
+        Promise.resolve(new Response('down', { status: 503 })),
+      )
+      .mockReturnValueOnce(
+        Promise.resolve(new Response('down', { status: 503 })),
+      )
+      .mockReturnValueOnce(Promise.resolve(jsonResponse({ ok: true })))
+    vi.stubGlobal('fetch', fetch)
+
+    const result = await fetchVisionCompletion(
+      'https://x.test',
+      { method: 'POST' },
+      { baseDelayMs: 0, timeoutMs: 1000 },
+    )
+
+    expect(result.ok).toBe(true)
+    expect(fetch).toHaveBeenCalledTimes(3)
+  })
+
+  it('returns the last 5xx response after exhausting retries', async () => {
+    const { fetchVisionCompletion } = await loadImageOcr()
+    vi.stubGlobal(
+      'fetch',
+      vi.fn<FetchMock>(async () => new Response('down', { status: 503 })),
+    )
+
+    const result = await fetchVisionCompletion(
+      'https://x.test',
+      { method: 'POST' },
+      { baseDelayMs: 0, maxAttempts: 3, timeoutMs: 1000 },
+    )
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) throw new Error('expected ok')
+    expect(result.response.status).toBe(503)
+    expect(fetch).toHaveBeenCalledTimes(3)
+  })
+
+  it('does not retry 4xx responses', async () => {
+    const { fetchVisionCompletion } = await loadImageOcr()
+    vi.stubGlobal(
+      'fetch',
+      vi.fn<FetchMock>(async () => new Response('bad', { status: 400 })),
+    )
+
+    const result = await fetchVisionCompletion(
+      'https://x.test',
+      { method: 'POST' },
+      { baseDelayMs: 0, timeoutMs: 1000 },
+    )
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) throw new Error('expected ok')
+    expect(result.response.status).toBe(400)
+    expect(fetch).toHaveBeenCalledTimes(1)
+  })
+
+  it('times out, retries, and surfaces a timeout reason when fetch hangs', async () => {
+    const { fetchVisionCompletion } = await loadImageOcr()
+    // Mock fetch that honors the abort signal (rejects with AbortError on abort).
+    vi.stubGlobal(
+      'fetch',
+      vi.fn<FetchMock>(
+        (_url, init) =>
+          new Promise<Response>((_resolve, reject) => {
+            init?.signal?.addEventListener(
+              'abort',
+              () => {
+                const err = new Error('The operation was aborted')
+                err.name = 'AbortError'
+                reject(err)
+              },
+              { once: true },
+            )
+          }),
+      ),
+    )
+
+    const result = await fetchVisionCompletion(
+      'https://x.test',
+      { method: 'POST' },
+      { baseDelayMs: 0, maxAttempts: 3, timeoutMs: 5 },
+    )
+
+    expect(result.ok).toBe(false)
+    if (result.ok) throw new Error('expected not ok')
+    expect(result.reason).toMatch(/timed out/i)
+    expect(fetch).toHaveBeenCalledTimes(3)
+  })
+})
+
 function base64Bytes(value: string): Uint8Array {
   return Uint8Array.from(Buffer.from(value, 'base64'))
 }

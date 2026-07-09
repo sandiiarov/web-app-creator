@@ -20,7 +20,7 @@
 
 ## Why this matters
 
-An e2e QA campaign (`screenshots/e2e-5run/REPORT.md`) showed project 1 made **5 screenshot requests, all 5 OCR calls failed silently** (`vision.calls=0`, `toolErrors=0`), so the agent received no visual feedback and compensated with 10 `read` calls — flying blind on layout/contrast. Two problems: (1) the OCR `fetch` in `image-ocr.ts` has **no timeout and no retry**, so a slow Z.AI vision response either hangs the agent stream indefinitely or fails fast on a transient error with no recovery; (2) when OCR fails, the screenshot tool returns `ok:false` gracefully (not a thrown error), so the failure is invisible in `toolErrors` and the agent gets only an empty `text` + a `reason` string. Adding a bounded timeout + retry makes OCR resilient to transient Z.AI slowness; logging the failure gives the operator a way to see when the visual-feedback loop is broken.
+An e2e QA campaign (`screenshots/e2e-5run/REPORT.md`) confirmed screenshot OCR **works** (29 vision calls across 5 projects, 0 silent failures). However the code audit found the OCR `fetch` in `image-ocr.ts` has **no timeout and no retry** — a slow or hung Z.AI vision response would hang the agent stream indefinitely (the `fetch` relies on default Node behavior), and a transient 5xx fails immediately with no recovery. This plan is **preventive hardening for a latent robustness gap**, not a fix for an observed failure: bound the OCR call with an `AbortController` timeout + retry transient 5xx/abort so the screenshot tool degrades gracefully instead of hanging.
 
 ## Current state
 
