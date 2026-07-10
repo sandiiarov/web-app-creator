@@ -204,6 +204,9 @@ importers:
       '@workspace/vitest-preset':
         specifier: workspace:*
         version: link:../../packages/vitest-preset
+      happy-dom:
+        specifier: 'catalog:'
+        version: 20.10.6
       oxfmt:
         specifier: 'catalog:'
         version: 0.52.0

@@ -109,6 +109,22 @@ export async function postScreenshotResponse(
 }
 
 /**
+ * Gracefully stop the active run for a project. The server aborts its Mastra
+ * stream but keeps the SSE response open so the final cost/stats + `done` are
+ * still streamed back (the caller keeps reading). Returns whether a run was
+ * active and stopped.
+ */
+export async function stopProjectAgent(id: string): Promise<boolean> {
+  const response = await fetch(`${SERVER_URL}/api/projects/${id}/stop`, {
+    headers: { 'content-type': 'application/json' },
+    method: 'POST',
+  })
+  const json = (await response.json()) as { ok: boolean; stopped: boolean }
+  if (!json.ok) throw new Error('Failed to stop project')
+  return json.stopped
+}
+
+/**
  * Persist the per-category model selection. Sends `textModel`, `visionModel`,
  * and `imageModel`; the server currently persists `textModel` and accepts the
  * rest forward-compat (ignored until project metadata stores them).

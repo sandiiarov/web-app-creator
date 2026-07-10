@@ -40,6 +40,7 @@
     "@workspace/typescript-config": "workspace:*",
     "@workspace/vite-config": "workspace:*",
     "@workspace/vitest-preset": "workspace:*",
+    "happy-dom": "catalog:",
     "oxfmt": "catalog:",
     "oxlint": "catalog:",
     "typescript": "catalog:",

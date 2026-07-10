@@ -23,7 +23,9 @@ import {
   expandProjectImageUrls,
   getProject,
   postScreenshotResponse,
+  stopProjectAgent,
   updateProjectModels,
+  type Project,
 } from '../lib/projects-api'
 import { streamSSE } from '../lib/sse-client'
 
@@ -43,6 +45,8 @@ export interface UseLandingPageOptions {
   projectId: string
 }
 
+const RECONCILIATION_DELAYS_MS = [0, 100, 300, 1000] as const
+
 let turnSeq = 0
 const nextTurnId = () => `turn-${Date.now()}-${turnSeq++}`
 
@@ -58,6 +62,8 @@ export function useLandingPage({
   const [isStreaming, setIsStreaming] = useState(false)
   const [missing, setMissing] = useState(false)
   const controllerRef = useRef<AbortController | null>(null)
+  const stoppingRef = useRef(false)
+  const stopSafetyRef = useRef<null | number>(null)
   const modelSaveSeq = useRef(0)
 
   // Load the project on mount (and when switching projects): the server owns
@@ -167,7 +173,7 @@ export function useLandingPage({
 
   const send = useCallback(
     ({ attachments = [], prompt }: LandingAgentSendInput) => {
-      if (isStreaming) return
+      if (isStreaming || controllerRef.current !== null) return
 
       const turnId = nextTurnId()
       const attachmentMetadata = attachments.map(stripAttachmentData)
@@ -186,6 +192,7 @@ export function useLandingPage({
       const controller = new AbortController()
       controllerRef.current = controller
 
+      let receivedDone = false
       void streamSSE(
         LANDING_AGENT_API,
         {
@@ -194,10 +201,12 @@ export function useLandingPage({
           projectId,
           prompt,
           textModel: models.text,
+          turnId,
           visionModel: models.vision,
         },
         {
           onEvent: ({ data, event }) => {
+            if (event === 'done') receivedDone = true
             // Side-effect events have no turn-structure effect and stay
             // client-local; structural events share the reducer with the
             // server's hydration path (@workspace/conversation).
@@ -234,7 +243,21 @@ export function useLandingPage({
           signal: controller.signal,
         },
       )
-        .catch((error: unknown) => {
+        .then(() => {
+          if (!receivedDone) {
+            throw new Error('Agent stream ended before terminal done event.')
+          }
+        })
+        .catch(async (error: unknown) => {
+          const reconciled = await reconcilePersistedTurn(projectId, turnId)
+          if (reconciled) {
+            setHtml(expandProjectImageUrls(reconciled.project.indexHtml))
+            setTurns((prev) =>
+              prev.map((turn) => (turn.id === turnId ? reconciled.turn : turn)),
+            )
+            return
+          }
+
           const message = error instanceof Error ? error.message : String(error)
           if (message !== 'stopped' && !controller.signal.aborted) {
             patchTurn(turnId, (turn) =>
@@ -257,6 +280,11 @@ export function useLandingPage({
             }),
           )
           setIsStreaming(false)
+          stoppingRef.current = false
+          if (stopSafetyRef.current !== null) {
+            window.clearTimeout(stopSafetyRef.current)
+            stopSafetyRef.current = null
+          }
           controllerRef.current = null
         })
     },
@@ -271,16 +299,37 @@ export function useLandingPage({
   )
 
   const stop = useCallback(() => {
-    controllerRef.current?.abort()
-    setIsStreaming(false)
+    const controller = controllerRef.current
+    if (!controller || stoppingRef.current) return
+    stoppingRef.current = true
+    // Immediate visual feedback: terminalize still-running tools on the active
+    // turn and stop its part animations. The panel-level `isStreaming` stays
+    // true until the stream actually closes, so a new send stays blocked while
+    // the server flushes the terminal cost/stats for this run.
     setTurns((prev) =>
       prev.map((turn) =>
         turn.isStreaming
-          ? { ...terminalizeTools(turn, 'Stopped.'), isStreaming: false }
+          ? {
+              ...terminalizeTools(turn, 'Stopped.'),
+              isStreaming: false,
+              stopped: true,
+            }
           : turn,
       ),
     )
-  }, [])
+    // Graceful stop: ask the server to abort its Mastra stream WITHOUT closing
+    // the SSE response, then keep reading so the final stats + `done` arrive
+    // and the Spend / tokens block renders for a stopped run. Do NOT abort the
+    // fetch here — that would close the connection and drop the terminal stats.
+    void stopProjectAgent(projectId).catch(() => {
+      // Endpoint failed (server down / already finished): fall back to a hard
+      // abort so the UI does not wait on a stream that will not close.
+      controller.abort()
+    })
+    // Safety: if the server does not close the stream promptly (e.g. stuck on
+    // a slow tool), force-abort. Stats may be lost in that degraded case.
+    stopSafetyRef.current = window.setTimeout(() => controller.abort(), 8000)
+  }, [projectId])
 
   return {
     html,
@@ -292,6 +341,28 @@ export function useLandingPage({
     stop,
     turns,
   }
+}
+
+async function reconcilePersistedTurn(
+  projectId: string,
+  turnId: string,
+): Promise<null | { project: Project; turn: LandingTurn }> {
+  for (const delayMs of RECONCILIATION_DELAYS_MS) {
+    if (delayMs > 0) await wait(delayMs)
+    try {
+      const project = await getProject(projectId)
+      const persisted = project.messages.find((turn) => turn.id === turnId)
+      if (persisted && !persisted.isStreaming) {
+        return {
+          project,
+          turn: restoreProjectTurns([persisted])[0]!,
+        }
+      }
+    } catch {
+      // The next bounded attempt may observe the server's final log flush.
+    }
+  }
+  return null
 }
 
 function restoreProjectTurns(turns: LandingTurn[]): LandingTurn[] {
@@ -314,4 +385,8 @@ function stripAttachmentData({
   ...metadata
 }: PromptAttachmentInput): PromptAttachmentMeta {
   return metadata
+}
+
+function wait(delayMs: number): Promise<void> {
+  return new Promise((resolve) => window.setTimeout(resolve, delayMs))
 }
