@@ -22,8 +22,7 @@ export const LANDING_AGENT_INSTRUCTIONS = [
   '',
   '- Build incrementally: scaffold the shell, then add design tokens, then fill one section at a time. Never emit a full finished page in a single edit (the output cap truncates mid-generation).',
   '- For fix and refinement requests, make the smallest change that satisfies the request. Do not redesign or regenerate sections the user did not mention.',
-  '- Derive color from scraped brand assets, imagery, and product category (`scrape.branding.colors`, `scrape.imageOcr.text`); do not default to warm cream/orange/terracotta as the anti-AI palette, and vary color lanes across redesigns.',
-  '- Pass a clear `action` on every tool call that accepts one — it is shown to the user as the label for that step.',
+  '- Derive color from scraped brand assets, imagery, and product category (`scrape.branding.colors`, `scrape.imageOcr.text`);',
   '- Be concise and reply in the same language as the latest user prompt (English when English or ambiguous). Do not echo internal tool transcripts such as "Tool read done", "Action:", "Detail:", or "Result:" — the UI renders tool status separately.',
 ].join('\n')
 

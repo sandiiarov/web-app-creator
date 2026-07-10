@@ -10,6 +10,19 @@ const DEFAULT_FIRECRAWL_CREDIT_USD = 0.002
 
 export function createConfigFromEnv(source: ConfigEnvironment) {
   return {
+    agentGeneration: {
+      // GLM-5.2 sampling — Z.ai recommends tuning EITHER temperature OR
+      // top_p (never both). Default temperature 1.0; set AGENT_TOP_P to
+      // switch to nucleus sampling instead (route.ts emits only one).
+      temperature: parseNonNegativeNumber(
+        optionalEnv(source, 'AGENT_TEMPERATURE') ?? '1',
+        'AGENT_TEMPERATURE',
+      ),
+      topP: parseOptionalNonNegativeNumber(
+        optionalEnv(source, 'AGENT_TOP_P'),
+        'AGENT_TOP_P',
+      ),
+    },
     agentMaxCostUsd: parseNonNegativeNumber(
       optionalEnv(source, 'AGENT_MAX_COST_USD') ?? '1',
       'AGENT_MAX_COST_USD',
@@ -89,6 +102,17 @@ function parseNonNegativeNumber(value: string, name: string) {
   }
 
   return parsed
+}
+
+function parseOptionalNonNegativeNumber(
+  value: string | undefined,
+  name: string,
+) {
+  if (!value) {
+    return undefined
+  }
+
+  return parseNonNegativeNumber(value, name)
 }
 
 function parsePort(value: string) {

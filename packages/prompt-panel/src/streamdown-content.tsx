@@ -40,7 +40,12 @@ const listAndBlockClasses = [
 const codeClasses = [
   '[&_[data-streamdown=code-block]]:relative [&_[data-streamdown=code-block]]:my-2 [&_[data-streamdown=code-block]]:gap-0 [&_[data-streamdown=code-block]]:overflow-hidden [&_[data-streamdown=code-block]]:rounded-none [&_[data-streamdown=code-block]]:border [&_[data-streamdown=code-block]]:border-border/70 [&_[data-streamdown=code-block]]:bg-background [&_[data-streamdown=code-block]]:p-0 [&_[data-streamdown=code-block]]:shadow-sm',
   '[&_[data-streamdown=code-block-header]]:h-6 [&_[data-streamdown=code-block-header]]:border-b [&_[data-streamdown=code-block-header]]:border-border/60 [&_[data-streamdown=code-block-header]]:bg-muted/35 [&_[data-streamdown=code-block-header]]:px-3 [&_[data-streamdown=code-block-header]]:font-mono [&_[data-streamdown=code-block-header]]:text-[10px] [&_[data-streamdown=code-block-header]]:font-semibold [&_[data-streamdown=code-block-header]]:tracking-[0.08em] [&_[data-streamdown=code-block-header]]:text-muted-foreground [&_[data-streamdown=code-block-header]]:uppercase [&_[data-streamdown=code-block-header][data-language=""]]:hidden',
-  '[&_[data-streamdown=code-block-actions]]:hidden',
+  // The sticky actions wrapper has no data attribute, so the old
+  // `[&_[data-streamdown=code-block-actions]]:hidden` only hid its inner child and left the empty
+  // `pointer-events-none sticky -mt-10 h-8 z-10` wrapper pulled up over the header (the header bg
+  // then appeared not to fill the whole height). Hide the wrapper itself; `:has()` keeps this from
+  // matching the body when the wrapper is absent (body follows header directly in that case).
+  '[&_[data-streamdown=code-block-header]+div:has([data-streamdown=code-block-actions])]:hidden',
   '[&_[data-streamdown=code-block-body]]:overflow-auto [&_[data-streamdown=code-block-body]]:rounded-none [&_[data-streamdown=code-block-body]]:border-0 [&_[data-streamdown=code-block-body]]:bg-muted/25 [&_[data-streamdown=code-block-body]]:px-3 [&_[data-streamdown=code-block-body]]:py-2.5 [&_[data-streamdown=code-block-body]]:text-[11px]',
   '[&_[data-streamdown=code-block]_pre]:m-0 [&_[data-streamdown=code-block]_pre]:max-h-96 [&_[data-streamdown=code-block]_pre]:overflow-visible [&_[data-streamdown=code-block]_pre]:bg-transparent [&_[data-streamdown=code-block]_pre]:p-0',
   '[&_[data-streamdown=code-block]_code]:border-0 [&_[data-streamdown=code-block]_code]:bg-transparent [&_[data-streamdown=code-block]_code]:p-0 [&_[data-streamdown=code-block]_code]:font-mono [&_[data-streamdown=code-block]_code]:text-[11px] [&_[data-streamdown=code-block]_code]:leading-5',

@@ -8,7 +8,7 @@
 
 - `src/components/`: reusable UI primitives/components exported as `@workspace/ui/components/*`.
 - `src/lib/utils.ts`: shared `cn()` utility.
-- `src/styles/globals.css`: Tailwind v4 imports, theme tokens, app source scanning, base styles, UI utilities, the registered `@property --landing-panel-width` (owned by/for `@workspace/prompt-panel`), and the landing layout transitions (`[data-landing-prompt-panel]` height; `[data-landing-preview-area]` margin/width, disabled under `:has([data-resizing])`).
+- `src/styles/globals.css`: Tailwind v4 imports, theme tokens, app source scanning, base styles, UI utilities (incl. the `landing-grid-bg` 10px grid applied by `@workspace/client` behind centered tablet/mobile previews), the registered `@property --landing-panel-width` (owned by/for `@workspace/prompt-panel`), and the landing layout transitions (`[data-landing-prompt-panel]` height; `[data-landing-preview-area]` margin/width, disabled under `:has([data-resizing])`).
 - `components.json`: shadcn config for this package.
 
 ## Local Contracts

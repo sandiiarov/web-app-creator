@@ -8,6 +8,7 @@ import {
   readStoredPanelLayout,
 } from '@workspace/prompt-panel'
 import { Button } from '@workspace/ui/components/button'
+import { cn } from '@workspace/ui/lib/utils'
 import { ArrowLeft } from 'lucide-react'
 import { useCallback, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
@@ -89,12 +90,16 @@ export function EditorPage({ projectId }: EditorPageProps) {
 
   const hasLanding = landing.turns.length > 0
 
-  const previewAreaClassName =
+  const isFixedViewport = viewport === 'tablet' || viewport === 'mobile'
+  const previewAreaClassName = cn(
     panelLayout === 'left-sidebar'
-      ? 'ml-[var(--landing-panel-width)] flex h-svh w-[calc(100vw-var(--landing-panel-width))] justify-center'
+      ? 'ml-[var(--landing-panel-width)] w-[calc(100vw-var(--landing-panel-width))]'
       : panelLayout === 'right-sidebar'
-        ? 'mr-[var(--landing-panel-width)] flex h-svh w-[calc(100vw-var(--landing-panel-width))] justify-center'
-        : 'flex h-svh w-screen justify-center'
+        ? 'mr-[var(--landing-panel-width)] w-[calc(100vw-var(--landing-panel-width))]'
+        : 'w-screen',
+    'flex h-svh justify-center',
+    isFixedViewport && 'landing-grid-bg',
+  )
 
   const previewFrameClassName =
     viewport === 'mobile'

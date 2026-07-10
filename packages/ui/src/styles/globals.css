@@ -161,6 +161,21 @@
   scrollbar-gutter: stable;
 }
 
+@utility landing-grid-bg {
+  background-image:
+    linear-gradient(
+      to right,
+      color-mix(in oklch, var(--foreground) 10%, transparent) 1px,
+      transparent 1px
+    ),
+    linear-gradient(
+      to bottom,
+      color-mix(in oklch, var(--foreground) 10%, transparent) 1px,
+      transparent 1px
+    );
+  background-size: 10px 10px;
+}
+
 /* ── Landing editor layout transitions ─────────────────────── */
 /* The prompt panel height changes only when docking/undocking/collapsing
    (never mid-drag or mid-resize), so it is always safe to transition. */

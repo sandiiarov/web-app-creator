@@ -427,6 +427,16 @@ async function activeStreamLandingAgent({
       modelSettings: {
         maxOutputTokens: 16_384,
         maxRetries: config.agentRetry.modelMaxRetries,
+        // GLM-5.2 sampling: Z.ai docs say tune EITHER temperature OR top_p
+        // (never both). Default temperature 1.0; AGENT_TOP_P switches to
+        // nucleus sampling instead. reasoning_effort is intentionally NOT set
+        // here — the generic OpenAI-compatible path drops
+        // providerOptions.openai.reasoningEffort, and GLM-5.2 defaults to
+        // `max` (deep reasoning) when the param is omitted, which is the
+        // recommended setting for coding/agentic use.
+        ...(config.agentGeneration.topP != null
+          ? { topP: config.agentGeneration.topP }
+          : { temperature: config.agentGeneration.temperature }),
       },
       onStepFinish: () => {
         // Snapshot the real Mastra message list after each agent step and append
