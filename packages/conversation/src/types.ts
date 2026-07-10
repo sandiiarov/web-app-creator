@@ -90,6 +90,7 @@ export interface ConversationTurn {
   model: string
   parts: ConversationPart[]
   prompt: string
+  stopped?: boolean
 }
 
 export type ToolCallState = 'done' | 'error' | 'running' | 'start'

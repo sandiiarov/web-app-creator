@@ -39,7 +39,14 @@ export function applyEventToTurn<T extends ConversationTurn>(
     }
     case 'error': {
       const message = typeof data.message === 'string' ? data.message : ''
-      if (!message || message === 'stopped') return turn
+      if (!message) return turn
+      if (message === 'stopped') {
+        return {
+          ...turn,
+          parts: terminalizeParts(turn.parts, 'Stopped.'),
+          stopped: true,
+        } as T
+      }
       return {
         ...turn,
         error: message,

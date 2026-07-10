@@ -112,12 +112,44 @@ describe('replayClientEvents (hydration fold)', () => {
     ])
   })
 
-  it('ignores an error with message "stopped" but records other errors', () => {
+  it('persists stopped separately from errors and keeps stats through done', () => {
     const stopped = replayClientEvents([
+      prompt('turn-1'),
+      out('tool_call', { id: 'c', state: 'running', tool: 'edit' }),
+      out('stats', {
+        cost: 0.01,
+        durationMs: 5,
+        finishReason: 'stopped',
+        model: 'm',
+        usage: { totalTokens: 10 },
+      }),
+      out('error', { message: 'stopped' }),
+      out('done'),
+    ])
+    expect(stopped[0]).toMatchObject({
+      isStreaming: false,
+      stopped: true,
+    })
+    expect(stopped[0]?.error).toBeUndefined()
+    expect(stopped[0]?.parts).toEqual([
+      expect.objectContaining({
+        id: 'c',
+        result: 'Stopped.',
+        state: 'error',
+        type: 'tool_call',
+      }),
+      expect.objectContaining({
+        finishReason: 'stopped',
+        type: 'stats',
+        usage: { totalTokens: 10 },
+      }),
+    ])
+
+    const draining = replayClientEvents([
       prompt('turn-1'),
       out('error', { message: 'stopped' }),
     ])
-    expect(stopped[0]?.error).toBeUndefined()
+    expect(draining[0]).toMatchObject({ isStreaming: true, stopped: true })
 
     const errored = replayClientEvents([
       prompt('turn-2'),
@@ -125,6 +157,7 @@ describe('replayClientEvents (hydration fold)', () => {
       out('error', { message: 'boom' }),
     ])
     expect(errored[0]?.error).toBe('boom')
+    expect(errored[0]?.stopped).toBeUndefined()
     expect(errored[0]?.parts[0]).toMatchObject({
       id: 'c',
       result: 'boom',
