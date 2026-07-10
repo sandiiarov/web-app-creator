@@ -68,6 +68,22 @@ describe('server HTTP routes', () => {
         [{ projectId: 'project-1', prompt: '' }, 'Expected { prompt: string }'],
         [{ prompt: 'Build' }, 'Expected { projectId: string }'],
         [
+          { projectId: 'project-1', prompt: 'Build', turnId: '' },
+          'Expected { turnId?: string (1-128 characters) }',
+        ],
+        [
+          { projectId: 'project-1', prompt: 'Build', turnId: 42 },
+          'Expected { turnId?: string (1-128 characters) }',
+        ],
+        [
+          {
+            projectId: 'project-1',
+            prompt: 'Build',
+            turnId: 'x'.repeat(129),
+          },
+          'Expected { turnId?: string (1-128 characters) }',
+        ],
+        [
           { projectId: 'project-1', prompt: 'Build', textModel: '' },
           'Expected { textModel?: string }',
         ],
@@ -131,7 +147,7 @@ describe('server HTTP routes', () => {
     })
   })
 
-  it('streams valid /agent requests with normalized attachments and model ids', async () => {
+  it('streams valid /agent requests with normalized attachments, model ids, and turn id', async () => {
     await withServer(async ({ baseUrl, streamLandingAgent }) => {
       const response = await postJson(`${baseUrl}/agent`, {
         attachments: [IMAGE_ATTACHMENT, ELEMENT_ATTACHMENT],
@@ -139,6 +155,7 @@ describe('server HTTP routes', () => {
         projectId: 'project-1',
         prompt: 'Build a hero',
         textModel: 'custom-model',
+        turnId: 'turn-client-1',
         visionModel: 'openrouter/moonshotai/kimi-k2.7-code',
       })
 
@@ -161,6 +178,7 @@ describe('server HTTP routes', () => {
         projectId: 'project-1',
         prompt: 'Build a hero',
         textModel: 'custom-model',
+        turnId: 'turn-client-1',
         visionModel: 'moonshotai/kimi-k2.7-code',
       })
     })
@@ -318,6 +336,40 @@ describe('server HTTP routes', () => {
     })
   })
 
+  it('POST /api/projects/:id/stop gracefully stops the active run', async () => {
+    await withServer(async ({ baseUrl, stopLandingAgent }) => {
+      const createResponse = await postJson(`${baseUrl}/api/projects`, {
+        title: 'Stop',
+      })
+      const created = (await createResponse.json()) as {
+        project: { id: string }
+      }
+      createdProjectIds.push(created.project.id)
+
+      const response = await fetch(
+        `${baseUrl}/api/projects/${created.project.id}/stop`,
+        { method: 'POST' },
+      )
+      expect(response.status).toBe(200)
+      // The handler delegates to stopLandingAgent (graceful: aborts the Mastra
+      // stream but leaves the SSE response open) and echoes whether a run was
+      // found and stopped.
+      expect(stopLandingAgent).toHaveBeenCalledWith(created.project.id)
+      await expect(response.json()).resolves.toEqual({
+        ok: true,
+        stopped: true,
+      })
+
+      // When no run is active the endpoint still succeeds but reports stopped=false.
+      stopLandingAgent.mockReturnValueOnce(false)
+      const idle = await fetch(
+        `${baseUrl}/api/projects/${created.project.id}/stop`,
+        { method: 'POST' },
+      )
+      await expect(idle.json()).resolves.toEqual({ ok: true, stopped: false })
+    })
+  })
+
   it('serves in-memory and persisted project images', async () => {
     await withServer(async ({ baseUrl }) => {
       const { saveImage } = await import('./mastra/lib/image-store.ts')
@@ -427,6 +479,7 @@ async function postJson(url: string, body: unknown) {
 async function withServer(
   fn: (context: {
     baseUrl: string
+    stopLandingAgent: ReturnType<typeof vi.fn>
     streamLandingAgent: ReturnType<typeof vi.fn>
   }) => Promise<void>,
 ) {
@@ -434,6 +487,7 @@ async function withServer(
   vi.stubEnv('OPENROUTER_API_KEY', 'test-openrouter-key')
   vi.stubEnv('CLIENT_ORIGIN', 'https://client.test')
 
+  const stopLandingAgent = vi.fn<() => boolean>(() => true)
   const streamLandingAgent = vi.fn<
     (input: {
       response: {
@@ -452,6 +506,7 @@ async function withServer(
         ? requested.slice('openrouter/'.length)
         : requested
     },
+    stopLandingAgent,
     streamLandingAgent,
   }))
 
@@ -462,6 +517,7 @@ async function withServer(
   try {
     await fn({
       baseUrl: `http://127.0.0.1:${port}`,
+      stopLandingAgent,
       streamLandingAgent,
     })
   } finally {

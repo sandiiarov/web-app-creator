@@ -48,6 +48,44 @@ describe('streamLandingAgent missing projects', () => {
   })
 })
 
+describe('streamLandingAgent turnId', () => {
+  it('persists a supplied turnId through logs and hydration', async () => {
+    vi.stubEnv('OPENROUTER_API_KEY', 'test-openrouter-key')
+    vi.doMock('./index.ts', () => ({ mastra: {} }))
+    vi.doMock('./agents/landing-page-agent.ts', () => ({
+      createLandingPageAgent: () => ({
+        stream: async () => fakeAgentStream(),
+      }),
+    }))
+
+    const { createProject, getProject, readClientMessages } =
+      await import('./lib/project-store.ts')
+    const project = await createProject()
+    createdProjectIds.push(project.id)
+    const { streamLandingAgent } = await import('./route.ts')
+
+    await streamLandingAgent({
+      projectId: project.id,
+      prompt: 'Build with correlation.',
+      request: fakeRequest(),
+      response: new FakeResponse() as unknown as ServerResponse,
+      textModel: 'z-ai/glm-5.2',
+      turnId: 'turn-client-1',
+    })
+
+    expect(await readClientMessages(project.id)).toContainEqual(
+      expect.objectContaining({
+        dir: 'in',
+        turnId: 'turn-client-1',
+        type: 'prompt',
+      }),
+    )
+    await expect(getProject(project.id)).resolves.toMatchObject({
+      messages: [expect.objectContaining({ id: 'turn-client-1' })],
+    })
+  })
+})
+
 describe('streamLandingAgent attachments', () => {
   it('analyzes attachments before the agent run and persists tool metadata', async () => {
     vi.stubEnv('OPENROUTER_API_KEY', 'test-openrouter-key')

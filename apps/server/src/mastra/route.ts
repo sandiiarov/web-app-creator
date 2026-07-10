@@ -79,6 +79,7 @@ interface ActiveStreamOptions {
   request: IncomingMessage
   response: ServerResponse
   textModel: string
+  turnId?: string
   visionModel: string
 }
 
@@ -121,6 +122,7 @@ interface StreamOptions {
   request: IncomingMessage
   response: ServerResponse
   textModel: string
+  turnId?: string
   visionModel?: string
 }
 
@@ -179,6 +181,7 @@ export async function streamLandingAgent({
   request,
   response,
   textModel,
+  turnId,
   visionModel = config.openrouter.defaultVisionModel,
 }: StreamOptions) {
   const project = await getProject(projectId)
@@ -217,6 +220,7 @@ export async function streamLandingAgent({
       request,
       response,
       textModel,
+      turnId,
       visionModel,
     })
   } finally {
@@ -240,6 +244,7 @@ async function activeStreamLandingAgent({
   request,
   response,
   textModel,
+  turnId,
   visionModel,
 }: ActiveStreamOptions) {
   await updateProjectModel(projectId, { textModel })
@@ -249,6 +254,7 @@ async function activeStreamLandingAgent({
     prompt,
     textModel,
     attachments.map(stripAttachmentData),
+    turnId,
   )
 
   // Debug: mirror the client wire to `client-messages.jsonl`. Every SSE event we
@@ -1084,11 +1090,12 @@ function createRecordedTurn(
   prompt: string,
   model: string,
   attachments: ProjectMessageAttachment[] = [],
+  turnId?: string,
 ): ProjectMessageTurn {
   return {
     ...(attachments.length > 0 ? { attachments } : {}),
     htmlSwaps: 0,
-    id: `turn-${randomUUID()}`,
+    id: turnId ?? `turn-${randomUUID()}`,
     isStreaming: true,
     model,
     parts: [],

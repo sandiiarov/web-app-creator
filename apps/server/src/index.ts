@@ -30,6 +30,7 @@ import {
 } from './mastra/lib/project-store.ts'
 import {
   resolveModelId,
+  stopLandingAgent,
   streamLandingAgent,
   type AgentAttachmentInput,
   type AgentElementAttachmentInput,
@@ -58,6 +59,7 @@ type AgentRequestBody = {
   projectId?: unknown
   prompt?: unknown
   textModel?: unknown
+  turnId?: unknown
   visionModel?: unknown
 }
 
@@ -137,6 +139,19 @@ async function handleAgent(request: IncomingMessage, response: ServerResponse) {
   }
 
   if (
+    body.turnId !== undefined &&
+    (typeof body.turnId !== 'string' ||
+      body.turnId.trim() === '' ||
+      body.turnId.length > 128)
+  ) {
+    sendJson(response, 400, {
+      error: 'Expected { turnId?: string (1-128 characters) }',
+      ok: false,
+    })
+    return
+  }
+
+  if (
     body.imageModel !== undefined &&
     (typeof body.imageModel !== 'string' || body.imageModel.trim() === '')
   ) {
@@ -180,6 +195,7 @@ async function handleAgent(request: IncomingMessage, response: ServerResponse) {
     request,
     response,
     textModel: resolveModelId(body.textModel),
+    turnId: body.turnId,
     visionModel: body.visionModel
       ? resolveModelId(body.visionModel)
       : undefined,
@@ -253,6 +269,7 @@ async function routeRequest(
 const PROJECT_LIST_RE = /^\/api\/projects\/?$/i
 const PROJECT_SCREENSHOT_RE =
   /^\/api\/projects\/([a-f0-9-]+)\/screenshots\/([^/]+)$/i
+const PROJECT_STOP_RE = /^\/api\/projects\/([a-f0-9-]+)\/stop$/i
 const SCREENSHOT_RESPONSE_RE = /^\/api\/screenshot-responses\/([a-f0-9-]+)$/i
 const PROJECT_ITEM_RE = /^\/api\/projects\/([a-f0-9-]+)$/i
 const PROJECT_IMAGE_RE = /^\/api\/projects\/([a-f0-9-]+)\/images\/([^/]+)$/i
@@ -397,6 +414,13 @@ async function handleScreenshotResponse(
   sendJson(response, 200, { ok: true })
 }
 
+async function handleStopProject(id: string, response: ServerResponse) {
+  // Graceful stop: aborts the run's Mastra stream but leaves its SSE response
+  // open so terminal cost/stats + `done` are still delivered to the client.
+  const stopped = stopLandingAgent(id)
+  sendJson(response, 200, { ok: true, stopped })
+}
+
 async function readJsonObject(
   request: IncomingMessage,
 ): Promise<Record<string, unknown>> {
@@ -454,6 +478,12 @@ async function routeProjects(
       screenshotMatch[2]!,
       response,
     )
+    return true
+  }
+
+  const stopMatch = pathname.match(PROJECT_STOP_RE)
+  if (stopMatch && request.method === 'POST') {
+    await handleStopProject(stopMatch[1]!, response)
     return true
   }
 
