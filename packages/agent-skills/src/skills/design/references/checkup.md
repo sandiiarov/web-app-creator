@@ -1,143 +1,63 @@
 # Checkup
 
-I use checkup for fast design triage. It tells me whether an interface is basically healthy or whether something is unsafe to ship.
+Use checkup for fast, evidence-grounded landing-page triage. It answers whether the page is healthy enough to continue, needs focused repair, or has a critical problem that blocks trust or use.
 
-This is not a deep critique. It is a vital-sign read.
+Checkup is diagnostic. When the user asks only for a checkup, inspect and explain; do not edit. When the user also asks for fixes, carry the observed findings into the treatment mode selected by the root skill.
 
----
+## Evidence boundary
 
-## Composition Vital Sign
+Inspect the rendered page when screenshot capture is available and inspect the corresponding HTML. Do not infer a working interaction, responsive state, or accessibility property from appearance alone.
 
-I check whether the page shape matches the work.
+Mark anything unavailable as unverified. A smaller honest check is better than an invented healthy status.
 
-Monitor: can the user see priority, change, and freshness fast?
+## Six vitals
 
-Operate: are tools, targets, feedback, and undo close enough to use?
+Score each vital as **Healthy** (10), **Watch** (5), or **Critical** (0), for a total out of 60.
 
-Compare: do rows, columns, criteria, and filters support scanning?
+### Intentionality
 
-Configure: are choices grouped by dependency and consequence?
+Does the page look authored for this exact name, category, audience, and offer? The first viewport should establish a specific visual lane rather than a reusable template.
 
-Learn: does the flow create orientation and progress?
+### Readability
 
-Decide: is the next action obvious and supported by proof?
+Can visitors understand the claim, proof, and next action without effort? Check hierarchy, type size, line length, contrast, and dense or vague copy.
 
-Explore: are search, filters, results, and return paths easy?
+### Conversion path
 
-If the composition fails this vital sign, visual polish will not fix the surface.
+Is the primary action obvious, credible, and supported by enough proof? Check navigation, CTA language, trust material, form friction, and escape paths that actually exist.
 
----
+### Responsiveness
 
-## Prompt Fidelity Vital Sign
+Does the story survive the available mobile, tablet, and desktop profiles? Look for overflow, crushed text, broken media, poor ordering, tiny targets, and lonely ultrawide composition.
 
-I check whether the visible design matches the prompt invariants.
+### Performance feel
 
-The name must be exact when supplied. The category must be visible. The core artifact must belong to the domain. The proof must answer the user's pressure. The copy and layout must not reuse language or structure from an unrelated design.
+Does the rendered page show obvious layout shift, oversized imagery, slow media, or janky visual effects? Record only what is visible or source-inspected; do not claim profiling.
 
-If the visible design could be reassigned to another random product by changing only the logo and headline, the checkup fails before style is considered.
+### Accessibility
 
----
+Inspect semantic structure, heading order, alt text, focus styling, contrast, touch targets, reduced-motion rules, and the keyboard semantics implied by native elements. Do not claim assistive-technology testing that did not occur.
 
-## Evidence Bar
+## Prompt fidelity gate
 
-`/design checkup` is a fast read, but it still needs evidence.
+Before scoring style, verify:
 
-At minimum, I inspect the rendered surface or actual implementation, touch the core task enough to judge it, and base every vital status on something visible, interactive, or present in files.
+- The supplied name is exact
+- The category is clear in the first viewport
+- The proof object belongs to the domain
+- Claims answer the audience's pressure
+- The primary action matches the offer
+- No unrelated content or visual premise leaked from another page
 
-If I cannot verify a vital, I mark it unknown or unverified. I do not invent health.
+A page that could fit any company after a logo swap cannot score Healthy for intentionality.
 
----
+## Output
 
-## What I Check
+State the total as `N/60`, list each vital with its status and observed evidence, then give the few highest-impact prescriptions in priority order. Use `unverified` where evidence is unavailable.
 
-I look at six vital signs.
+## Done when
 
-**Intentionality**: Does it look chosen, or does it look assembled from defaults?
-
-**Readability**: Can people read it comfortably, in its real contexts and themes?
-
-**Usability**: Can the primary task be completed with the available controls?
-
-**Responsiveness**: Does the surface adapt across width, input mode, zoom, and safe areas?
-
-**Speed**: Does it load and respond without visible hesitation, shift, or jank?
-
-**Accessibility**: Can keyboard, screen reader, color-blind, low-vision, and reduced-motion users operate it?
-
-When accessibility is weak, the whole checkup is weak. It affects real people, not just a score.
-
----
-
-## Scoring
-
-Checkup uses a `/60` score across the six vital signs. **MAX_SCORE = 60.** Use `/60` as the denominator when you summarize the score.
-
-Each vital is scored by status:
-
-| Status | Points |
-|---|---|
-| Healthy | 10 |
-| Watch | 5 |
-| Critical | 0 |
-
-Six vitals × 10 pts max = 60 total. No normalization needed.
-
-Score each of the six vital signs `/10` (six vitals × 10 = 60).
-
-## My Read
-
-I classify each vital as healthy, watch, or critical.
-
-Healthy means the surface is fit for continued work. Watch means the issue is real but contained. Critical means it blocks trust, task completion, access, or shipping confidence.
-
-I stop pretending everything is equally important. A broken keyboard path outranks a slightly dull palette. Illegible text outranks a missing hover flourish.
-
----
-
-## Fast Probes
-
-I use short probes, not a ceremonial audit.
-
-I glance for purpose, primary action, and dominant color. I blur the page mentally and check whether hierarchy survives. I test the thumb path on narrow viewports. I tab through the core route. I look for obvious layout shift, slow media, contrast failure, and generated-design tells.
-
-These probes are small on purpose. Checkup is meant to catch danger quickly.
-
----
-
-## Prescriptions
-
-For every critical issue, I write the prescription in my working answer:
-
-- What is broken
-- Why it matters
-- What command or design discipline should fix it
-
-I do not bury the next move in prose. The user should know the practical fix immediately.
-
----
-
-## What I Refuse
-
-- Treating checkup as a full design review
-- Marking a vital healthy without evidence
-- Inventing checks I did not run
-- Writing any report, summary, or file to disk
-- Calling a surface healthy when keyboard users cannot finish the task
-- Ignoring mobile because desktop looks good
-- Letting performance scores hide visible jank
-- Letting a pretty surface pass with missing states
-
----
-
-## How I Know Checkup Is Done
-
-- Each vital is backed by observed evidence or marked unverified
-- Each vital has a clear status
-- Critical issues have direct prescriptions
-- The core task has been touched, not just inspected visually
-- The user knows whether to proceed, fix, or pause
-- Findings and prescriptions are stated in the working answer (no files written)
-
-STRICT RULE — NEVER BREAK THIS
-Run checkup in memory. Never write a report, summary, or any file to disk —
-findings and prescriptions live in your working answer and the edits you make.
+- Every status is tied to rendered or source evidence
+- Critical issues are obvious and prioritized
+- The user knows whether to continue, repair, or reconsider direction
+- No mutation is claimed unless fixes were explicitly requested and applied

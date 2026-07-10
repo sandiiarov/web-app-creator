@@ -1,181 +1,56 @@
-# Relayout: `/design relayout`
+# Relayout
 
-Relayout moves the pieces without changing the identity. The content is mostly right. The arrangement is wrong.
+Use relayout when the content and visual identity are substantially right but the arrangement is wrong. Change the composition, reading path, grouping, section order, or relationship between claim, proof, and action.
 
-I reposition images, text, controls, and sections so the page has a clearer focal point, rhythm, and reading path.
+Relayout preserves the established color strategy, type voice, edge language, and feature scope unless the user explicitly requests another mode. The root skill owns all reference loading; nothing is loaded silently by this file.
 
-Relayout is not a nudge. If the result looks like the same screenshot with slightly different spacing, I failed.
+## Diagnose the path
 
----
+Identify:
 
-## Composition Diagnosis
+- Where the eye lands first and where it should land
+- The visitor's main job: decide, learn, explore, or compare
+- The strongest claim, proof object, objection, and action
+- Which sections repeat the same visual weight
+- Which text and imagery compete rather than support each other
+- Where desktop order fails on mobile
 
-I first ask which work pattern the current layout is trying to serve.
+If the problem can be fixed only by changing palette, typography, or identity, route to the appropriate mode instead of smuggling redesign into relayout.
 
-If the surface monitors, I expose change, urgency, recency, and status.
-
-If it operates, I pull tools, targets, and feedback into one working field.
-
-If it compares, I protect alignment and make scanning cheaper.
-
-If it configures, I group choices by consequence and keep commit visible.
-
-If it teaches, I create a reading path with progressive reveal.
-
-If it persuades, I reduce the field to claim, proof, risk, and action.
-
-If it explores, I make filters, search, and backtracking obvious.
-
-The new composition must answer that pattern. Rearranged sameness is not relayout.
-
----
-
-## What I Will Change
-
-I move things on the canvas.
-
-- Image position and scale
-- Text-image relationships
-- Section order
-- Visual weight
-- Grouping and spacing
-- Alignment system
-- Grid structure
-- Reading path
-- Responsive composition
-
-I do not change color strategy, font voice, visual identity, or feature scope unless the layout problem exposes a conflict that needs another mode.
-
----
-
-## Structural Change Bar
+## Structural change bar
 
 A relayout must include at least one visible structural change:
 
-- A new dominant focal point
-- A changed hero or section composition
-- A reordered section sequence
-- A different relationship between text and proof object
-- A changed navigation, sidebar, toolbar, or action placement
-- A transformed grid, table, split view, stack, or flow
-- A responsive order that changes the user's path
+- New focal point or first-viewport composition
+- Different relationship between text and proof
+- Reordered section sequence
+- Changed navigation or CTA placement
+- Transformed grid, split, editorial flow, comparison, or layered composition
+- Responsive order that changes how the story is understood
 
-Spacing, padding, alignment, width, gap, and margin changes can support relayout. They cannot be the whole relayout.
+Spacing and width changes can support structure but cannot be the whole pass. If the before and after look identical at thumbnail distance, this was finish work, not relayout.
 
-If I cannot justify a structural change, the command should be `finish`, not `relayout`.
+## Compose from content
 
----
+Choose one clear lane per section: asymmetric tension, strict grid, editorial flow, image-led field, type-led field, comparison structure, or modular proof. Do not alternate image and text by reflex.
 
-## Required companion references
+Let images do a named job: message, proof, atmosphere, explanation, or detail. Remove decorative media that weakens the path. Place trust before a high-risk ask and repeat CTAs only at real decision points.
 
-The skill automatically reads these three references in order. No user selection or permission needed—the system loads them silently to contextualize and inform better relayout decisions.
+Use spacing to show relationships: tight within a thought, larger between thoughts, and deliberately varied for emphasis. Keep a consistent scale rather than one gap everywhere.
 
-| **[layout.md](layout.md)** | Establish the new spatial system, grid, and composition |
-| **[color.md](color.md)** | Build the new palette, neutrals, semantic roles, and accent strategy |
-| **[typeset.md](typeset.md)** | Pick new fonts, define new scale, set new pairing and hierarchy |
+## Responsive continuity
 
----
+Mobile can use a different arrangement while preserving the same claim, proof, and action. Reorder source or CSS only when semantics and focus order remain sound. Wide layouts need composed negative space rather than stretched content.
 
-## The Core Judgment
+## Verification
 
-The eye needs somewhere to land.
+Inspect relevant desktop and mobile screenshots and tablet when the structure changes there. Confirm a visible reading-path change, no overflow, and consistent section sequence. Use source inspection for landmark order, focus order, and media queries.
 
-I decide the focal point before I move anything. Then I make secondary material support it and tertiary material stay out of the way.
-
-If everything is equally important, the layout has no opinion.
-
----
-
-## Image And Text
-
-Images carry different jobs.
-
-A hero image can be the message. A feature image can explain a claim. A background image can set atmosphere. An inline image can support reading. A decorative image can be removed.
-
-Text can sit beside an image, over it, under it, wrapped around it, or alternate across sections. I choose the relationship based on the content, not the template.
-
-When text and image fight, I decide which one leads.
-
----
-
-## Composition Lanes
-
-I pick one lane per section.
-
-**Symmetric** for calm authority and singular focus.
-
-**Asymmetric** for energy, tension, and art direction.
-
-**Strict grid** for rigor, technical confidence, and dense systems.
-
-**Editorial flow** for long-form, story, and cultural pacing.
-
-**Modular grid** for comparison, galleries, dashboards, and catalogs.
-
-**Broken grid** when one or two items deserve clear dominance.
-
-Mixing lanes inside one section usually creates noise. Sequencing different lanes across sections can create rhythm.
-
----
-
-## Section Order
-
-I order sections by user need, not by source order.
-
-The strongest hook comes early. Context comes before complex proof. Trust appears before the ask when the ask needs confidence. CTAs appear at decision points. The ending answers what now.
-
-Mobile order is part of the design. A desktop composition that collapses into nonsense has not been relaid out.
-
----
-
-## Spatial Rhythm
-
-I use spacing to show relationship.
-
-Tight gaps mean the pieces belong together. Wide gaps mean a new thought. Repeated gaps create rhythm. One gap everywhere creates monotony.
-
-The 1-4-9 rhythm stays useful here: micro, component, and section breaths.
-
----
-
-## Balance
-
-I balance visual weight, not just geometry.
-
-Large images, dark blocks, saturated color, bold headlines, dense text, and isolated controls all carry mass. White space carries counterforce. The visual center often sits slightly above the mathematical center.
-
-Diagonal balance can create energy. Random imbalance just feels off.
-
----
-
-## What I Refuse
-
-- Duplicated "relayout process" instructions
-- Treating relayout as redesign
-- Calling spacing polish a relayout
-- Leaving the same hero/proof composition intact when that composition is the problem
-- Moving sections without deciding priority
-- Alternating image/text blocks by reflex
-- Full-bleed imagery when the image is weak
-- Centering everything because it feels safe
-- Adding cards because spacing feels unresolved
-- Markdown reports or rationale files
-
----
-
-## How I Know Relayout Worked
+## Done when
 
 - The before and after read differently as thumbnails
-- At least one structural change is visible without reading the code
-- One focal point leads each section
-- The eye path matches the content priority
-- Images and text support rather than compete
-- Section sequence feels like a journey
-- Spacing shows relationships
-- Desktop and mobile tell the same story
-- The composition still reads as a thumbnail
-
-STRICT RULE — NEVER BREAK THIS
-Do not create report.md, any kind of report, summary, analysis file,
-or extra documentation. This applies every time this file is used.
-Generate no reports unless explicitly asked.
+- One focal point leads each affected section
+- Claim, proof, and action appear in a deliberate sequence
+- Image and text support rather than compete
+- Mobile and desktop tell the same story
+- Color, type, and identity remain intact unless explicitly included in scope
