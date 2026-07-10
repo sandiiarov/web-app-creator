@@ -27,22 +27,20 @@ Buttons and links should say what happens: start a trial, book a visit, view the
 
 Keep the same noun for the same concept throughout the page. Variety is not worth terminology drift.
 
-## Write real interface states only
+## Write for real landing-page forms
 
-For forms, menus, demos, or asynchronous controls that exist:
+For lead, signup, booking, or contact forms that exist:
 
 - Labels remain visible; placeholders show format or example
 - Errors explain what happened and how to recover without blame
-- Loading text names the actual work
-- Success confirms the completed action and useful next step
-- Empty content explains what belongs there and how to proceed
-- Destructive actions name the object and consequence
+- Pending text names the actual submission
+- Success confirms the action and a useful next step
 
-Do not invent state copy for a static page with no corresponding behavior.
+A static page needs no invented state copy.
 
 ## Voice and tone
 
-Keep one recognizable voice across headlines, body copy, CTA labels, captions, navigation, and alt text. Tone can become calmer for errors, clearer for risk, and warmer for success.
+Keep one recognizable voice across headlines, body copy, CTA labels, captions, navigation, form feedback, and alt text. Tone can become clearer around risk and warmer after conversion.
 
 Use sentence case by default. Avoid exclamation marks as artificial energy. Prefer a shorter sentence, comma, colon, semicolon, or parentheses to an em dash in generated page copy.
 

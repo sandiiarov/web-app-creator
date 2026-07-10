@@ -4,15 +4,13 @@ Motion guides attention, explains origin and state, and contributes to brand cha
 
 ## Give movement a sentence
 
-Every animation should communicate at least one thing:
+Every animation should communicate at least one landing-page event:
 
-- This arrived or became available
-- This came from that trigger
-- This state changed
-- This action was received
-- This content is processing
-- This item is selected or expanded
-- This proof deserves attention now
+- Content arrived or became available
+- A disclosure came from its trigger
+- A navigation or pricing state changed
+- A form action was received
+- A proof moment deserves attention now
 
 If the sentence is only “this looks more premium,” remove or rethink the animation.
 
@@ -41,15 +39,15 @@ Scroll-linked effects must preserve control, reading, and performance. Never hij
 
 ## Interaction feedback
 
-Buttons and controls may use brief press, hover, focus, open, selection, pending, success, or error motion only for states they can enter. Hover motion needs a focus or touch-equivalent cue where meaning is involved.
+CTAs, forms, menus, and disclosures may use brief press, hover, focus, open, pending, or confirmation motion only for states they can enter. Hover motion needs a focus or touch-equivalent cue where meaning is involved.
 
-Continuous motion near reading content is distracting. Loading indicators may loop while a real wait exists; decorative loops should stop or be removed.
+Continuous motion near reading content is distracting. A form indicator may loop during a real submission; decorative loops should stop or be removed.
 
 ## Reduced motion
 
 Implement `prefers-reduced-motion` whenever motion exists. Replace large translation, scale, parallax, and scrubbed sequences with instant state changes or restrained fades while preserving focus, progress, and confirmation.
 
-Do not add a settings control solely to satisfy reduced-motion support. A product-level motion preference belongs only when requested or already part of the interface.
+Reduced-motion behavior belongs in the page's CSS.
 
 ## Verification
 

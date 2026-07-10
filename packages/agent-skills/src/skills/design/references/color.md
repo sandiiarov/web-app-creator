@@ -23,10 +23,9 @@ Define only roles the page actually uses:
 - Primary and muted text
 - Borders and dividers
 - Primary and secondary actions
-- Focus and selection
-- Success, warning, and error for real states
-- Disabled treatment for real controls
-- Domain-specific data or status colors when a product demo contains them
+- Focus treatment for real controls
+- Validation and confirmation colors for landing-page forms when present
+- Domain-specific comparison colors when proof needs them
 
 Apply roles to actual elements. A declared palette with unused values is not a color system.
 

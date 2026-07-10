@@ -12,14 +12,14 @@ Check the parts that actually exist:
 - Section transitions, rhythm, alignment, and content measure
 - Navigation, anchors, CTA destinations, and footer links
 - Images, aspect ratios, alt text, loading behavior, and broken sources
-- Forms, menus, accordions, tabs, or demos and their implemented states
+- Lead forms, mobile menus, disclosures, pricing controls, or demos that actually exist
 - Focus styling, touch targets, hover alternatives, and reduced motion
 - Mobile, tablet when relevant, desktop, and wide-layout composition
 - Page title, description metadata, favicon when supplied, and social metadata when required
 - Long copy, short labels, overflow, missing content, and realistic edge content
 - Copy consistency, terminology, punctuation, and unsupported claims
 
-Do not add empty, error, loading, success, disabled, or overlay states to a page with no element that can enter them.
+Keep the pass centered on landing-page behavior that actually exists.
 
 ## Subtract before decorating
 
@@ -33,7 +33,7 @@ Use source inspection and available screenshots, not imagined interaction.
 
 - A screenshot can verify visible hierarchy, spacing, wrapping, clipping, color, and the rendered state shown.
 - HTML inspection can verify landmarks, links, alt text, media queries, focus rules, reduced-motion rules, and hidden-state implementation.
-- Without an interaction tool, do not claim that clicking, tabbing, submitting, waiting, retrying, or undoing was exercised.
+- Without an interaction tool, do not claim that clicking, tabbing, submitting, or opening disclosures was exercised.
 - Without a profiling tool, do not claim measured performance.
 - If screenshot capture is unavailable, say visual verification was unavailable.
 

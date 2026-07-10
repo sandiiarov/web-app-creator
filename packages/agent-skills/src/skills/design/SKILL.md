@@ -19,18 +19,17 @@ The tables below are routing aids. The scenario table suggests a starting set, w
 
 | Scenario | Reference approach |
 |---|---|
-| New page | Start with `references/create.md`, `references/voice.md`, `references/smell.md`, `references/layout.md`, `references/color.md`, `references/typeset.md`, `references/writing.md`, `references/responsive.md`, `references/interaction.md`, `references/button.md`, `references/border.md`, `references/shadow.md`, and `references/motion.md`. |
+| New page | Start with `references/create.md`, `references/voice.md`, `references/smell.md`, `references/layout.md`, `references/color.md`, `references/typeset.md`, `references/writing.md`, `references/responsive.md`, `references/interaction.md`, `references/surface.md`, and `references/motion.md`. |
 | New page inspired by or recreated from a URL | Scrape the URL and inspect the project placeholder, then use the new-page context above. The URL supplies evidence; the project HTML remains the working surface. |
-| Redesign a page supplied by URL | Scrape the URL, preserve its product and message constraints, and start with `references/redesign.md`, `references/voice.md`, `references/smell.md`, `references/layout.md`, `references/color.md`, `references/typeset.md`, `references/writing.md`, `references/responsive.md`, `references/interaction.md`, `references/button.md`, `references/border.md`, `references/shadow.md`, and `references/motion.md`. |
+| Redesign a page supplied by URL | Scrape the URL, preserve its product and message constraints, and start with `references/redesign.md`, `references/voice.md`, `references/smell.md`, `references/layout.md`, `references/color.md`, `references/typeset.md`, `references/writing.md`, `references/responsive.md`, `references/interaction.md`, `references/surface.md`, and `references/motion.md`. |
 | Continue an unfinished page | Reuse the operation and foundation references already present in the conversation. Add context only for dimensions introduced by the continuation. |
 | Edit an existing page | Match the smallest operation or foundation rows below to the requested surface. A focused change keeps neighboring sections and systems intact. |
 | Add a new section | Start with `references/create.md`, `references/voice.md`, `references/layout.md`, `references/writing.md`, `references/responsive.md`, and `references/smell.md`, then add foundation references for dimensions the section introduces or changes. |
-| Full-page redesign | Use `references/redesign.md`, `references/voice.md`, `references/smell.md`, `references/layout.md`, `references/color.md`, `references/typeset.md`, `references/writing.md`, `references/responsive.md`, `references/interaction.md`, `references/button.md`, `references/border.md`, `references/shadow.md`, and `references/motion.md`. After full creation, `references/redesign.md` is usually the only new read. |
+| Full-page redesign | Use `references/redesign.md`, `references/voice.md`, `references/smell.md`, `references/layout.md`, `references/color.md`, `references/typeset.md`, `references/writing.md`, `references/responsive.md`, `references/interaction.md`, `references/surface.md`, and `references/motion.md`. After full creation, `references/redesign.md` is usually the only new read. |
 | Finish | Use `references/finish.md`, `references/smell.md`, `references/responsive.md`, `references/interaction.md`, and `references/writing.md`. After full creation, `references/finish.md` is usually the only new read. |
 | Refine | Use `references/refine.md`, `references/voice.md`, and `references/smell.md`, then add context for dimensions affected by the chosen refinement. |
-| Diagnostic only | Use the selected `references/checkup.md`, `references/review.md`, or `references/smell.md`. Findings stay in the response unless the user also asks for treatment. |
-| Deslop | Use `references/deslop.md`, `references/smell.md`, `references/checkup.md`, and `references/review.md`, then consult foundations connected to observed findings. |
-| Tokenize | Use `references/tokenize.md`, then consult foundations represented by the repeated decisions being consolidated. |
+| Diagnostic only | Use `references/review.md` for general critique or `references/smell.md` for generated-pattern diagnosis. Findings stay in the response unless the user also asks for treatment. |
+| Generated-pattern cleanup | Use `references/smell.md`, then consult foundations connected to observed findings. |
 | Generate or replace imagery | Use the active create, redesign, or art-direction context together with the layout, color, responsive, and writing guidance relevant to placement, crop, palette, and alt text. |
 
 ## Reference guide
@@ -44,11 +43,8 @@ The tables below are routing aids. The scenario table suggests a starting set, w
 | `references/relayout.md` | Changing composition, order, grouping, or reading path without changing visual identity. |
 | `references/refine.md` | Strengthening, calming, simplifying, or adjusting an existing direction without a full redesign. |
 | `references/finish.md` | Running a final polish and verification pass on an already coherent page. |
-| `references/checkup.md` | Running a fast, non-mutating health assessment. |
-| `references/review.md` | Producing a thorough, evidence-based critique; edits enter the appropriate treatment mode when requested. |
-| `references/smell.md` | Detecting or preventing generic generated-design patterns and prompt drift. |
-| `references/deslop.md` | Treating generated-design problems identified through smell, checkup, and review. |
-| `references/tokenize.md` | Consolidating repeated CSS, markup, or script decisions inside the single HTML document. |
+| `references/review.md` | Running a quick health check or a thorough evidence-based landing-page critique. |
+| `references/smell.md` | Detecting and treating generic generated-design patterns and prompt drift. |
 
 ### Foundation references
 
@@ -60,10 +56,8 @@ The tables below are routing aids. The scenario table suggests a starting set, w
 | `references/typeset.md` | Creating or changing fonts, type hierarchy, measure, leading, or responsive type scale. |
 | `references/writing.md` | Creating or changing headlines, body copy, navigation, CTA labels, form text, terminology, or alt text. |
 | `references/responsive.md` | Creating or changing mobile, tablet, desktop, wrapping, ordering, touch, or breakpoint behavior. |
-| `references/interaction.md` | Creating or changing links, forms, menus, accordions, tabs, demos, focus behavior, or interaction states. |
-| `references/button.md` | Creating or changing CTA hierarchy, button labels, sizing, appearance, or applicable states. |
-| `references/border.md` | Creating or changing dividers, frames, radii, outlines, focus rings, or control edges. |
-| `references/shadow.md` | Creating or changing depth, elevation, overlays, or the page's light model. |
+| `references/interaction.md` | Creating or changing CTA hierarchy, links, landing-page forms, navigation, disclosures, demos, focus, or control behavior. |
+| `references/surface.md` | Creating or changing dividers, frames, radii, focus rings, depth, elevation, or the page's physical model. |
 | `references/motion.md` | Creating or changing animation, transitions, animated feedback, or reduced-motion behavior. |
 
 ## Scope and precedence
@@ -92,9 +86,9 @@ Composition follows the visitor's job: decide, learn, explore, or compare. Readi
 
 Landing pages generally benefit from a specific visual lane, a domain-specific proof object, realistic content, and a memorable first viewport. Generic technology gradients, interchangeable mockups, repeated icon-card grids, decorative glass, arbitrary pills, vague claims, and category-default palettes usually weaken that specificity.
 
-Accessibility and semantics remain design context: meaningful landmarks and headings, readable text, visible focus styles, sufficient contrast, useful alt text, touch-sized controls, authored reduced-motion behavior, and responsive composition. Loading, error, success, disabled, empty, and overlay states belong to pages whose real forms, menus, asynchronous demos, or controls can enter those states.
+Accessibility and semantics remain design context: meaningful landmarks and headings, readable text, visible focus styles, sufficient contrast, useful alt text, touch-sized controls, authored reduced-motion behavior, and responsive composition. Navigation, disclosures, forms, pricing controls, and demos receive behavior only when they actually exist.
 
-A consulted foundation can lead to no visible effect. Flat composition may use no shadow, a confident page may use no expressive motion, and spacing may separate content better than borders.
+A consulted foundation can lead to no visible effect. Flat composition may use no depth, a confident page may use no expressive motion, and spacing may separate content better than another frame.
 
 ## Work loop
 

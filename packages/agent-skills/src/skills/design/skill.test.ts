@@ -11,12 +11,8 @@ const SKILL_FILE = join(HERE, 'SKILL.md')
 const REFERENCES_DIR = join(HERE, 'references')
 
 const EXPECTED_REFERENCE_FILES = [
-  'border.md',
-  'button.md',
-  'checkup.md',
   'color.md',
   'create.md',
-  'deslop.md',
   'finish.md',
   'interaction.md',
   'layout.md',
@@ -26,51 +22,43 @@ const EXPECTED_REFERENCE_FILES = [
   'relayout.md',
   'responsive.md',
   'review.md',
-  'shadow.md',
   'smell.md',
-  'tokenize.md',
+  'surface.md',
   'typeset.md',
   'voice.md',
   'writing.md',
 ] as const
 
 const FULL_PAGE_FOUNDATIONS = [
-  'references/border.md',
-  'references/button.md',
   'references/color.md',
   'references/interaction.md',
   'references/layout.md',
   'references/motion.md',
   'references/responsive.md',
-  'references/shadow.md',
   'references/smell.md',
+  'references/surface.md',
   'references/typeset.md',
   'references/voice.md',
   'references/writing.md',
 ] as const
 
 const OPERATION_REFERENCE_PATHS = [
-  'references/checkup.md',
   'references/create.md',
-  'references/deslop.md',
   'references/finish.md',
   'references/redesign.md',
   'references/refine.md',
   'references/relayout.md',
   'references/review.md',
   'references/smell.md',
-  'references/tokenize.md',
 ] as const
 
 const FOUNDATION_REFERENCE_PATHS = [
-  'references/border.md',
-  'references/button.md',
   'references/color.md',
   'references/interaction.md',
   'references/layout.md',
   'references/motion.md',
   'references/responsive.md',
-  'references/shadow.md',
+  'references/surface.md',
   'references/typeset.md',
   'references/voice.md',
   'references/writing.md',
@@ -162,8 +150,7 @@ describe('design skill', () => {
     'Finish',
     'Refine',
     'Diagnostic only',
-    'Deslop',
-    'Tokenize',
+    'Generated-pattern cleanup',
     'Generate or replace imagery',
   ])('describes the %s scenario', (label) => {
     expect(tableRow(skill.instructions, label)).not.toBe('')
@@ -250,6 +237,7 @@ describe('design skill', () => {
       .sort()
 
     expect(files).toEqual(EXPECTED_REFERENCE_FILES)
+    expect(files).toHaveLength(16)
     expect([...skill.references].sort()).toEqual(EXPECTED_REFERENCE_FILES)
   })
 

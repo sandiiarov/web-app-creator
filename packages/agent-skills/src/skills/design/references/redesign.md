@@ -2,7 +2,7 @@
 
 Use redesign when the user wants the same landing-page product and message to inhabit a genuinely different visual world. Redesign changes the system end to end; it is not a palette swap, hero makeover, or collection of louder effects.
 
-The root skill loads the broad redesign foundations before mutation. This file governs how to transform the page while preserving what must remain true.
+This file governs how to transform the page while preserving its product, message, evidence, and working landing-page behavior.
 
 ## Preserve the product
 

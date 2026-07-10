@@ -39,25 +39,13 @@ Use the tablet screenshot when the composition materially changes there rather t
 
 Prevent runaway line length, stretched controls, weak image resolution, and lonely content centered in an empty field. Wider space should create stronger composition, not larger gaps without purpose.
 
-## Input modes
+## Access and input
 
-Use media features where useful:
+Use coarse-pointer and hover media features where they improve touch generosity or optional hover enhancement. Keep core information and actions available without hover or gesture. Visible focus, relative units, zoom-tolerant layouts, and reduced-motion behavior support the same landing-page path across input and preference changes.
 
-- `pointer: coarse` for touch generosity
-- `hover: hover` for optional hover enhancement
-- `focus-visible` for keyboard orientation
+## Comparisons and demonstrations
 
-Never gate required information or action behind hover. Gestures need visible alternatives.
-
-## Preferences and environment
-
-Implement `prefers-reduced-motion` when motion exists. Support forced/high-contrast behavior through solid boundaries and non-color cues. Use relative units and layouts that tolerate zoom. Add safe-area handling only where fixed or edge-aligned controls need it.
-
-Dark presentation is a theme decision, not an automatic responsive requirement.
-
-## Tables and product demonstrations
-
-If the landing page contains a real comparison or embedded product table, choose one coherent narrow strategy: horizontal scroll with preserved headers, prioritized columns, aligned cards, or stacked labeled values. Do not change strategy row by row.
+For a real pricing comparison or embedded product table, choose one narrow strategy: horizontal scroll with preserved labels, prioritized columns, aligned cards, or stacked labeled values.
 
 ## Verification
 

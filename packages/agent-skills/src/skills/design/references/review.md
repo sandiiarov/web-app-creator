@@ -1,67 +1,52 @@
 # Review
 
-Use review for an evidence-grounded critique of the landing page as an experience. Review is diagnostic: when the user requests only a review, inspect and explain without editing. If fixes are also requested, carry prioritized findings into the appropriate treatment mode.
+Use review for evidence-grounded landing-page critique. A quick review identifies the highest-impact obstacle; a thorough review follows the complete visitor path. Findings stay diagnostic unless the user also requests edits.
 
 ## Evidence boundary
 
-Inspect the rendered surface when screenshot capture is available and inspect relevant HTML. Do not state an interaction, responsive state, accessibility behavior, or performance property as fact unless the available evidence supports it. Mark unavailable checks as unverified.
+Inspect the rendered page when screenshots are available and inspect relevant HTML. Separate visible evidence from source evidence, and mark unavailable checks as unverified. Appearance alone does not establish working interaction, responsive behavior outside the shown profile, accessibility behavior, or measured performance.
 
-## Read the page as a visitor
+## Quick review
 
-Start with the first viewport before reading implementation details:
+Check five landing-page essentials:
 
-- What is this?
-- Who is it for?
-- What specific promise is made?
-- What proof can be inspected?
-- What should happen next?
-- What visual or verbal detail is memorable?
+- **Intent:** the exact name, category, audience, and offer are clear in the first viewport
+- **Readability:** hierarchy, measure, contrast, and copy make the promise easy to understand
+- **Conversion:** proof supports the claim and the primary action names a credible next step
+- **Responsiveness:** the available mobile and desktop views preserve story, proof, and action without clipping
+- **Trust:** supplied facts, assets, links, forms, and accessibility cues appear credible and complete
 
-Then follow the story through proof, explanation, objections, trust, and action. Note where attention, credibility, or momentum breaks.
+Summarize the strongest quality, the primary obstacle, and the next useful treatment.
 
-## Five lenses
+## Thorough review
 
-Score each lens out of 10, for a total out of 50.
+Read the page as a visitor:
 
-### First impression
+1. What is this and who is it for?
+2. What specific promise is made?
+3. What proof can be inspected?
+4. What doubt or risk is answered?
+5. What should happen next?
 
-Does the page establish category and point of view quickly? Is the first viewport authored or interchangeable?
+Then inspect these lenses:
 
-### Story and hierarchy
+- **First impression:** category, point of view, and first-viewport specificity
+- **Story and hierarchy:** sequence of claim, proof, explanation, trust, and action
+- **Proof and credibility:** domain-specific evidence proportional to the promise
+- **Visual voice:** one coherent relationship among type, color, imagery, layout, surfaces, and motion
+- **Conversion and behavior:** navigation, CTA destinations, landing-page forms, disclosures, demos, focus, and responsive behavior where present
+- **Prompt fidelity:** exact names, supplied assets, requested content, exclusions, and absence of inherited material from another brief
 
-Does the reading path prioritize claim, proof, objection, and action? Are sections paced and weighted according to importance?
-
-### Proof and credibility
-
-Is the evidence concrete, domain-specific, and proportional to the promise? Are claims supported rather than decorated?
-
-### Visual voice
-
-Do type, color, imagery, layout, edges, and depth belong to one lane and this particular brief? Call out observed generated-design tells.
-
-### Conversion and behavior
-
-Are navigation, CTAs, links, forms, demos, responsive behavior, focus styling, and recovery clear where they exist? Do not penalize the page for application states it does not need.
-
-## Prompt fidelity
-
-Treat wrong names, recycled proof objects, unrelated assets, unsupported claims, and category-default design as primary failures. A polished page that ignores the prompt is not successful.
+A polished page that ignores the prompt remains unsuccessful. Evaluate only behavior the landing page actually contains.
 
 ## Recommendations
 
-Order findings by impact. For each major finding, state:
-
-- The observed evidence
-- Why it matters to the visitor or business goal
-- The correct mode or foundation for treatment
-- What visible outcome would resolve it
-
-Use plain language. Avoid vague praise and long inventories of equal-weight issues.
+Order findings by visitor and business impact. For each major finding, state the observed evidence, why it matters, the relevant operation or foundation, and the visible outcome that would resolve it. Prefer a few decisive recommendations over an inventory of equal-weight observations.
 
 ## Done when
 
-- The total is stated as `N/50`
-- Every score has observed evidence or is marked unverified
-- The page's strongest quality and primary failure are clear
-- Recommendations are prioritized and map to concrete treatment
-- No mutation is claimed unless fixes were explicitly requested and applied
+- Every finding has visible or source evidence, or is marked unverified
+- The strongest quality and primary obstacle are clear
+- Prompt drift appears before cosmetic criticism
+- Recommendations map to concrete landing-page outcomes
+- The response distinguishes review from edits actually applied

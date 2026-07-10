@@ -24,7 +24,7 @@ Restraint can be distinctive, but timid neutrality is not a voice. Expressivenes
 
 Choose something visitors can inspect: a product workflow, record, transformation, result, comparison, place, material, environment, or physical object. Let proof influence composition rather than floating as a decorative panel beside the headline.
 
-For physical subjects such as food, travel, hospitality, fashion, craft, venues, and objects, use specific supplied or scraped imagery when available. Generate imagery only after the root reference gate and only when the art direction needs something source assets cannot provide. One decisive image is stronger than a gallery of filler.
+For physical subjects such as food, travel, hospitality, fashion, craft, venues, and objects, use specific supplied or scraped imagery when available. Generate imagery when the art direction needs something source assets cannot provide. One decisive image is stronger than a gallery of filler.
 
 Software can be product-artifact-, diagram-, code-, or type-led. That is a deliberate lane, not permission to use an interchangeable glass panel.
 

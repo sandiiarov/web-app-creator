@@ -2,7 +2,7 @@
 
 Use relayout when the content and visual identity are substantially right but the arrangement is wrong. Change the composition, reading path, grouping, section order, or relationship between claim, proof, and action.
 
-Relayout preserves the established color strategy, type voice, edge language, and feature scope unless the user explicitly requests another mode. The root skill owns all reference loading; nothing is loaded silently by this file.
+Relayout preserves the established color strategy, type voice, surface language, and content scope unless the user explicitly requests another mode.
 
 ## Diagnose the path
 

@@ -1,6 +1,6 @@
 # Create
 
-Use create to build a new landing page or add a genuinely new section to the existing project HTML. The root skill owns required reference loading; this file owns the creation workflow after that gate is complete.
+Use create to build a new landing page or add a genuinely new section to the existing project HTML. This file covers the landing-page creation workflow; the root skill provides reference routing.
 
 ## Start from the actual project
 
@@ -42,13 +42,11 @@ Set the page shell, content measure, grid, and responsive order before adding de
 
 Make category, voice, proof, and primary action legible immediately. The hero and proof object should share one composition rather than look like unrelated halves.
 
-Use scraped brand assets when supplied and suitable. Generate imagery only after the root reference gate and only when it strengthens the chosen premise. Physical subjects generally need specific imagery; generic software can be type-, diagram-, or product-artifact-led.
+Use scraped brand assets when supplied and suitable. Generate imagery when it strengthens the chosen premise. Physical subjects generally need specific imagery; software pages can be product-artifact-, diagram-, code-, or type-led.
 
 ### 4. Sections and controls
 
-Build one coherent section at a time. Vary rhythm according to content priority rather than alternating identical blocks. Buttons, links, forms, menus, accordions, and demos receive only the states they can actually enter.
-
-Loading, error, empty, success, disabled, and overlay states are required only when real asynchronous or interactive elements need them. Do not invent application behavior for a static page.
+Build one coherent section at a time. Vary rhythm according to content priority rather than alternating identical blocks. Navigation, CTAs, lead forms, disclosures, pricing controls, and demos receive only behavior they can actually enter. A static landing page does not need invented application scope.
 
 ### 5. Responsive behavior
 

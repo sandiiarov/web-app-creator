@@ -6,7 +6,7 @@ Typography makes the page understandable, readable, and recognizable. Use typese
 
 Choose type from the page's language, audience, subject, and physical or cultural lane. A museum caption, field manual, event poster, product catalog, receipt, or technical instrument each suggests different proportions and texture.
 
-For brand surfaces, the family should carry a project-specific reason. For product demonstrations and dense controls, a well-tuned system or utility family can be the clearest choice.
+For brand surfaces, the family should carry a project-specific reason. Embedded product proof may use a quieter utility family when clarity benefits.
 
 Verify every named font is loaded or available. A CSS family value that silently falls back is not an implemented type choice.
 
@@ -35,7 +35,7 @@ Tune:
 - Caption and metadata contrast
 - Button and navigation labels
 - Price, metric, or comparison alignment when present
-- Form labels, hints, errors, and success text when present
+- Landing-page form labels, hints, and feedback when present
 
 Use tabular numerals for values that must align. Use all caps sparingly and add tracking only when the family and role support it.
 

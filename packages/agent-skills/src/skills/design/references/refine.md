@@ -36,7 +36,7 @@ Use when the brief genuinely benefits from a demanding visual or interaction ide
 
 A precise request such as “make the hero quieter” stays in the hero. A broad request such as “make the whole page more editorial” can apply one move across the full page. Do not combine opposing moves unless distinct zones demonstrably need different treatment.
 
-Preserve exact content, working behavior, and established brand decisions outside the chosen move. Read any additional foundations required by the root skill before editing.
+Preserve exact content, working landing-page behavior, and established brand decisions outside the chosen move. Consult the root reference guide when the move introduces another design dimension.
 
 ## Verification
 

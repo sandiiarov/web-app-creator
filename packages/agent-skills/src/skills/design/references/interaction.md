@@ -1,65 +1,53 @@
 # Interaction
 
-Interaction covers how the landing page responds to pointers, touch, keyboard, waiting, success, and failure. Use it as a full mode when behavior is the request; when loaded as support, implement only interactions touched by the active mode.
+Interaction covers landing-page navigation, conversion actions, forms, disclosures, pricing controls, media controls, and embedded demonstrations. Use it when behavior or CTA treatment changes, limited to interactions that actually exist on the page.
 
-## Start with what actually exists
+## Conversion actions
 
-Landing-page interactions commonly include:
+A decision area has one clear primary action:
 
-- Navigation and anchor links
-- Primary and secondary CTAs
-- Menus and mobile navigation
-- Forms and validation
-- Accordions, tabs, carousels, or disclosures
-- Pricing toggles or comparison controls
-- Embedded product demonstrations
-- Media controls
+- **Primary:** the main conversion or destination
+- **Secondary:** a valid alternative with less emphasis
+- **Tertiary or link:** navigation, escape, or supporting detail
 
-Do not invent application states or controls to satisfy a checklist. For every real control, account for the states it can enter.
+Name the result with a concrete verb and object: book a tour, start a trial, view the menu, compare plans, download the guide. Vague labels such as Submit, Click here, and Learn more hide the destination.
+
+Size, shape, radius, icon style, and placement follow the page's visual language. Repeated CTAs share one hierarchy and appear at genuine decision points rather than in every section.
 
 ## Affordance and response
 
-Visitors should know what is actionable before interacting. Use label, shape, position, cursor, underline, iconography, and contrast consistently.
+Visitors can recognize actionable elements before interaction through labels, underlines, shape, position, cursor, iconography, and contrast. Hover is an enhancement rather than the only cue. Press feedback stays brief and restrained.
 
-Pointer hover can enhance but never carry required meaning. Active/pressed feedback should confirm contact without excessive movement. Disabled styling belongs only to controls that can genuinely become unavailable, with nearby context when the reason is not obvious.
+Real buttons and links receive resting, focus-visible, hover where supported, and active treatment. Pending or disabled treatment appears only where a form or control can enter that state. Static links do not need decorative spinners or simulated success.
 
-## Focus and keyboard semantics
+## Navigation and disclosures
 
-Use native interactive elements whenever possible. Keep focus visible, consistent, and unclipped. Source order should follow the visual and conceptual path.
+Navigation preserves the primary destination and useful anchors. Mobile menus, accordions, tabs, carousels, and pricing toggles use native elements or the semantics appropriate to their pattern. Source order follows the visual and conceptual path; temporary navigation returns focus appropriately when it closes.
 
-Menus, dialogs, tabs, and disclosures require the keyboard semantics appropriate to their pattern. Escape and focus return matter for temporary surfaces. If available tools cannot exercise the path, verify implementation in source and describe it honestly.
+Long marketing content usually belongs in the page flow or a destination rather than a modal. Disclosures reveal supporting detail without hiding the core claim or action.
 
-## Touch
+## Landing-page forms
 
-Targets need enough physical area and separation. Small visual icons can use larger hit areas. Do not rely on hover, precise dragging, or gesture-only control. Place repeated or primary actions where they remain reachable without obscuring content.
+Visible labels, clear input purpose, nearby errors, and preserved values support lead, signup, booking, or contact forms. Submission behavior communicates pending, success, or failure only when that behavior exists. Decorative fields are not presented as working forms.
 
-## Forms
+Validation explains recovery without blame. The success message confirms the action and a useful next step. Form copy and controls stay aligned with the offer made immediately before them.
 
-Keep labels visible. Preserve entered values on validation failure. Put errors near the field and explain recovery. Match validation timing to the issue: required checks on submit, formatting after interaction, and remote checks after a short pause when they truly exist.
+## Keyboard and touch
 
-A form needs clear pending, success, and failure resolution only when submission behavior is implemented. Static decorative fields are misleading and should not be presented as working controls.
-
-## Menus and overlays
-
-Use interruption sparingly. Keep temporary surfaces inside the viewport, above clipping ancestors, and dismissible. Long content usually deserves an inline section or destination rather than a modal.
-
-## Waiting and recovery
-
-Give immediate acknowledgement when an operation actually waits. Preserve user work on failure. Offer retry only when retry can succeed. Prefer reversible actions over confirmation when the action is recoverable.
+Native interactive elements, visible unclipped focus, meaningful source order, adequate touch area, and hover-independent access cover the common landing-page path. Small visual icons can have larger hit areas and accessible names.
 
 ## Motion relationship
 
-Motion can reveal origin, state, selection, progress, or completion. It must have a reduced-motion equivalent and remain subordinate to behavior. A hover animation without focus treatment is incomplete.
+Motion can reveal origin, selection, expansion, or submission feedback. It stays subordinate to behavior and has a reduced-motion equivalent. Meaning carried by hover also has a keyboard or touch cue.
 
 ## Verification
 
-Use screenshots to judge visible resting states and source inspection for hover, focus, active, pending, error, success, and reduced-motion implementation. Do not claim clicks, keyboard traversal, form submission, or recovery was exercised without an interaction tool.
+Use screenshots for visible hierarchy, label fit, resting states, and touch layout. Inspect source for element semantics, accessible names, focus, hover, active, disclosure, form, and reduced-motion rules. Describe unexercised interaction as source-inspected.
 
 ## Done when
 
-- Every real control has clear affordance and appropriate source-defined states
-- Focus is visible and logical
-- Touch targets and hover fallbacks are present
-- Forms preserve input and explain recovery when forms exist
-- Menus and disclosures use appropriate semantics
-- Verification claims distinguish rendered evidence from source inspection
+- The primary action and its result are obvious
+- Navigation and disclosures preserve orientation
+- Existing forms explain submission and recovery clearly
+- Focus, touch, and hover treatment cover real controls
+- Interaction supports the landing-page story instead of adding application scope
