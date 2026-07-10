@@ -30,11 +30,12 @@ Root files are workspace/orchestration only. TS, Vite, Oxlint, and Oxfmt config 
 
 **Server** (`apps/server`) is a plain `node:http` server that owns projects on disk and streams the agent:
 
-- `POST /agent` — SSE stream. Body `{ prompt: string, projectId: string, textModel?: string, imageModel?: string, visionModel?: string, attachments?: attachment[] }`. Emits `text`, `thinking`, `tool_call`, `tool_call_drop`, `html_update`, `stats`, `screenshot_request`, `retry`, `error`, and `done` events.
+- `POST /agent` — SSE stream. Body `{ prompt: string, projectId: string, turnId?: string, textModel?: string, imageModel?: string, visionModel?: string, attachments?: attachment[] }`. The first-party client supplies `turnId` so local state, append-only logs, hydration, and transport-loss reconciliation address the same turn. Emits `text`, `thinking`, `tool_call`, `tool_call_drop`, `html_update`, `stats`, `screenshot_request`, `retry`, `error`, and `done` events.
 - `POST /api/screenshot-responses/:requestId` — browser POST-back that resolves a pending `screenshot_request` (bytes persisted once to disk; only metadata is logged).
 - `GET /api/projects` — list projects with generated HTML.
 - `POST /api/projects` — create a project. Body `{ textModel?: string, title?: string }`.
 - `GET /api/projects/:id` — get a project (HTML + hydrated message turns).
+- `POST /api/projects/:id/stop` — gracefully abort the active run while its SSE response remains open for terminal `stats`, stopped state, and `done`.
 - `PATCH /api/projects/:id` — update project model. Body `{ textModel: string }`.
 - `DELETE /api/projects/:id` — delete a project.
 - `GET /api/projects/:id/images/:file` — serve a persisted project image.
@@ -42,7 +43,7 @@ Root files are workspace/orchestration only. TS, Vite, Oxlint, and Oxfmt config 
 
 **The agent** is a Mastra agent backed by OpenRouter. It builds the page with these tools: `scrape` (Firecrawl a reference URL + OCR its images), `read`/`find` (inspect the current HTML as line-numbered, snapshot-tagged views), `edit` (apply a snapshot-verified line diff; stale tags and unbalanced HTML are rejected), `screenshot` (ask the browser to render the page, annotate interactive elements with numbered badges, and return visual-QA notes plus a Set-of-Marks element map), and `generate_image` (OpenRouter image model). A `design` skill is injected as system-prompt guidance.
 
-**Per-project data** lives under `.data/projects/<id>/`: `project.json` (metadata), `html.json` (current document), `client-messages.jsonl` (append-only client wire — one line per SSE event out + inbound request), `agent-messages.jsonl` (per-step Mastra message snapshots), `vision-messages.json` (OCR calls), `screenshots/` (captured bytes), and `images/` (generated images). Legacy `messages.json` / `raw-messages.json` are read-only fallbacks for older projects.
+**Per-project data** lives under `.data/projects/<id>/`: `project.json` (metadata), `html.json` (current document), `client-messages.jsonl` (append-only client wire — one line per SSE event out + inbound request; terminal events are queued before best-effort socket delivery), `agent-messages.jsonl` (per-step Mastra message snapshots), `vision-messages.json` (OCR calls), `screenshots/` (captured bytes), and `images/` (generated images). Legacy `messages.json` / `raw-messages.json` are read-only fallbacks for older projects.
 
 ## Commands
 
