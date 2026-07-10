@@ -1,9 +1,5 @@
 import type { ServerResponse } from 'node:http'
 
-function isWritable(response: ServerResponse): boolean {
-  return !response.destroyed && !response.writableEnded
-}
-
 /** Best-effort SSE closure. Returns whether `end` was attempted successfully. */
 export function endSse(response: ServerResponse): boolean {
   if (!isWritable(response)) return false
@@ -43,4 +39,8 @@ export function startSse(response: ServerResponse, statusCode = 200): boolean {
   } catch {
     return false
   }
+}
+
+function isWritable(response: ServerResponse): boolean {
+  return !response.destroyed && !response.writableEnded
 }

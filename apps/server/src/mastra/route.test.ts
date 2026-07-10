@@ -2001,7 +2001,11 @@ describe('streamLandingAgent stream errors + cleanup', () => {
     const stream = vi.fn<() => Promise<ReturnType<typeof fakeAgentStream>>>(
       async () => fakeAgentStream(hangingStream()),
     )
-    const createLandingPageAgent = vi.fn(() => ({ stream }))
+    const createLandingPageAgent = vi.fn<() => { stream: typeof stream }>(
+      () => ({
+        stream,
+      }),
+    )
     vi.doMock('./index.ts', () => ({ mastra: {} }))
     vi.doMock('./agents/landing-page-agent.ts', () => ({
       createLandingPageAgent,
@@ -2136,13 +2140,16 @@ class FakeResponse {
   readonly chunks: string[] = []
   destroyed = false
   headersSent = false
+  readonly options: { throwOnWrite?: boolean }
   statusCode = 200
   writableEnded = false
 
-  constructor(private readonly options: { throwOnWrite?: boolean } = {}) {}
-
   get body() {
     return this.chunks.join('')
+  }
+
+  constructor(options: { throwOnWrite?: boolean } = {}) {
+    this.options = options
   }
 
   end(chunk?: unknown) {
