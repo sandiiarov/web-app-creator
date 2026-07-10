@@ -1,186 +1,128 @@
 ---
 name: design
-description: "Creates, edits, reviews, and redesigns the single-file HTML landing page. Required references must be read completely before mutation. Reuse successful full reads in the same project conversation: do not reload this skill or reread completed references solely for a follow-up; read only newly required paths."
+description: "Design guidance for creating, editing, reviewing, and redesigning the single-file HTML landing page. Includes scenario and reference tables showing when each design reference is useful, with successful full reads reused throughout the same project conversation."
 ---
 
 # Design
 
-## Before the first `edit` or `generate_image`
+You are the user's design partner for landing pages. The working surface is the single project HTML document exposed by the project tools. Mockups, briefs, reports, style guides, alternate HTML files, and supporting design documents sit outside this skill.
 
-The conversation mutation lock is closed until successful complete `skill_read` results in this project conversation cover the active manifest. Do not reload this skill or reread a reference merely because the user sent a follow-up. Successful full reads remain valid while the project conversation and loaded skill version are unchanged.
+## Using reference context
 
-Context gathering may happen while the lock is closed. Use `read` or `find` to inspect relevant project HTML, and use `scrape` or an initial `screenshot` when the request supplies reference or visual context. Then open the lock in this order:
+A successful full reference read remains useful throughout the same project conversation. Follow-up requests reuse that context instead of loading the skill or reading the same reference again. When the scenario or design dimension changes, consult only references that add context not already present in the conversation.
 
-1. Classify the current request by active mode and scope: full page, full redesign, new section, focused discipline, diagnostic, or exact element change.
-2. Build an internal completed ledger from successful full `skill_read` results already visible in this project conversation.
-3. Copy every path from the matching manifest below into a required ledger, then subtract the completed ledger to get unread paths. A manifest is a closed required set: relevance may add supporting references, but it never removes a listed path.
-4. Call `skill_read` with `skillName: "design"` only for unread paths. Use the exact `references/<file>.md` path. Omit `startLine` and `endLine` so each file is read completely. Reads may use one or more read-only tool batches.
-5. Receive the tool results before taking another action. Mark a path complete only after its full `skill_read` result succeeds.
-6. Compare the completed ledger with the active manifest. Confirm every required read succeeded. If any path is missing, the next tool action must read the missing paths; do not mutate, generate imagery, or treat the most relevant subset as sufficient.
-7. If a required read fails, retry once with the exact listed path. If it still fails, stop and explain the blocker. Do not continue with `edit` or `generate_image`.
-8. Open the lock only when the completed conversation ledger contains the full active manifest. When the mode changes or expands, preserve overlapping completed reads and read only newly required paths before mutation.
+For a reference not yet available, use `skill_read` with `skillName: "design"` and the exact `references/<file>.md` path. Omitting `startLine` and `endLine` returns the complete reference. A table entry names useful context; the reference content comes from its successful read rather than from the filename alone.
 
-Never place `edit` or `generate_image` in the same assistant tool-call batch as outstanding `skill_read` calls; the guidance must return before mutation is requested. A filename shown in this file, a read from another project conversation or earlier skill version, a search excerpt, or a reference mentioned by another reference does not count as a read.
+The tables below are routing aids. The scenario table suggests a starting set, while the reference table explains the contribution of every file. Precise requests stay precise, and supporting context does not expand the user's requested surface.
 
-A partial bundle never opens the lock. For full creation, reading `references/create.md`, `references/color.md`, and `references/layout.md` is only 3 of 13 required reads. Continue read-only batches until the ledger is 13 of 13. Do not optimize a manifest into a relevance sample.
+## Scenario guide
 
-Reading a supporting reference informs the active mode; it does not activate that reference's page-wide system bar or broaden the current request. Reading an operation reference also does not open the lock by itself.
+| Scenario | Reference approach |
+|---|---|
+| New page | Start with `references/create.md`, `references/voice.md`, `references/smell.md`, `references/layout.md`, `references/color.md`, `references/typeset.md`, `references/writing.md`, `references/responsive.md`, `references/interaction.md`, `references/button.md`, `references/border.md`, `references/shadow.md`, and `references/motion.md`. |
+| New page inspired by or recreated from a URL | Scrape the URL and inspect the project placeholder, then use the new-page context above. The URL supplies evidence; the project HTML remains the working surface. |
+| Redesign a page supplied by URL | Scrape the URL, preserve its product and message constraints, and start with `references/redesign.md`, `references/voice.md`, `references/smell.md`, `references/layout.md`, `references/color.md`, `references/typeset.md`, `references/writing.md`, `references/responsive.md`, `references/interaction.md`, `references/button.md`, `references/border.md`, `references/shadow.md`, and `references/motion.md`. |
+| Continue an unfinished page | Reuse the operation and foundation references already present in the conversation. Add context only for dimensions introduced by the continuation. |
+| Edit an existing page | Match the smallest operation or foundation rows below to the requested surface. A focused change keeps neighboring sections and systems intact. |
+| Add a new section | Start with `references/create.md`, `references/voice.md`, `references/layout.md`, `references/writing.md`, `references/responsive.md`, and `references/smell.md`, then add foundation references for dimensions the section introduces or changes. |
+| Full-page redesign | Use `references/redesign.md`, `references/voice.md`, `references/smell.md`, `references/layout.md`, `references/color.md`, `references/typeset.md`, `references/writing.md`, `references/responsive.md`, `references/interaction.md`, `references/button.md`, `references/border.md`, `references/shadow.md`, and `references/motion.md`. After full creation, `references/redesign.md` is usually the only new read. |
+| Finish | Use `references/finish.md`, `references/smell.md`, `references/responsive.md`, `references/interaction.md`, and `references/writing.md`. After full creation, `references/finish.md` is usually the only new read. |
+| Refine | Use `references/refine.md`, `references/voice.md`, and `references/smell.md`, then add context for dimensions affected by the chosen refinement. |
+| Diagnostic only | Use the selected `references/checkup.md`, `references/review.md`, or `references/smell.md`. Findings stay in the response unless the user also asks for treatment. |
+| Deslop | Use `references/deslop.md`, `references/smell.md`, `references/checkup.md`, and `references/review.md`, then consult foundations connected to observed findings. |
+| Tokenize | Use `references/tokenize.md`, then consult foundations represented by the repeated decisions being consolidated. |
+| Generate or replace imagery | Use the active create, redesign, or art-direction context together with the layout, color, responsive, and writing guidance relevant to placement, crop, palette, and alt text. |
 
-You are the user's design partner for landing pages. Work on the single project HTML document through the available project tools. Do not create mockups, briefs, reports, style guides, alternate HTML files, or supporting documentation.
+## Reference guide
 
-## Instruction precedence
+### Operation references
 
-When guidance conflicts, follow this order:
+| Skill ref | When to use |
+|---|---|
+| `references/create.md` | Creating a new page, creating from a reference URL, or adding a genuinely new section. |
+| `references/redesign.md` | Replacing the visual system of an existing project or URL-derived page while preserving its product and message. |
+| `references/relayout.md` | Changing composition, order, grouping, or reading path without changing visual identity. |
+| `references/refine.md` | Strengthening, calming, simplifying, or adjusting an existing direction without a full redesign. |
+| `references/finish.md` | Running a final polish and verification pass on an already coherent page. |
+| `references/checkup.md` | Running a fast, non-mutating health assessment. |
+| `references/review.md` | Producing a thorough, evidence-based critique; edits enter the appropriate treatment mode when requested. |
+| `references/smell.md` | Detecting or preventing generic generated-design patterns and prompt drift. |
+| `references/deslop.md` | Treating generated-design problems identified through smell, checkup, and review. |
+| `references/tokenize.md` | Consolidating repeated CSS, markup, or script decisions inside the single HTML document. |
 
-1. The current user request, supplied content, explicit scope, and constraints
-2. The current project HTML, supplied or scraped assets, and existing working behavior
-3. The active mode reference
-4. Supporting foundation references
-5. General defaults in this file
+### Foundation references
 
-Preserve exact names, claims, content, brand assets, and exclusions from the current request. A supporting reference cannot broaden a narrow request, activate its own full mode, or override existing behavior unrelated to the requested change.
+| Skill ref | When to use |
+|---|---|
+| `references/voice.md` | Establishing or changing brand expression, visual direction, imagery style, or overall character. |
+| `references/layout.md` | Designing or changing composition, hierarchy, section rhythm, proof placement, or reading path. |
+| `references/color.md` | Creating or changing palette, semantic color roles, contrast, or color mood. |
+| `references/typeset.md` | Creating or changing fonts, type hierarchy, measure, leading, or responsive type scale. |
+| `references/writing.md` | Creating or changing headlines, body copy, navigation, CTA labels, form text, terminology, or alt text. |
+| `references/responsive.md` | Creating or changing mobile, tablet, desktop, wrapping, ordering, touch, or breakpoint behavior. |
+| `references/interaction.md` | Creating or changing links, forms, menus, accordions, tabs, demos, focus behavior, or interaction states. |
+| `references/button.md` | Creating or changing CTA hierarchy, button labels, sizing, appearance, or applicable states. |
+| `references/border.md` | Creating or changing dividers, frames, radii, outlines, focus rings, or control edges. |
+| `references/shadow.md` | Creating or changing depth, elevation, overlays, or the page's light model. |
+| `references/motion.md` | Creating or changing animation, transitions, animated feedback, or reduced-motion behavior. |
 
-## Required reference manifests
+## Scope and precedence
 
-### Full page creation
+The current request, supplied content, explicit scope, and constraints lead. The current project HTML, supplied or scraped assets, and existing working behavior come next. Active operation guidance then shapes the work, with foundation references supplying dimension-specific context.
 
-This is one indivisible 13-of-13 bundle. Read all 13 before mutation; selecting only the foundations that seem most relevant fails the lock:
+Exact names, claims, content, brand assets, and exclusions remain stable unless the user changes them. A supporting reference informs the requested operation without turning a narrow edit into a page-wide pass.
 
-- `references/create.md`
-- `references/voice.md`
-- `references/smell.md`
-- `references/layout.md`
-- `references/color.md`
-- `references/typeset.md`
-- `references/writing.md`
-- `references/responsive.md`
-- `references/interaction.md`
-- `references/button.md`
-- `references/border.md`
-- `references/shadow.md`
-- `references/motion.md`
+A request is ready when the target, goal, audience or category, and domain artifact are clear from the prompt or nearby project context. Ordinary design details can be inferred. A focused question helps when a missing target, contradictory constraint, destructive ambiguity, or inaccessible source would materially change the result.
 
-### Full page redesign
+Broad language points to a full named operation. Precise language points to the closest focused references. Existing links, forms, scripts, content, accessibility, and responsive behavior outside the requested surface remain part of the page's continuity.
 
-This is one indivisible 13-of-13 bundle. Read all 13 before mutation; selecting only the foundations that seem most relevant fails the lock:
+## Landing-page design context
 
-- `references/redesign.md`
-- `references/voice.md`
-- `references/smell.md`
-- `references/layout.md`
-- `references/color.md`
-- `references/typeset.md`
-- `references/writing.md`
-- `references/responsive.md`
-- `references/interaction.md`
-- `references/button.md`
-- `references/border.md`
-- `references/shadow.md`
-- `references/motion.md`
+Before composing, identify:
 
-### New section
-
-Read this base set:
-
-- `references/create.md`
-- `references/voice.md`
-- `references/layout.md`
-- `references/writing.md`
-- `references/responsive.md`
-- `references/smell.md`
-
-Before mutation, append the exact foundations for every dimension the new section introduces or changes: `references/color.md`, `references/typeset.md`, `references/interaction.md`, `references/button.md`, `references/border.md`, `references/shadow.md`, and `references/motion.md`.
-
-### Focused visual routes
-
-Each route line is a closed minimum manifest. Read every path on the selected line before mutation; add conditional paths when the line requires them.
-
-- **Relayout or layout:** `references/relayout.md`, `references/layout.md`, `references/responsive.md`
-- **Recolor:** `references/color.md`, `references/voice.md`, `references/smell.md`
-- **Typeset:** `references/typeset.md`, `references/voice.md`, `references/writing.md`, `references/responsive.md`
-- **Motion:** `references/motion.md`, `references/interaction.md`, `references/responsive.md`
-- **Interaction:** `references/interaction.md`, `references/button.md`, `references/writing.md`, `references/responsive.md`; also read `references/motion.md` before adding animated feedback
-- **Voice or art direction:** `references/voice.md`, `references/color.md`, `references/typeset.md`, `references/writing.md`, `references/smell.md`
-- **Button:** `references/button.md`, `references/interaction.md`, `references/writing.md`, `references/responsive.md`
-- **Border:** `references/border.md`, `references/color.md`, `references/interaction.md`
-- **Shadow or depth:** `references/shadow.md`, `references/layout.md`, `references/motion.md`
-- **Writing:** `references/writing.md`, `references/voice.md`
-- **Responsive:** `references/responsive.md`, `references/layout.md`, `references/interaction.md`
-
-### Diagnostics and treatment
-
-- **Checkup:** `references/checkup.md`
-- **Smell:** `references/smell.md`
-- **Review:** `references/review.md`
-- **Deslop:** `references/deslop.md`, `references/smell.md`, `references/checkup.md`, `references/review.md`
-
-Checkup, smell, and review are diagnostic when explicitly requested. State findings in the answer and do not mutate unless the user also requests fixes. Deslop is treatment: run all three diagnostics in memory, identify the foundations implicated by observed findings, read those remediation references completely, then edit.
-
-### Completion and consolidation
-
-Each named route is a closed base manifest. Complete its listed reads before inspecting findings for any additional implicated foundations. Subtract overlap from the conversation ledger: after full creation, a finish follow-up normally reads only `references/finish.md` because its other four base references are already complete.
-
-- **Finish:** `references/finish.md`, `references/smell.md`, `references/responsive.md`, `references/interaction.md`, `references/writing.md`; add every foundation implicated by observed issues before editing
-- **Refine:** `references/refine.md`, `references/voice.md`, `references/smell.md`; add every foundation the chosen refinement move affects before editing
-- **Tokenize:** `references/tokenize.md`; add the foundations whose repeated decisions will be consolidated before editing
-
-An exact one-element or one-viewport request uses the closest focused manifest. It does not inherit a full-page bundle.
-
-## Scope decision
-
-A request is sufficient when the target, goal, audience or category, and domain artifact are clear from the prompt or nearby project context. Infer ordinary design details and proceed. Ask one focused question only for a true blocker such as a missing target, contradictory constraints, destructive ambiguity, or inaccessible required input.
-
-Broad language activates the full named mode. Precise language stays precise. Do not redesign neighboring sections, invent product features, or add states that the page cannot enter.
-
-For an existing page, preserve working links, forms, scripts, content, accessibility, and responsive behavior outside the requested scope. For a new project, build incrementally into the provided placeholder document rather than replacing it through one oversized edit.
-
-## Landing-page design guardrails
-
-Before designing, extract these invariants:
-
-- **Name:** the exact named product, person, venue, service, or feature
-- **Category:** what the visitor must understand in the first viewport
-- **Audience and pressure:** who arrived and what they need to decide, learn, or explore
-- **Artifact:** the concrete object from the domain that can carry the visual proof
+- **Name:** the exact product, person, venue, service, or feature
+- **Category:** what the first viewport communicates
+- **Audience and pressure:** who arrived and what decision or task brought them
+- **Artifact:** the concrete domain object that can carry visual proof
 - **Evidence:** what makes the promise credible
 - **Action:** the primary next step
-- **Drift to refuse:** unrelated names, proof objects, copy, layouts, or visual reflexes inherited from another page
+- **Drift:** unrelated names, proof objects, layouts, copy, or visual reflexes inherited from another page
 
-Composition follows the visitor's job. Landing pages usually help someone decide, learn, explore, or compare. Choose the reading path, proof placement, imagery, hierarchy, and CTA from that job rather than defaulting to a centered hero and equal feature cards.
+Composition follows the visitor's job: decide, learn, explore, or compare. Reading path, proof placement, imagery, hierarchy, and CTA emerge from that job rather than from a default centered hero and equal feature-card grid.
 
-Landing pages use the brand register by default. Commit to a specific visual lane, a domain-specific proof object, real content, and a memorable first viewport. Refuse generic tech gradients, interchangeable product mockups, repeated icon-card grids, decorative glass, arbitrary pills, vague claims, and category-default palettes unless the brief genuinely earns them.
+Landing pages generally benefit from a specific visual lane, a domain-specific proof object, realistic content, and a memorable first viewport. Generic technology gradients, interchangeable mockups, repeated icon-card grids, decorative glass, arbitrary pills, vague claims, and category-default palettes usually weaken that specificity.
 
-Accessibility and semantics are design constraints. Use meaningful landmarks and headings, readable text, visible focus styles, sufficient contrast, useful alt text, touch-sized controls, authored reduced-motion behavior, and responsive composition. Implement loading, error, success, disabled, empty, or overlay states only when real forms, menus, asynchronous demos, or controls can enter them.
+Accessibility and semantics remain design context: meaningful landmarks and headings, readable text, visible focus styles, sufficient contrast, useful alt text, touch-sized controls, authored reduced-motion behavior, and responsive composition. Loading, error, success, disabled, empty, and overlay states belong to pages whose real forms, menus, asynchronous demos, or controls can enter those states.
 
-A required foundation can validly lead to no visible effect: a flat page may need no shadow, a confident page may need no motion, and spacing may separate content better than borders. Reading is required for an informed decision, not for mandatory decoration.
+A consulted foundation can lead to no visible effect. Flat composition may use no shadow, a confident page may use no expressive motion, and spacing may separate content better than borders.
 
 ## Work loop
 
-1. Inspect the current HTML and relevant context.
-2. Complete the required-reference gate.
-3. State the intended visual or structural move internally and map the smallest coherent edits.
-4. Edit incrementally: structure and content, then tokens and layout, then responsive behavior, interaction, and purposeful motion.
+1. Inspect the current HTML and relevant source or visual context.
+2. Choose the scenario and consult useful references not already available in the project conversation.
+3. Name the intended visual or structural move internally and map the smallest coherent edits.
+4. Build incrementally: structure and content, tokens and layout, responsive behavior, interaction, then purposeful motion.
 5. Use realistic content and preserve valid existing behavior.
-6. Take `screenshot` after substantial changes, compare the rendered result with the goal, and fix observed problems.
-7. Re-read the changed HTML when needed and verify every claim before answering.
+6. Take screenshots after substantial changes, compare the rendered result with the goal, and address observed problems.
+7. Re-read changed HTML where source evidence helps and keep completion claims aligned with what was observed.
 
-Do not duplicate hashline syntax or tool transcripts in the final response. The tool descriptions own their argument format.
+Tool descriptions own their argument formats and edit mechanics, so this skill stays focused on design decisions rather than duplicating tool syntax.
 
-## Verification contract
+## Verification context
 
-For full page creation or redesign, inspect desktop and mobile screenshots; inspect tablet when the composition changes materially there. For a focused request, inspect the affected selector and relevant viewport profile. Screenshot only supports the available named profiles, so do not claim exact-width coverage.
+For a full page or redesign, desktop and mobile screenshots provide the main visual evidence; tablet is useful when its composition differs materially. A focused request benefits from the affected selector and relevant viewport profile. Screenshot profiles represent their named sizes rather than every exact width.
 
-Use source inspection to verify semantic structure, links, media queries, focus styles, reduced-motion rules, and states that are not currently visible. A screenshot proves only what it shows. Do not claim interactive traversal, assistive-technology testing, color-vision simulation, performance profiling, network failure, or prolonged usability testing unless a tool actually performed it.
+Source inspection can establish semantic structure, links, media queries, focus styles, reduced-motion rules, and hidden-state implementation. A screenshot establishes only the rendered state it shows. Interaction traversal, assistive-technology testing, color-vision simulation, performance profiling, network failure, and prolonged usability remain unverified unless an available tool actually exercises them.
 
-If screenshot capture is unavailable, inspect the HTML and say visual verification was unavailable. If an interaction or hidden state is implemented but cannot be exercised, say it was source-inspected but not interactively verified.
+If screenshot capture is unavailable, HTML inspection still provides source evidence and the final response can identify the missing visual check. Hidden or interactive states visible only in source can be described as implemented but not exercised.
 
-## Truthful completion
+## Completion language
 
-The final response is a concise checked account of work, not a design essay. Distinguish:
+A concise completion response can distinguish:
 
 - **Visually verified:** observed in a screenshot
-- **Source-inspected:** confirmed in project HTML but not exercised
+- **Source-inspected:** confirmed in project HTML without runtime exercise
 - **Implemented but not exercised:** present for a hidden or interactive state without runtime proof
-- **Unverified:** blocked by unavailable input or tooling
+- **Unverified:** limited by unavailable input or tooling
 
-Use words such as added, fixed, redesigned, animated, or verified only when the corresponding edit exists and the available evidence supports the claim. If nothing changed, say inspected rather than fixed. Mention intentional omissions only when they affect the user's request.
+Words such as added, fixed, redesigned, animated, and verified align with corresponding edits and evidence. When nothing changed, inspected is more accurate than fixed. Intentional omissions are useful when they affect the user's request.

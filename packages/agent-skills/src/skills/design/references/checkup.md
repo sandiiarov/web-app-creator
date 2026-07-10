@@ -2,8 +2,6 @@
 
 Use checkup for fast, evidence-grounded landing-page triage. It answers whether the page is healthy enough to continue, needs focused repair, or has a critical problem that blocks trust or use.
 
-> **Manifest mutation lock:** Reading this operation file never opens the lock by itself. Reuse successful full reads already present in the project conversation, then complete every still-unread root-manifest path and receive its result before calling `edit` or `generate_image`.
-
 Checkup is diagnostic. When the user asks only for a checkup, inspect and explain; do not edit. When the user also asks for fixes, carry the observed findings into the treatment mode selected by the root skill.
 
 ## Evidence boundary

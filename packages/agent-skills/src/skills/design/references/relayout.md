@@ -2,8 +2,6 @@
 
 Use relayout when the content and visual identity are substantially right but the arrangement is wrong. Change the composition, reading path, grouping, section order, or relationship between claim, proof, and action.
 
-> **Manifest mutation lock:** Reading this operation file never opens the lock by itself. Reuse successful full reads already present in the project conversation, then complete every still-unread root-manifest path and receive its result before calling `edit` or `generate_image`.
-
 Relayout preserves the established color strategy, type voice, edge language, and feature scope unless the user explicitly requests another mode. The root skill owns all reference loading; nothing is loaded silently by this file.
 
 ## Diagnose the path

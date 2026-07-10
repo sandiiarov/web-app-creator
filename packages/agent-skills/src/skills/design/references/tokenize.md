@@ -2,8 +2,6 @@
 
 Use tokenize to consolidate repeated design decisions inside the single project HTML document. Tokenize reduces drift; it does not create an external component library, stylesheet, design-system document, or speculative abstraction.
 
-> **Manifest mutation lock:** Reading this operation file never opens the lock by itself. Reuse successful full reads already present in the project conversation, then complete every still-unread root-manifest path and receive its result before calling `edit` or `generate_image`.
-
 ## Find proven repetition
 
 Extract only patterns that repeat with the same intent:

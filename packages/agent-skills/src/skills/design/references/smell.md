@@ -2,8 +2,6 @@
 
 Use smell to detect design choices that look unchosen, recycled, or generated. Smell is diagnostic. It names visible tells and the foundations that should treat them; it does not edit unless the user also requests fixes.
 
-> **Manifest mutation lock:** Reading this operation file never opens the lock by itself. Reuse successful full reads already present in the project conversation, then complete every still-unread root-manifest path and receive its result before calling `edit` or `generate_image`.
-
 A smell must be observed on the current page. Personal taste, technical imperfection, or suspicion without visible evidence is not a finding.
 
 ## Ten tells

@@ -2,8 +2,6 @@
 
 Use refine to change the character or resilience of an existing landing page without pretending it needs a new brief. Choose one coherent move from observed evidence and apply it only as broadly as the user requested.
 
-> **Manifest mutation lock:** Reading this operation file never opens the lock by itself. Reuse successful full reads already present in the project conversation, then complete every still-unread root-manifest path and receive its result before calling `edit` or `generate_image`.
-
 ## Choose the move
 
 ### Push

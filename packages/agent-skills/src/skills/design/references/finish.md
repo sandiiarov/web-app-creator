@@ -2,8 +2,6 @@
 
 Use finish for the last pre-ship pass on an already coherent landing page. Finish removes friction and inconsistency; it does not invent a new direction or disguise structural failure with polish.
 
-> **Manifest mutation lock:** Reading this operation file never opens the lock by itself. Reuse successful full reads already present in the project conversation, then complete every still-unread root-manifest path and receive its result before calling `edit` or `generate_image`.
-
 Work from the current HTML, rendered screenshots, and findings observed in this turn. If composition or identity is fundamentally wrong, route to relayout or redesign instead of forcing finish to solve it.
 
 ## Inspect the real surface

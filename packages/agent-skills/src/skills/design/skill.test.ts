@@ -49,6 +49,33 @@ const FULL_PAGE_FOUNDATIONS = [
   'references/writing.md',
 ] as const
 
+const OPERATION_REFERENCE_PATHS = [
+  'references/checkup.md',
+  'references/create.md',
+  'references/deslop.md',
+  'references/finish.md',
+  'references/redesign.md',
+  'references/refine.md',
+  'references/relayout.md',
+  'references/review.md',
+  'references/smell.md',
+  'references/tokenize.md',
+] as const
+
+const FOUNDATION_REFERENCE_PATHS = [
+  'references/border.md',
+  'references/button.md',
+  'references/color.md',
+  'references/interaction.md',
+  'references/layout.md',
+  'references/motion.md',
+  'references/responsive.md',
+  'references/shadow.md',
+  'references/typeset.md',
+  'references/voice.md',
+  'references/writing.md',
+] as const
+
 type InlineSkillShape = {
   __inline?: true
   __referenceContents: Record<string, string>
@@ -58,21 +85,13 @@ type InlineSkillShape = {
   references: string[]
 }
 
-function manifestLine(instructions: string, label: string): string {
-  return (
-    instructions
-      .split('\n')
-      .find((line) => line.startsWith(`- **${label}:**`)) ?? ''
-  )
-}
-
 function markdownSection(
   instructions: string,
   heading: string,
   nextHeading: string,
 ): string {
-  const start = instructions.indexOf(`### ${heading}`)
-  const end = instructions.indexOf(`### ${nextHeading}`, start + 1)
+  const start = instructions.indexOf(heading)
+  const end = instructions.indexOf(nextHeading, start + 1)
   if (start === -1 || end === -1) return ''
   return instructions.slice(start, end)
 }
@@ -83,50 +102,46 @@ function referencePaths(content: string): string[] {
   )
 }
 
+function tableRow(instructions: string, label: string): string {
+  return (
+    instructions.split('\n').find((line) => line.startsWith(`| ${label} |`)) ??
+    ''
+  )
+}
+
 describe('design skill', () => {
   const skill = design as InlineSkillShape
 
-  it('parses the landing-page metadata and concise control plane', () => {
+  it('parses the landing-page metadata and concise advisory control plane', () => {
     expect(skill.name).toBe('design')
     expect(skill.description).toMatch(
-      /Creates, edits, reviews, and redesigns/iu,
+      /creating, editing, reviewing, and redesigning/iu,
     )
-    expect(skill.description).toMatch(/Required references must be read/iu)
+    expect(skill.description).toMatch(/scenario and reference tables/iu)
     expect(skill.instructions.trim()).toMatch(/^# Design/u)
     expect(skill.instructions.length).toBeGreaterThanOrEqual(4_000)
     expect(skill.instructions.length).toBeLessThanOrEqual(15_000)
   })
 
-  it('blocks mutation until complete required reads succeed', () => {
+  it('describes advisory routing and conversation-scoped reference reuse', () => {
+    expect(skill.instructions).toMatch(/## Scenario guide/u)
+    expect(skill.instructions).toMatch(/## Reference guide/u)
     expect(skill.instructions).toMatch(
-      /Before the first `edit` or `generate_image`/u,
-    )
-    expect(skill.instructions).toMatch(/Omit `startLine` and `endLine`/u)
-    expect(skill.instructions).toMatch(/every required read succeeded/u)
-    expect(skill.instructions).toMatch(/does not count as a read/u)
-    expect(skill.instructions).toMatch(
-      /If it still fails, stop and explain the blocker/iu,
+      /A successful full reference read remains useful throughout the same project conversation/iu,
     )
     expect(skill.instructions).toMatch(
-      /Do not continue with `edit` or `generate_image`/u,
+      /Follow-up requests reuse that context/iu,
     )
     expect(skill.instructions).toMatch(
-      /supporting reference informs the active mode; it does not activate/iu,
+      /consult only references that add context not already present/iu,
     )
-    expect(skill.instructions).toMatch(/exact one-element or one-viewport/iu)
+    expect(skill.instructions).toMatch(/tables below are routing aids/iu)
+    expect(skill.instructions).toMatch(/Omitting `startLine` and `endLine`/u)
   })
 
-  it('requires the complete 13-reference bundles for full creation and redesign', () => {
-    const creation = markdownSection(
-      skill.instructions,
-      'Full page creation',
-      'Full page redesign',
-    )
-    const redesign = markdownSection(
-      skill.instructions,
-      'Full page redesign',
-      'New section',
-    )
+  it('suggests the complete broad context for new-page creation and redesign', () => {
+    const creation = tableRow(skill.instructions, 'New page')
+    const redesign = tableRow(skill.instructions, 'Full-page redesign')
 
     expect([...new Set(referencePaths(creation))].sort()).toEqual(
       [...FULL_PAGE_FOUNDATIONS, 'references/create.md'].sort(),
@@ -137,78 +152,57 @@ describe('design skill', () => {
   })
 
   it.each([
-    [
-      'Border',
-      [
-        'references/border.md',
-        'references/color.md',
-        'references/interaction.md',
-      ],
-    ],
-    [
-      'Button',
-      [
-        'references/button.md',
-        'references/interaction.md',
-        'references/responsive.md',
-        'references/writing.md',
-      ],
-    ],
-    ['Checkup', ['references/checkup.md']],
-    [
-      'Deslop',
-      [
-        'references/checkup.md',
-        'references/deslop.md',
-        'references/review.md',
-        'references/smell.md',
-      ],
-    ],
-    [
-      'Interaction',
-      [
-        'references/button.md',
-        'references/interaction.md',
-        'references/motion.md',
-        'references/responsive.md',
-        'references/writing.md',
-      ],
-    ],
-    [
-      'Motion',
-      [
-        'references/interaction.md',
-        'references/motion.md',
-        'references/responsive.md',
-      ],
-    ],
-    [
-      'Recolor',
-      ['references/color.md', 'references/smell.md', 'references/voice.md'],
-    ],
-    [
-      'Relayout or layout',
-      [
-        'references/layout.md',
-        'references/relayout.md',
-        'references/responsive.md',
-      ],
-    ],
-    ['Review', ['references/review.md']],
-    ['Smell', ['references/smell.md']],
-    [
-      'Typeset',
-      [
-        'references/responsive.md',
-        'references/typeset.md',
-        'references/voice.md',
-        'references/writing.md',
-      ],
-    ],
-  ])('declares the %s route with valid root-relative paths', (label, paths) => {
-    expect(
-      referencePaths(manifestLine(skill.instructions, label)).sort(),
-    ).toEqual([...paths].sort())
+    'New page',
+    'New page inspired by or recreated from a URL',
+    'Redesign a page supplied by URL',
+    'Continue an unfinished page',
+    'Edit an existing page',
+    'Add a new section',
+    'Full-page redesign',
+    'Finish',
+    'Refine',
+    'Diagnostic only',
+    'Deslop',
+    'Tokenize',
+    'Generate or replace imagery',
+  ])('describes the %s scenario', (label) => {
+    expect(tableRow(skill.instructions, label)).not.toBe('')
+  })
+
+  it('indexes every operation and foundation reference once', () => {
+    const operations = markdownSection(
+      skill.instructions,
+      '### Operation references',
+      '### Foundation references',
+    )
+    const foundations = markdownSection(
+      skill.instructions,
+      '### Foundation references',
+      '## Scope and precedence',
+    )
+
+    expect(referencePaths(operations).sort()).toEqual(
+      [...OPERATION_REFERENCE_PATHS].sort(),
+    )
+    expect(referencePaths(foundations).sort()).toEqual(
+      [...FOUNDATION_REFERENCE_PATHS].sort(),
+    )
+  })
+
+  it('keeps mandatory gate language out of the root skill', () => {
+    const mandatoryPatterns = [
+      /\bmandatory\b/iu,
+      /\bmust\b/iu,
+      /blocked until/iu,
+      /Do not continue/iu,
+      /hard (?:barrier|gate)/iu,
+      /mutation lock/iu,
+      /Required references/iu,
+    ]
+
+    for (const pattern of mandatoryPatterns) {
+      expect(skill.instructions).not.toMatch(pattern)
+    }
   })
 
   it('uses only root-relative paths that resolve to loaded references', () => {
