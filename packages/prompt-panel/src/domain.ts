@@ -132,6 +132,7 @@ export type LandingTurn = {
   model: string
   parts: TurnPart[]
   prompt: string
+  stopped?: boolean
 }
 
 export type PromptAttachmentInput =

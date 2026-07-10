@@ -9,7 +9,7 @@
 - `src/prompt-panel.tsx`: root `PromptPanel` component, its `PromptPanelProps`, the horizontal-resize `ResizeState`/handlers, and the `PanelResizeHandle` edge handles.
 - `src/`: panel UI components (`panel-header`, `panel-body`, `panel-command-menu`, `composer`, `turn-message`, `turn-metadata`, `turn-steps`, `streamdown-content`, `model-dropdown`, `status-pill`, `chat-empty-state`, icons) and helpers (`panel-constants`, `panel-status`, `panel-storage`, `format`, `keyboard-shortcut`).
 - `src/panel-storage.ts`: read-only panel position/layout persistence — owns the `landing.promptPanel.position.v1` localStorage key, `StoredPanelState` (`x`/`y`, `collapsed`, `layout`, `width`), `readStoredPanelState`, and the public `readStoredPanelLayout` (effective layout, treating a collapsed panel as `floating` so a minimized panel does not reserve a docked column) and `readStoredPanelWidth`. The component keeps write logic (`writeStoredPanelState`) because it is intertwined with docked-side derivation.
-- `src/domain.ts`: landing conversation domain model — model options (text `LANDING_MODEL_OPTIONS`, plus `LANDING_VISION_MODEL_OPTIONS` and `LANDING_IMAGE_MODEL_OPTIONS`), the per-category `LandingModels` selection + `DEFAULT_LANDING_MODELS` + `resolveLandingModels`, attachment types, conversation model (`LandingTurn`, `TurnPart` variants, `RetryPart` inlined), cost/usage types, `LandingAgentSendInput`, and formatting helpers.
+- `src/domain.ts`: landing conversation domain model — model options (text `LANDING_MODEL_OPTIONS`, plus `LANDING_VISION_MODEL_OPTIONS` and `LANDING_IMAGE_MODEL_OPTIONS`), the per-category `LandingModels` selection + `DEFAULT_LANDING_MODELS` + `resolveLandingModels`, attachment types, conversation model (`LandingTurn`, including durable `stopped` terminal state, `TurnPart` variants, `RetryPart` inlined), cost/usage types, `LandingAgentSendInput`, and formatting helpers.
 - `src/keyboard-shortcuts.ts`: `KEYBOARD_SHORTCUTS` metadata + types.
 - `src/index.ts`: public barrel (`PromptPanel`, `PromptPanelProps`, `readStoredPanelLayout`, `readStoredPanelWidth`, `PANEL_WIDTH`, `MIN_PANEL_WIDTH`, `maxPanelWidth`, `clampPanelWidth`, `DEFAULT_PREVIEW_VIEWPORT`, `PREVIEW_VIEWPORTS`, domain model, keyboard-shortcuts, panel-constants types including `PreviewViewport`).
 
@@ -34,6 +34,7 @@
 
 - `pnpm --filter @workspace/prompt-panel typecheck`
 - `pnpm --filter @workspace/prompt-panel lint`
+- `pnpm --filter @workspace/prompt-panel test`
 - `pnpm --filter @workspace/prompt-panel format:check`
 
 ## Child DOX Index

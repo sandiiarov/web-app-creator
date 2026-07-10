@@ -18,6 +18,10 @@ export function panelStatus({
     return 'error'
   }
 
+  if (latest?.stopped) {
+    return 'stopped'
+  }
+
   if (latest && latest.parts.length > 0) {
     return 'done'
   }
