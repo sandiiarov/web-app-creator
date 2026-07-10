@@ -1,183 +1,71 @@
-# Voice `/design voice`
+# Voice
 
-Brand surfaces are judged before they are understood. A visitor arrives half-ready to leave. The page has to earn the next second.
+Voice gives a landing page a recognizable visual and verbal identity before visitors understand every detail. Use it as a full mode when art direction is the request; when loaded as support, apply it only to the surface touched by the active mode.
 
-Here, design is not serving a task. The design is the product.
+## Name the lane
 
----
+Describe the intended world with physical or cultural language rather than generic adjectives: field guide, gallery label, workshop ledger, club poster, bottle mark, technical instrument, theater program, coastal catalog. The lane should fit the audience, subject, price, and emotional pressure.
 
-## Discipline files
+Name what the page is not. A clear refusal prevents the direction from drifting toward the average generated page or the last design in context.
 
-Voice drives the brand identity pass — consult these when each dimension comes up, not as additional work to run on top:
+## Commit in the first viewport
 
-- [color.md](color.md) — for correct palette construction when committing to a brand hue
-- [typeset.md](typeset.md) — for correct type hierarchy when building the brand voice and display scale
-- [motion.md](motion.md) — for correct timing and personality when adding expressive animation
-- [border.md](border.md) — for correct edge language when choosing frame and art-direction treatments
-- [shadow.md](shadow.md) — for correct depth model when adding atmospheric lighting or elevation
+The first viewport should quickly establish:
 
----
+- Exact name and category
+- A specific promise
+- A domain proof object
+- A primary next action
+- A memorable visual or verbal cue
 
-## Composition Starts With The Visitor's Job
+Restraint can be distinctive, but timid neutrality is not a voice. Expressiveness can be effective, but effects without a premise are noise.
 
-A brand surface still has work to do.
+## Build around proof
 
-If the visitor must decide, I narrow the page around claim, proof, trust, and action.
+Choose something visitors can inspect: a product workflow, record, transformation, result, comparison, place, material, environment, or physical object. Let proof influence composition rather than floating as a decorative panel beside the headline.
 
-If the visitor must learn, I build editorial flow with strong pacing and readable depth.
+For physical subjects such as food, travel, hospitality, fashion, craft, venues, and objects, use specific supplied or scraped imagery when available. Generate imagery only after the root reference gate and only when the art direction needs something source assets cannot provide. One decisive image is stronger than a gallery of filler.
 
-If the visitor must explore, I make product paths, examples, filters, or galleries feel open and reversible.
+Software can be product-artifact-, diagram-, code-, or type-led. That is a deliberate lane, not permission to use an interchangeable glass panel.
 
-If the visitor must compare, I make differences visible with matrices, side-by-side proof, or ranked value.
+## Make systems speak together
 
-If the visitor must believe, I lead with evidence, artifact, image, and specificity before ornament.
+### Type
 
-The brand voice changes the skin. The visitor's job chooses the composition.
+Choose type by object and culture, then verify the font is actually loaded. A serif is not automatically premium, mono is not automatically technical, and rounded sans is not automatically friendly.
 
----
+### Color
 
-## Prompt Invariants Are Sacred
+Tie the palette to the page's environment, material, artifact, or supplied brand evidence. Quiet color should be exact; strong color should have a role.
 
-If the prompt supplies a name, that name is the brand. I do not replace it with a smoother, shorter, more familiar, or previously used name.
+### Layout
 
-The first viewport must prove this is the named thing. Logo, headline, artifact, copy, and call to action all belong to the current name, category, user, and job.
+Choose symmetry, asymmetry, strict grid, editorial pacing, image-led composition, or type-led space because it supports the proof and visitor path.
 
-I do not let old examples, earlier outputs, familiar startup tropes, or category clichés rename the product or choose the artifact.
+### Edges and depth
 
----
+Radius, border, and shadow establish physical character. Flat, framed, tactile, layered, and raw are all valid when consistent.
 
-## Landing Pages Need A Specific Proof Object
+### Motion
 
-A landing page is not complete because it has a headline and an abstract product panel.
+Use choreography when it deepens pacing or reveals the proof. Sometimes the strongest voice uses no expressive motion.
 
-I choose one proof object the visitor can inspect. It must come from the actual product world: a domain object, transaction, path, record, environment, comparison, transformation, or workflow that would be recognizable to the intended user.
+### Words
 
-That proof object drives the composition. It is not decoration beside the headline.
+Headlines, CTA labels, navigation, captions, and alt text must sound like the same brand. Avoid claims and phrases that could move unchanged to an unrelated company.
 
----
+## Refuse category reflexes
 
-## Application Bar
+Do not default to dark terminal developer pages, navy serif legal pages, white-and-teal health pages, cream rounded lifestyle pages, or blue-purple software pages without prompt-level justification. Breaking the default in one dimension can be enough when the rest is precise.
 
-`/design voice` applies brand character across the visible surface. It is not a small garnish pass.
+## Verification
 
-At minimum, I verify the first viewport, proof object, headline voice, type choice, color behavior, CTA language, imagery or artifact treatment, and one memorable brand-specific detail.
+Use screenshots to judge first-viewport commitment, proof prominence, composition, and cross-section cohesion. Use source inspection to verify loaded fonts, imagery sources, alt text, tokens, and reduced-motion behavior. Do not claim memory or visitor testing that did not occur.
 
-Adding a tiny logo mark, accent square, decorative pattern, or one hover flourish is not enough.
+## Done when
 
----
-
-## The Register
-
-I use this file for marketing pages, landing pages, campaign pages, portfolios, about pages, product stories, and long-form surfaces where impression is the work.
-
-Brand does not mean one aesthetic. A developer tool, hotel, restaurant, gallery, album page, studio portfolio, and consumer product all live here. They need different lanes.
-
-I name the lane before I design.
-
-- Editorial, cultural, luxury
-- Technical, developer, systems-minded
-- Consumer, lifestyle, tactile
-- Studio, portfolio, experimental
-- Campaign, launch, moment-driven
-
-If I cannot name the lane in one sentence, the surface is not ready.
-
----
-
-## The First 1.5 Seconds
-
-The first viewport must commit.
-
-The user should quickly know the category, feel the voice, and see a reason to continue. Average is not neutral anymore. Average reads generated.
-
-Restraint is allowed only when it is visibly chosen. Timid restraint is absence.
-
----
-
-## Type Carries Voice
-
-I start with physical words, not generic adjectives. Cold, precise, slightly strange. Warm, tactile, hand-stamped. Expensive, slow, cinematic.
-
-Then I pick type that feels like an object from that world. A field guide. A receipt. A gallery label. A club poster. A terminal manual. A bottle label. A children's science kit.
-
-I reject the obvious first pass when it smells like the current AI design pile. A serif is not automatically elegant. Mono is not automatically technical. A rounded sans is not automatically friendly.
-
----
-
-## Color Must Commit
-
-Brand pages can use more color than product surfaces. Statement, conversation, and flood color levels are welcome when the brief earns them.
-
-I name a real reference before choosing a hue. Unnamed ambition turns beige.
-
-If the brand needs voice, I do not hide behind a neutral page with one safe accent. If the brand needs quiet, I make the quiet exact.
-
----
-
-## Composition Has To Make A Choice
-
-The centered stack with three feature cards is the default nobody remembers.
-
-I choose a composition with a point of view:
-
-- Asymmetric when the brand needs energy
-- Strict grid when the brand needs rigor
-- Editorial pacing when the story needs breath
-- Full-bleed image when the subject is physical
-- Type-led minimalism when the words are strong enough
-- Section-by-section art direction when the narrative changes register
-
-I do not split the difference. Half-asymmetric looks broken. Half-editorial looks like a costume.
-
----
-
-## Imagery
-
-If the subject is physical, I ship imagery. Restaurant, hotel, travel, fashion, product, photography, food, craft, hobby, venue, place. No colored rectangle can stand in for the thing itself.
-
-One decisive image beats five filler images. I search for the specific object and situation, not the category. Alt text is part of the brand voice.
-
-Tech and developer brands can be type-led, code-led, or diagram-led. That is a lane, not an excuse to leave the page visually empty.
-
----
-
-## Motion Permission
-
-Brand can choreograph when choreography deepens the mood.
-
-Slow editorial scroll, a single strong reveal, type that arrives with intention, section transitions that feel like pacing. These can work. Scattered motion on every card does not.
-
-Sometimes the most confident brand motion is none.
-
----
-
-## What I Refuse
-
-- Mono everywhere because the brief says engineer
-- Calling tiny decorative touches a brand pass
-- Brand moments that cannot be seen in the rendered page
-- Editorial magazine styling on a brand that is not editorial
-- Rounded-square icons above every heading
-- Hero plus three identical cards as the whole concept
-- A palette that is guessable from the category
-- Zero imagery for a physical subject
-- A font chosen because it appeared in the last generated landing page
-- Motion that exists only to make the page feel less empty
-
----
-
-## How I Know The Brand Surface Works
-
-- Brand character is visible before I explain it
-- The proof object belongs to this product and drives the page
-- The first viewport has a recognizable point of view
-- The lane fits the subject
-- Type, color, image, and layout sound like the same brand
-- The page would be remembered after two seconds
-- It does not look like the median generated landing page
-- The visitor has a reason to scroll
-
-STRICT RULE — NEVER BREAK THIS
-Do not create report.md, any kind of report, summary, analysis file,
-or extra documentation. This applies every time this file is used.
-Generate no reports unless explicitly asked.
+- The brand character is visible before explanation
+- The proof object belongs to this product
+- Type, color, imagery, layout, words, and motion share one premise
+- The first viewport cannot be reassigned to another company by swapping the logo
+- Every changed element remains within the active request's scope

@@ -1,163 +1,73 @@
-# Responsive Design `/design responsive`
+# Responsive
 
-Responsive design is not making a desktop layout smaller. It is preserving the story, task, and controls across different stages, hands, viewports, and environments.
+Responsive design preserves the landing-page story across available space, input modes, and user preferences. Use responsive as a full mode when recomposition is the request; when loaded as support, adapt only the surface touched by the active mode.
 
-Screen size is only one variable. Input mode often matters more.
+## Preserve the story, not the desktop shape
 
----
+At every profile, visitors should still encounter the same category, claim, proof, trust, and primary action. The arrangement may change substantially:
 
-## Discipline files
+- Split heroes can become proof-first or copy-first stacks
+- Wide comparisons can scroll, simplify, or become aligned rows
+- Navigation can condense without hiding the main destination
+- Image-led sections can change crop, order, or aspect ratio
+- Repeated columns can become a prioritized sequence rather than equal cards
 
-Responsive drives the recomposition pass — consult these when each dimension comes up during responsive work, not as separate passes to layer on:
+Choose CSS breakpoints from content pressure. The screenshot tool's mobile, tablet, and desktop profiles are verification views, not the only widths the CSS may support.
 
-- [layout.md](layout.md) — for correct grid, spacing rhythm, and composition logic when adapting breakpoints
-- [interaction.md](interaction.md) — for correct touch target sizing and input mode behavior when adapting controls
-- [button.md](button.md) — for correct full-width and stacked button patterns when adapting narrow viewports
+## Mobile
 
----
+Inspect:
 
-## Composition Changes Across Context
+- Source and visual order
+- Headline wrapping and body measure
+- Touch target size and separation
+- CTA placement and full-width behavior when useful
+- Navigation access without hover
+- Image crop, intrinsic size, and overflow
+- Fixed elements and safe-area insets
+- Forms, labels, keyboards, and validation when present
 
-The work pattern stays. The composition can change.
+Do not remove core content or actions merely because space is tight.
 
-Monitor screens may collapse from a wall of status into priority strips, alerts, and drill-down panels.
+## Tablet
 
-Operate screens may move primary commands near the thumb and hide secondary tools behind stable drawers.
+Tablet often exposes assumptions hidden by phone and desktop. Check awkward two-column widths, navigation wrapping, stretched cards, media crops, comparison density, and hybrid touch/pointer behavior.
 
-Compare screens may switch from wide tables to pinned labels, cards with aligned fields, or focused comparison pairs.
+Use the tablet screenshot when the composition materially changes there rather than as ceremony for every tiny edit.
 
-Configure screens may become grouped sections with sticky save and clear dependency feedback.
+## Desktop and wide screens
 
-Learn screens may lengthen into a readable article path with progress cues.
+Prevent runaway line length, stretched controls, weak image resolution, and lonely content centered in an empty field. Wider space should create stronger composition, not larger gaps without purpose.
 
-Decide screens may reduce to claim, proof, action, and escape.
+## Input modes
 
-Explore screens may shift filters into drawers, maps into lists, and galleries into search-led flows.
+Use media features where useful:
 
-Responsive work preserves the job, not the desktop shape.
+- `pointer: coarse` for touch generosity
+- `hover: hover` for optional hover enhancement
+- `focus-visible` for keyboard orientation
 
----
+Never gate required information or action behind hover. Gestures need visible alternatives.
 
-## Adaptation Bar
+## Preferences and environment
 
-`/design responsive` recomposes the interface across contexts. It is not a max-width tweak.
+Implement `prefers-reduced-motion` when motion exists. Support forced/high-contrast behavior through solid boundaries and non-color cues. Use relative units and layouts that tolerate zoom. Add safe-area handling only where fixed or edge-aligned controls need it.
 
-At minimum, I verify narrow phone, ordinary phone, tablet, small laptop, desktop, and wide desktop behavior when the app can be rendered.
+Dark presentation is a theme decision, not an automatic responsive requirement.
 
-I adapt layout, order, density, navigation, actions, tables, media, forms, type, touch targets, hover dependencies, focus path, safe areas, and environmental preferences where they apply.
+## Tables and product demonstrations
 
-If the same desktop composition merely shrinks, the responsive pass failed.
+If the landing page contains a real comparison or embedded product table, choose one coherent narrow strategy: horizontal scroll with preserved headers, prioritized columns, aligned cards, or stacked labeled values. Do not change strategy row by row.
 
----
+## Verification
 
-## My Starting Bias
+Use mobile and desktop screenshots for full-page work and tablet when its composition differs. Inspect source for media/container queries, source order, focus rules, hover fallbacks, reduced motion, and overflow. Screenshots do not prove keyboard or touch interaction was exercised.
 
-I start from the smallest reasonable canvas and add complexity as space earns it. I do not worship the phrase mobile-first. I care that the base experience is sturdy and that wider contexts get more structure rather than stretched leftovers.
+## Done when
 
-Breakpoints come from content pressure. When the content breaks, the layout changes.
-
----
-
-## Viewports I Respect
-
-I test narrow phones, ordinary phones, tablets, small laptops, standard desktop, and ultrawide screens.
-
-At small widths, I look for overflow, crushed labels, unreachable actions, tiny targets, and broken reading order.
-
-At wide widths, I look for runaway line length, lonely content, stretched controls, and sections that lose composition.
-
----
-
-## Input Modes
-
-I do not equate phone with touch or desktop with mouse.
-
-Touch needs larger targets, no hover-only functionality, visible gesture alternatives, and controls placed where hands can reach.
-
-Mouse and trackpad can use hover, precision controls, drag, resize, and denser affordances.
-
-Keyboard needs logical focus, visible focus, reachable controls, and shortcuts when the product is dense.
-
-Stylus and hybrid devices need both touch generosity and pointer precision.
-
----
-
-## Thumb Reach
-
-On phones, the bottom of the screen is easier to reach than the top. Primary actions belong where hands naturally operate. Destructive or rare actions can sit farther away when intention matters.
-
-This is not a law for every app shell, but it is a pressure I account for.
-
----
-
-## Component Adaptation
-
-Components should adapt to their container when possible.
-
-A card in a sidebar, a card in a main column, and a card in a wide split view should not all use the same composition. Page breakpoints cannot solve every component context cleanly.
-
-I prefer components that respond to available space and keep their meaning.
-
----
-
-## Environmental Preferences
-
-Responsive includes the user's environment.
-
-Dark mode is a real theme. Reduced motion gets an authored alternative. High contrast gets stronger boundaries and no reliance on transparency. Inverted colors and zoom must not destroy meaning.
-
-Safe areas matter. Fixed controls cannot sit under notches, rounded corners, browser chrome, or home indicators.
-
----
-
-## Responsive Type
-
-Product UI keeps predictable type scales. Brand display can be fluid. Body text remains readable, not theatrical.
-
-I do not let a heading scale so aggressively that it breaks zoom, wraps into nonsense, or overwhelms smaller screens.
-
----
-
-## Tables
-
-Tables need a chosen strategy.
-
-Data-heavy tables usually keep horizontal scroll because preserving columns matters. Small comparison tables can become cards. Mixed-importance tables can hide lower-priority columns. Very small screens may need stacked cells.
-
-I do not mix strategies randomly on the same table.
-
----
-
-## What I Refuse
-
-- Core features hidden on mobile
-- Calling a width tweak a responsive pass
-- Desktop composition simply squeezed smaller
-- Hover-only controls
-- Touch targets sized for cursors
-- Separate mobile and desktop code paths with different IA
-- Fixed widths that cause horizontal scroll
-- Ultrawide pages with unreadable line length
-- Safe-area ignorance on fixed bars
-- Device detection when feature detection is the real need
-- Fluid type in dense product UI because it seems modern
-
----
-
-## How I Know Responsive Works
-
-- The rendered UI was checked at multiple viewport classes
-- Composition adapts where the job or content pressure changes
-- The same story survives across viewports
-- Controls fit the input mode
-- Nothing overflows at narrow widths
-- Wide layouts stay composed
-- Keyboard and touch both complete the core task
-- Safe areas protect fixed controls
-- Dark, reduced-motion, high-contrast, and zoom states remain usable
-- Tables keep their data meaning
-
-STRICT RULE — NEVER BREAK THIS
-Do not create report.md, any kind of report, summary, analysis file,
-or extra documentation. This applies every time this file is used.
-Generate no reports unless explicitly asked.
+- Claim, proof, and action remain clear at every inspected profile
+- The layout recomposes where content pressure demands it
+- No unintended horizontal overflow or clipped control remains
+- Touch, pointer, and keyboard semantics are represented in source
+- Wide pages stay composed and readable
+- Reduced-motion and preference rules preserve meaning

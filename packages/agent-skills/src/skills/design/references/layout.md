@@ -1,158 +1,74 @@
 # Layout
 
-I use layout to direct attention. Before color, type, shadow, or motion, I decide where the eye lands, what it understands, and where it goes next.
+Layout directs attention through the landing-page story. Use it as a full mode for structural composition; when loaded as support, apply its principles only where the active mode changes arrangement.
 
-Layout is not filling containers. It is pressure, rhythm, grouping, and sequence.
+## Start with the visitor's job
 
----
+Most landing pages help visitors decide, learn, explore, or compare:
 
-## Composition Comes From Work
+- **Decide:** narrow attention around claim, proof, risk reduction, and one dominant action.
+- **Learn:** create readable progression, examples, and increasing depth.
+- **Explore:** expose meaningful paths, examples, categories, or galleries while preserving orientation.
+- **Compare:** hold criteria and differences in stable alignment.
 
-I name the dominant work pattern before I arrange anything.
+A page can combine these jobs across sections, but each section needs one primary purpose.
 
-Monitor layouts expose priority and change: status bands, live feeds, alert columns, metric clusters.
+## Establish the reading path
 
-Operate layouts keep tools near action: command bars, canvases, inspectors, side panels, direct controls.
+Identify the first, second, and third reads before styling details. The sequence should make sense at thumbnail distance and in source order.
 
-Compare layouts hold alignment steady: tables, matrices, split views, ranked lists, dense rows.
+Place proof near the claim it supports. Put trust before a high-risk ask. Repeat an action only at genuine decision points. Move secondary content out of competition with the primary path.
 
-Configure layouts group choices and consequences: forms, settings clusters, summaries, previews, commit areas.
+## Choose a composition lane
 
-Learn layouts carry attention through time: article flow, walkthrough rhythm, progressive sections.
+- **Symmetric:** singular, formal, calm, or high-confidence moments
+- **Asymmetric:** energy and art direction with a deliberate counterweight
+- **Strict grid:** rigor, comparison, technical authority, or dense proof
+- **Editorial flow:** narrative pacing, image/prose relationships, and cultural voice
+- **Image-led field:** physical subjects and atmospheric proof
+- **Type-led field:** strong language and typographic identity
+- **Modular composition:** distinct proof objects with real hierarchy
 
-Decide layouts remove alternatives: proof, objection handling, risk reduction, one dominant action.
+Do not alternate image and text or repeat equal cards merely because a common landing template does.
 
-Explore layouts make movement cheap: search, filters, maps, galleries, clusters, reversible paths.
+## Control visual weight
 
-A layout that ignores its work pattern is decoration pretending to be structure.
+Size, contrast, saturation, density, isolation, imagery, and position all create weight. Balance them according to priority rather than centering every box. Intentional tension is valid; accidental imbalance is not.
 
----
+Use one dominant focal point per section. Supporting material should frame it, and tertiary material should recede.
 
-## Applied Layout Bar
+## Use spacing as grammar
 
-Layout work must visibly change how the eye moves.
+Define a small spacing scale and apply it consistently:
 
-At minimum, I verify focal point, reading path, grouping, section rhythm, responsive order, and the relationship between content and actions.
+- Tight spacing joins one thought
+- Component spacing separates related parts
+- Section spacing marks a new idea
+- Exceptional optical adjustments need a visible reason
 
-Changing margins, max-widths, or gap values is not enough if the screen still reads the same.
+One repeated gap makes the page monotonous; arbitrary gaps make it incoherent. Containers are optional. Use alignment, measure, and negative space before adding another wrapper.
 
----
+## Cards and frames
 
-## What I See First
+Use cards for genuinely discrete, comparable, or interactive objects. Group ordinary prose and proof with spacing, type, dividers, or shared alignment. Never nest cards to avoid deciding what belongs together.
 
-I look for the dominant mass. If everything has equal weight, nothing has meaning.
+Let imagery have a named role: message, proof, explanation, atmosphere, or detail. Remove decorative media that steals weight from the claim.
 
-I ask:
+## Responsive order
 
-- Where does the eye land first?
-- What is the second read?
-- What can wait?
-- Which groups belong together?
-- Which section needs more air?
-- Which thing is visually heavy but conceptually minor?
+Mobile may recompose, not merely stack. Preserve the same claim, proof, and action while adjusting order, scale, crop, navigation, and density. Source order and focus order must remain meaningful.
 
-Then I move the surface until the answer is obvious.
+Wide layouts need intentional negative space and bounded reading measure rather than stretched content.
 
----
+## Verification
 
-## Rhythm
+Inspect desktop and mobile screenshots, plus tablet when the structure changes there. Run a squint test against the rendered image: the major hierarchy should remain legible without reading details. Inspect HTML for landmark order, source order, media queries, and overflow.
 
-The 1-4-9 rhythm is a strong spatial discipline.
+## Done when
 
-One unit handles micro-breaths. Four units handle ordinary component relationships. Nine units handle section breaks and major shifts. The exact values can translate to the system in front of me, but the rhythm stays intentional.
-
-I avoid random gaps. A strange gap is a bug unless it is doing deliberate optical work.
-
----
-
-## The Three Planes
-
-I think in planes.
-
-**Background plane** holds canvas, atmosphere, decorative imagery, and anything the user cannot directly operate.
-
-**Content plane** holds text, forms, controls, cards, tables, and the core work.
-
-**Attention plane** holds popovers, drawers, modals, command surfaces, tooltips, and urgent feedback.
-
-When the planes fight, users feel it as confusion. I separate them with position, lightness, depth, and motion.
-
----
-
-## Composition Mass
-
-Large things are heavy. Saturated things are heavy. High-contrast things are heavy. Isolated things are heavy. Bottom-right weight often needs a top-left counterweight.
-
-I balance mass rather than centering boxes. Sometimes the right layout is stable. Sometimes it needs tension. The key is that the tension is chosen.
-
----
-
-## Patterns I Use On Purpose
-
-**Centered symmetry** is useful for singular, formal, high-confidence moments. It becomes dull when every section repeats it.
-
-**Asymmetry** creates energy when the counterweight is deliberate. Timid asymmetry looks broken.
-
-**Strict grids** create authority. They work well for technical, editorial, financial, and operational surfaces.
-
-**Z-flow** can guide marketing pages toward a decision, but it becomes formula when every landing page copies it.
-
-**F-flow** belongs to dense reading and scanning surfaces: articles, search results, docs, dashboards.
-
-**Layered sections** work for storytelling, but each layer needs a different role or it becomes stacked wallpaper.
-
-**Modular grids** scale well for catalogs and dashboards. They need featured mass or variation when hierarchy matters.
-
----
-
-## Cards Are Not The Default
-
-Cards are for distinct, comparable, or clickable objects. They are not a universal layout fluid.
-
-I group with spacing, alignment, type, and dividers before I add another box. I never nest cards to solve a hierarchy problem. Nested cards mean I have not decided what belongs together.
-
----
-
-## The Cliffhanger
-
-I avoid dead-perfect section endings on long pages. A hint of the next section keeps the page alive. The user should feel there is more to discover without being trapped by scroll tricks.
-
----
-
-## Container Sense
-
-Components should know the space they live in. A card in a sidebar should not behave like the same card in a wide main column. Container-aware layout is usually cleaner than page-wide breakpoints for reusable components.
-
-Viewport rules still matter for page shell decisions. Component composition belongs closer to the component.
-
----
-
-## What I Refuse
-
-- A centered hero followed by three identical icon cards by reflex
-- Treating layout as spacing tweaks only
-- Equal spacing everywhere
-- Arbitrary stacking order values
-- Decorative wrappers around every group
-- A layout that only works at the designer's viewport
-- Important content placed where the eye only finds it by accident
-- Testimonials, proof, or calls to action dropped in by formula
-- Horizontal overflow treated as a mobile detail
-
----
-
-## How I Know Layout Is Working
-
-- The rendered page reads differently where layout was changed
-- The first three reads survive a squint
-- Every group has the right amount of air
-- The reading path matches the content priority
-- Heavy elements are balanced or intentionally tense
-- Sections feel related without feeling repetitive
-- Mobile order tells the same story as desktop
-- The interface still has structure when imagery is blocked out
-
-STRICT RULE — NEVER BREAK THIS
-Do not create report.md, any kind of report, summary, analysis file,
-or extra documentation. This applies every time this file is used.
-Generate no reports unless explicitly asked.
+- The first three reads match content priority
+- Claim, proof, trust, and action form a deliberate path
+- Sections vary by purpose without feeling like different products
+- Spacing consistently shows relationships
+- Cards and wrappers have real jobs
+- Mobile and desktop preserve the same story

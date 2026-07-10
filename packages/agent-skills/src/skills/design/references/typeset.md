@@ -1,170 +1,69 @@
-# Typography: `/design typeset`
+# Typeset
 
-I use type to make thought visible. Fonts are only one part of it. The real work is rhythm, hierarchy, measure, voice, loading behavior, and the tiny details that make reading feel effortless.
+Typography makes the page understandable, readable, and recognizable. Use typeset as a full mode when the type system is the request; when loaded as support, change only typography affected by the active mode.
 
-Most generic design starts with a default font and a timid scale. I start with the content and the distance from the reader.
+## Start with content and voice
 
----
+Choose type from the page's language, audience, subject, and physical or cultural lane. A museum caption, field manual, event poster, product catalog, receipt, or technical instrument each suggests different proportions and texture.
 
-## Type Follows Composition
+For brand surfaces, the family should carry a project-specific reason. For product demonstrations and dense controls, a well-tuned system or utility family can be the clearest choice.
 
-The work pattern decides how type behaves.
+Verify every named font is loaded or available. A CSS family value that silently falls back is not an implemented type choice.
 
-Monitor screens need labels, deltas, timestamps, thresholds, and compact hierarchy.
+## Build a useful hierarchy
 
-Operate screens need tool names, object names, status text, shortcuts, and fast confirmation.
+Use as many levels as the content needs and no more. Distinguish them through a coordinated mix of:
 
-Compare screens need aligned numbers, durable headers, scannable row text, and steady labels.
+- Size
+- Weight
+- Width or family
+- Line height
+- Letter spacing
+- Color
+- Position and surrounding space
 
-Configure screens need field labels, helper text, validation, section titles, and summary language.
+Each adjacent level should be visibly different. Avoid a timid scale where headline, subhead, and body compete, and avoid dramatic display type that overwhelms the proof or CTA.
 
-Learn screens need long-form rhythm, generous measure, clear headings, and progress markers.
+## Control measure and rhythm
 
-Decide screens need a strong claim, proof hierarchy, objections, and one action label.
+Body copy needs comfortable line length and leading. Short labels can be tighter; explanatory paragraphs need more air. Display text may be wide or compressed when the art direction earns it, but wrapping must remain intentional on mobile.
 
-Explore screens need search language, filters, tags, result titles, and metadata that can be skimmed.
+Tune:
 
-I do not force a marketing type scale onto product work or a product type scale onto brand memory.
+- Headline wrapping and balance
+- Paragraph measure
+- Caption and metadata contrast
+- Button and navigation labels
+- Price, metric, or comparison alignment when present
+- Form labels, hints, errors, and success text when present
 
----
+Use tabular numerals for values that must align. Use all caps sparingly and add tracking only when the family and role support it.
 
-## System Bar
+## Pair with restraint
 
-`/design typeset` creates or repairs a type system. It is not a font-size tweak.
+One expressive family with a useful weight range can carry the whole page. Add a second family only when it creates a real contrast in structure or voice. A third family needs a distinct, visible job; otherwise it is noise.
 
-At minimum, I apply readable body text, a clear heading scale, durable labels, button text, form text, metadata, empty/error/loading copy, line-height, measure, weight contrast, and responsive behavior.
+Do not pair two nearly identical geometric sans families or use decorative display faces for body copy. Preserve supplied brand typography unless change is explicitly in scope.
 
-If I change fonts, I verify the font is actually loaded or available. A font name in a style value does not count if the browser falls back silently.
+## Responsive type
 
-Changing only the hero headline or one paragraph is not enough unless the user explicitly asked for that one element.
+Use fluid display sizing when it improves the landing composition, with sensible minimum and maximum values. Body text must remain comfortably readable. Check long words, localization expansion, narrow screens, and zoom-friendly units.
 
----
+Avoid shrinking text merely to preserve a desktop arrangement. Change the layout or wrap instead.
 
-## What Type Must Do
+## Performance and fallback
 
-Type has three jobs.
+Load only required weights and styles. Use robust fallback stacks and font-display behavior that avoids invisible text and severe layout shift. Do not import several families for one decorative line.
 
-- Make the page understandable at a glance
-- Make the content comfortable to read
-- Give the surface a voice that matches its register
+## Verification
 
-If a type choice does not help one of those jobs, I replace it.
+Use screenshots to judge hierarchy, wraps, measure, density, and voice at relevant profiles. Inspect source for actual font loading, fallback stacks, fluid sizing, and repeated type tokens. Do not claim a font is present without confirming its source or availability.
 
----
+## Done when
 
-## Reading Distance
-
-I do not assume body text is fine because it is a common size. Phone, laptop, monitor, and TV are different reading situations.
-
-Short, close interfaces can run tighter. Large displays and long reading contexts need more size, more line-height, and more controlled measure. Product UI can be dense. Brand display can be loud. Body copy still needs mercy.
-
----
-
-## Content Length Rules The Measure
-
-I match line-height and width to the text itself.
-
-Microcopy wants tight leading and fast recognition. Short-form text wants two clean lines at most. Paragraphs want a comfortable measure, usually around the classic readable band. Long-form wants more air, not more decoration.
-
-If a paragraph sprawls across the viewport, the layout is asking the reader to do the designer's work.
-
----
-
-## Font Choice
-
-For brand work, I use the physical-object method. I name the brand as a thing I can hold or see: a museum caption, a club flyer, a diner receipt, a technical manual, a ceramic stamp, a field notebook. Then I pick type that belongs to that object.
-
-I ask whether the font choice carries any project-specific reason. A font that appears in every second launched product signals nothing — it just means the decision was not made. The brand already owns it, or it was the path of least resistance.
-
-That test applies to whatever family is currently over-used. The answer changes over time; the question does not.
-
-For product work, a strong system stack or one well-tuned sans is often the best choice. Product type should help operators move fast. It does not need a costume.
-
----
-
-## Pairing & Font System
- 
-Add a second family only when it creates real contrast in structure, proportion, texture, or voice.
- 
-**The non-obvious truth:** One well-chosen font in multiple weights (Regular, Medium, Semibold, Bold + Italics) creates cleaner hierarchy than two competing faces. Only add a second font when you need genuine contrast.
- 
-**Bad pairing patterns:**
-- Two similar geometric sans (tension without hierarchy)
-- Fonts that compete for the same visual space
-- A third font with no distinct job
-**The pairing check:**
-- Does the display font differ from body in x-height, stroke contrast, or width?
-- Does each family serve a distinct job (headline vs body vs UI)?
-- Would removing one font break the visual system?
-If any answer is no, use one family with stronger weights instead.
- 
-**Three-font system (when justified):**
-- **Display/Heading:** Bold personality, high contrast (serif, geometric, custom)
-- **Body/Paragraph:** High readability, moderate x-height, comfortable at small sizes (humanist sans, system stack, text serif)
-- **UI/Badge:** Compact, clear at small sizes, tabular numerals (condensed sans, mono, or body with tighter tracking)
-Use three fonts only when each serves a visibly distinct purpose. Most work is better served by two fonts or one strong family.
- 
----
-
-## Hierarchy
-
-Each text block needs a clear chain: hook, bridge, detail. More levels create fog. Fewer levels flatten the message.
-
-Hierarchy can come from size, weight, color, position, spacing, and casing. Size alone is crude. The best systems combine two or three dimensions and keep the rest quiet.
-
-Brand pages can use dramatic jumps. Product surfaces use compressed steps with weight and color doing more of the work.
-
----
-
-## Dark Surfaces
-
-Light type on dark backgrounds needs compensation. It reads thinner in some ways and brighter in others. I give it more line-height, a touch more spacing when needed, and a weight that feels optically correct.
-
-I test it with real content, not a perfect headline.
-
----
-
-## Details I Do Not Skip
-
-- Tabular numbers for data, metrics, prices, and aligned values
-- Balanced heading wraps where support exists
-- Better paragraph wraps where support exists
-- Small caps only when the font actually supports them
-- Extra tracking for short all-caps labels
-- No decorative faces for body text
-- No widows, orphaned single words, or ugly rivers in important prose
-- Font loading that avoids obvious layout shift
-
----
-
-## What I Refuse
-
-- Choosing the first trendy family that fits the category
-- Calling one headline resize a typography pass
-- Naming a font that is not actually loaded or available
-- A flat scale where everything is almost the same size
-- Body text wider than comfortable reading allows
-- All-caps paragraphs
-- Display fonts in product labels
-- A third font with no distinct job
-- Tiny mobile text to preserve a desktop layout
-- Broken fallback metrics that make text jump
-
----
-
-## How I Know The Type Is Working
-
-- Type changes appear across real content, not only the hero
-- The loaded or available font matches the claimed type choice
-- The primary message reads before the decoration
-- Body text can be read without effort
-- The type voice matches the surface register
-- Numbers align cleanly
-- Headings break with intention
-- The system works with long strings and short labels
-- The page would still feel designed if color disappeared
-
-STRICT RULE — NEVER BREAK THIS
-Do not create report.md, any kind of report, summary, analysis file,
-or extra documentation. This applies every time this file is used.
-Generate no reports unless explicitly asked.
+- The primary message reads before decoration
+- Body text is comfortable on mobile and desktop
+- Headings wrap intentionally with realistic content
+- Type hierarchy uses consistent reusable roles
+- Every family has a distinct job and actually loads
+- The page would retain character if color were removed

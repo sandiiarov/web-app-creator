@@ -1,168 +1,65 @@
-# Interaction Design `/design interaction`
+# Interaction
 
-Interaction is behavior under pressure. Hover, focus, press, touch, typing, waiting, failure, recovery. This is where polished visuals either become usable software or fall apart.
+Interaction covers how the landing page responds to pointers, touch, keyboard, waiting, success, and failure. Use it as a full mode when behavior is the request; when loaded as support, implement only interactions touched by the active mode.
 
-Motion shows behavior. This file decides what the behavior is.
+## Start with what actually exists
 
----
+Landing-page interactions commonly include:
 
-## Discipline files
+- Navigation and anchor links
+- Primary and secondary CTAs
+- Menus and mobile navigation
+- Forms and validation
+- Accordions, tabs, carousels, or disclosures
+- Pricing toggles or comparison controls
+- Embedded product demonstrations
+- Media controls
 
-Interaction drives the behavior pass — consult these when each dimension comes up during interaction work, not as separate passes to layer on:
+Do not invent application states or controls to satisfy a checklist. For every real control, account for the states it can enter.
 
-- [button.md](button.md) — for correct button states and the full control system when auditing interactive elements
-- [motion.md](motion.md) — for correct transition timing and easing when specifying state-change animation
+## Affordance and response
 
----
+Visitors should know what is actionable before interacting. Use label, shape, position, cursor, underline, iconography, and contrast consistently.
 
-## Interaction Follows Composition
+Pointer hover can enhance but never carry required meaning. Active/pressed feedback should confirm contact without excessive movement. Disabled styling belongs only to controls that can genuinely become unavailable, with nearby context when the reason is not obvious.
 
-The work pattern decides where controls live and how feedback returns.
+## Focus and keyboard semantics
 
-Monitor screens prioritize filters, alert acknowledgement, drill-down, and live refresh.
+Use native interactive elements whenever possible. Keep focus visible, consistent, and unclipped. Source order should follow the visual and conceptual path.
 
-Operate screens prioritize command bars, shortcuts, direct manipulation, undo, and fast feedback.
+Menus, dialogs, tabs, and disclosures require the keyboard semantics appropriate to their pattern. Escape and focus return matter for temporary surfaces. If available tools cannot exercise the path, verify implementation in source and describe it honestly.
 
-Compare screens prioritize sort, filter, selection, pinned context, and preserved scroll position.
+## Touch
 
-Configure screens prioritize dependencies, validation, preview, save state, and reversible commits.
-
-Learn screens prioritize progress, reveal, completion, and graceful exit.
-
-Decide screens prioritize one primary path, visible reassurance, and clear escape.
-
-Explore screens prioritize search, filter, browse, reset, and backtracking.
-
-Controls do not float around the page because they look balanced. They sit where the work needs them.
-
----
-
-## Behavior Bar
-
-`/design interaction` adds missing behavior. It is not hover polish.
-
-At minimum, I inspect and repair hover, active, focus-visible, keyboard path, touch targets, disabled, loading, empty, error, success, overflow, destructive recovery, and overlay behavior where those states apply.
-
-If an interaction cannot be triggered in the current UI, I either wire a visible trigger or say the state is implemented but not currently reachable.
-
----
-
-## Every Control Has A Life
-
-I design controls beyond the resting state.
-
-- Idle tells the user what exists
-- Hover invites pointer users
-- Focus guides keyboard users
-- Active confirms touch or press
-- Disabled explains unavailable action
-- Loading keeps the system accountable
-- Selected marks current context
-- Error explains a problem
-- Success confirms completion
-- Empty teaches what belongs here
-- Overflow keeps real content from breaking the surface
-
-If a component can enter a state, I account for it.
-
----
-
-## Focus Is Architecture
-
-Focus rings are not decoration. They are the map for keyboard users.
-
-I make focus visible, consistent, and confident. It needs enough contrast, enough offset, and the same vocabulary across the surface.
-
-I never remove focus without a replacement. I never make focus so subtle that only the designer can find it.
-
----
-
-## Touch Is Physical
-
-The visual icon can be small. The hit area cannot.
-
-On touch devices, controls need enough room for fingers, not cursors. Adjacent links need breathing room. Swipe gestures need visible alternatives. Pinch-to-zoom stays available for readable text.
-
-If a feature only exists on hover, it does not exist for touch users.
-
----
-
-## Keyboard Path
-
-A complete keyboard path is a product feature.
-
-Tab order follows the visual and conceptual flow. Enter and Space activate. Arrow keys move within grouped widgets. Escape closes temporary surfaces. Focus returns to the trigger after overlays close.
-
-I test the primary task without a mouse. If I get stuck, the design is broken.
-
----
+Targets need enough physical area and separation. Small visual icons can use larger hit areas. Do not rely on hover, precise dragging, or gesture-only control. Place repeated or primary actions where they remain reachable without obscuring content.
 
 ## Forms
 
-Forms are where users quit, so I make them calm.
+Keep labels visible. Preserve entered values on validation failure. Put errors near the field and explain recovery. Match validation timing to the issue: required checks on submit, formatting after interaction, and remote checks after a short pause when they truly exist.
 
-Labels stay visible. Placeholders show examples, not identity. Required fields are clear. Errors appear near the field and preserve input. Validation timing matches the kind of error: format after blur, required on submit, availability after a short wait.
+A form needs clear pending, success, and failure resolution only when submission behavior is implemented. Static decorative fields are misleading and should not be presented as working controls.
 
-Every error answers what happened and how to recover. Blame is forbidden.
+## Menus and overlays
 
----
+Use interruption sparingly. Keep temporary surfaces inside the viewport, above clipping ancestors, and dismissible. Long content usually deserves an inline section or destination rather than a modal.
 
-## Overlays
+## Waiting and recovery
 
-Modals are for decisions that need interruption. They are not default containers.
+Give immediate acknowledgement when an operation actually waits. Preserve user work on failure. Offer retry only when retry can succeed. Prefer reversible actions over confirmation when the action is recoverable.
 
-Long forms get pages. Information gets inline disclosure. Success gets a toast or inline confirmation. Destructive, legal, financial, or irreversible moments can earn a dialog.
+## Motion relationship
 
-Temporary surfaces escape clipping, stack correctly, close predictably, and keep focus sane.
+Motion can reveal origin, state, selection, progress, or completion. It must have a reduced-motion equivalent and remain subordinate to behavior. A hover animation without focus treatment is incomplete.
 
----
+## Verification
 
-## Undo Beats Confirm
+Use screenshots to judge visible resting states and source inspection for hover, focus, active, pending, error, success, and reduced-motion implementation. Do not claim clicks, keyboard traversal, form submission, or recovery was exercised without an interaction tool.
 
-When an action is recoverable, I prefer undo. Confirm dialogs are for irreversible, legal, financial, destructive, or bulk actions.
+## Done when
 
-A good destructive flow names the object, states the consequence, and gives the safe escape equal dignity.
-
----
-
-## Loading And Failure
-
-The interface must respond quickly, even when the system cannot finish quickly.
-
-Blank waiting is not acceptable. A loading state appears soon. Long waits get progress or expectation. Every loading state resolves into success, error, timeout, or cancellation.
-
-Failure keeps the user's work. Recovery is visible. Retry is available when retry makes sense.
-
----
-
-## What I Refuse
-
-- Hover with no focus equivalent
-- Calling hover tweaks an interaction pass
-- Unreachable states described as finished
-- Placeholder-only labels
-- Disabled controls with no explanation when context matters
-- Spinners replacing whole layouts without shape
-- Dropdowns clipped by parent containers
-- Menus that cannot be used with keyboard
-- Modals that trap nothing
-- Errors that say only "Error" or "Invalid"
-- Gesture-only actions with no visible fallback
-
----
-
-## How I Know Interaction Works
-
-- Every claimed interaction can be triggered or is honestly marked unreachable
-- The core task works by mouse, touch, and keyboard
-- Focus is always visible and logical
-- Loading, empty, error, success, and overflow states are handled
-- Destructive paths are reversible or clearly confirmed
-- Overlays close and return focus correctly
-- Form errors help without punishing
-- The interface feels responsive even during waits
-
-STRICT RULE — NEVER BREAK THIS
-Do not create report.md, any kind of report, summary, analysis file,
-or extra documentation. This applies every time this file is used.
-Generate no reports unless explicitly asked.
+- Every real control has clear affordance and appropriate source-defined states
+- Focus is visible and logical
+- Touch targets and hover fallbacks are present
+- Forms preserve input and explain recovery when forms exist
+- Menus and disclosures use appropriate semantics
+- Verification claims distinguish rendered evidence from source inspection
