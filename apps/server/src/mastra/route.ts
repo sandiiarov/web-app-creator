@@ -29,6 +29,7 @@ import {
   updateProjectModel,
   type AgentMessageEntry,
   type ClientMessageEntry,
+  type Project,
   type ProjectMessageAttachment,
   type ProjectMessageStatsPart,
   type ProjectMessageToolCallPart,
@@ -110,6 +111,19 @@ interface StreamOptions {
   visionModel?: string
 }
 
+interface ActiveStreamOptions {
+  attachments: AgentAttachmentInput[]
+  controller: AbortController
+  imageModel: string
+  project: Project
+  projectId: string
+  prompt: string
+  request: IncomingMessage
+  response: ServerResponse
+  textModel: string
+  visionModel: string
+}
+
 type ToolArgs = Record<string, unknown>
 
 interface ToolCallDisplay {
@@ -176,6 +190,58 @@ export async function streamLandingAgent({
     return
   }
 
+  const controller = new AbortController()
+  if (activeRuns.has(projectId)) {
+    startSse(response)
+    sendSse(response, 'error', {
+      message: 'A run is already active for this project.',
+    })
+    sendSse(response, 'done', {})
+    endSse(response)
+    return
+  }
+  activeRuns.set(projectId, controller)
+
+  const onClose = () => controller.abort()
+  request.on('close', onClose)
+  startSse(response)
+
+  try {
+    await streamActiveLandingAgent({
+      attachments,
+      controller,
+      imageModel,
+      project,
+      projectId,
+      prompt,
+      request,
+      response,
+      textModel,
+      visionModel,
+    })
+  } finally {
+    if (activeRuns.get(projectId) === controller) activeRuns.delete(projectId)
+    request.off('close', onClose)
+    try {
+      await flushProjectLogs(projectId)
+    } finally {
+      endSse(response)
+    }
+  }
+}
+
+async function streamActiveLandingAgent({
+  attachments,
+  controller,
+  imageModel,
+  project,
+  projectId,
+  prompt,
+  request,
+  response,
+  textModel,
+  visionModel,
+}: ActiveStreamOptions) {
   await updateProjectModel(projectId, { textModel })
   setTitleIfUntitled(projectId, prompt)
 
@@ -236,13 +302,6 @@ export async function streamLandingAgent({
     },
     { imageModel, projectId, turnId: recordedTurn.id, visionModel },
   )
-  const controller = new AbortController()
-  activeRuns.set(projectId, controller)
-
-  const onClose = () => controller.abort()
-  request.on('close', onClose)
-
-  startSse(response)
 
   // Record the inbound prompt (client→server) as the first client-messages line.
   void appendClientMessage(projectId, {
@@ -758,19 +817,7 @@ export async function streamLandingAgent({
         }
       }
     } finally {
-      if (activeRuns.get(projectId) === controller) activeRuns.delete(projectId)
-      request.off('close', onClose)
-      try {
-        emit('done', {})
-      } finally {
-        // Flush any still-pending debug-log appends so they're durable before
-        // the response closes (and before callers/tests clean up the project dir).
-        try {
-          await flushProjectLogs(projectId)
-        } finally {
-          endSse(response)
-        }
-      }
+      emit('done', {})
     }
   }
 }

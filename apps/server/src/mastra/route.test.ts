@@ -1975,6 +1975,75 @@ describe('streamLandingAgent stream errors + cleanup', () => {
     expect(request.listenerCount('close')).toBe(0)
   })
 
+  it('rejects a concurrent active run without replacing the first owner', async () => {
+    vi.stubEnv('OPENROUTER_API_KEY', 'test-openrouter-key')
+    let resolveHang!: () => void
+    const hang = new Promise<void>((resolve) => {
+      resolveHang = resolve
+    })
+    async function* hangingStream() {
+      yield { payload: { text: 'working' }, type: 'text-delta' }
+      await hang
+    }
+    const stream = vi.fn<() => Promise<ReturnType<typeof fakeAgentStream>>>(
+      async () => fakeAgentStream(hangingStream()),
+    )
+    const createLandingPageAgent = vi.fn(() => ({ stream }))
+    vi.doMock('./index.ts', () => ({ mastra: {} }))
+    vi.doMock('./agents/landing-page-agent.ts', () => ({
+      createLandingPageAgent,
+    }))
+
+    const { createProject, getProject, readClientMessages } =
+      await import('./lib/project-store.ts')
+    const project = await createProject()
+    createdProjectIds.push(project.id)
+    const { stopLandingAgent, streamLandingAgent } = await import('./route.ts')
+    const firstRequest = fakeRequest()
+    const firstResponse = new FakeResponse()
+    const firstRun = streamLandingAgent({
+      projectId: project.id,
+      prompt: 'First run.',
+      request: firstRequest,
+      response: firstResponse as unknown as ServerResponse,
+      textModel: 'z-ai/glm-5.2',
+    })
+    await vi.waitFor(() => expect(stream).toHaveBeenCalledOnce())
+
+    const secondResponse = new FakeResponse()
+    await streamLandingAgent({
+      projectId: project.id,
+      prompt: 'Second run.',
+      request: fakeRequest(),
+      response: secondResponse as unknown as ServerResponse,
+      textModel: 'openai/gpt-5.4',
+    })
+
+    expect(parseSseEvents(secondResponse.body)).toEqual([
+      {
+        data: { message: 'A run is already active for this project.' },
+        event: 'error',
+      },
+      { data: {}, event: 'done' },
+    ])
+    expect(createLandingPageAgent).toHaveBeenCalledOnce()
+    expect(stream).toHaveBeenCalledOnce()
+    expect(
+      (await readClientMessages(project.id)).filter(
+        (entry) => entry.dir === 'in' && entry.type === 'prompt',
+      ),
+    ).toHaveLength(1)
+    await expect(getProject(project.id)).resolves.toMatchObject({
+      model: 'z-ai/glm-5.2',
+    })
+
+    expect(stopLandingAgent(project.id)).toBe(true)
+    resolveHang()
+    await firstRun
+    expect(stopLandingAgent(project.id)).toBe(false)
+    expect(firstRequest.listenerCount('close')).toBe(0)
+  })
+
   it('persists terminal events and cleans up when socket writes throw', async () => {
     vi.stubEnv('OPENROUTER_API_KEY', 'test-openrouter-key')
     vi.doMock('./index.ts', () => ({ mastra: {} }))
