@@ -2,38 +2,46 @@
 
 ## Purpose
 
-- Workspace package (`@workspace/agent-skills`) holding Mastra agent skills as on-disk markdown, loaded (not inlined) and exported as Mastra inline skills.
+- Workspace package (`@workspace/agent-skills`) holding Mastra agent skills as on-disk markdown and exporting them as inline skills.
 
 ## Ownership
 
 - `src/index.ts`: package entry; re-exports each skill bundle.
-- `src/skills/design/`: the `design` skill — a landing-page fork derived from the pi design skill.
-  - `SKILL.md`: skill source (YAML frontmatter `name`/`description` + markdown body used as instructions). Scoped to landing pages; the only writable surface is the project HTML via `read`/`find`/`edit`.
-  - `references/*.md`: 21 reference files. `skill_read` serves them in-memory keyed by filename. Diverges from pi: no file/report/CLI machinery — `setup.md`, `report-html.md`, `design-html.md`, `surface.md` were dropped; `checkup`/`review`/`smell`/`deslop` run in memory (no report files); each file's own "do not create reports" rule is intact.
-  - `skill.ts`: loads `SKILL.md` + `references/*.md` from disk via `import.meta.url`, parses the frontmatter, and builds the Mastra `InlineSkill` via `createSkill`.
-  - `skill.test.ts`: guards that the loaded skill matches the files on disk.
-- `package.json`, `tsconfig.json`, `oxfmt.config.ts`, `oxlint.config.ts`, `vitest.config.ts`: mirror the `conversation` package conventions (source-consumed, no build/dist).
+- `src/skills/design/`: landing-page `design` skill forked from the pi design skill.
+  - `SKILL.md`: concise control plane. Owns single-document scope, instruction precedence, exact mode manifests, the pre-mutation reference gate, broad versus narrow behavior, achievable verification, and truthful completion.
+  - `references/*.md`: 21 in-memory references split into 10 operation modes (`checkup`, `create`, `deslop`, `finish`, `redesign`, `refine`, `relayout`, `review`, `smell`, `tokenize`) and 11 design foundations (`voice`, `layout`, `color`, `typeset`, `writing`, `responsive`, `interaction`, `button`, `border`, `shadow`, `motion`).
+  - `skill.ts`: reads `SKILL.md` plus every `references/*.md` from disk via `import.meta.url`, parses frontmatter, and builds the Mastra `InlineSkill` through `createSkill`.
+  - `skill.test.ts`: guards metadata, bounded control-plane size, mutation/reference routing, exact reference inventory and paths, stale-workflow exclusions, and byte parity with disk.
+- `package.json`, `tsconfig.json`, `oxfmt.config.ts`, `oxlint.config.ts`, `vitest.config.ts`: package scripts/config following workspace conventions.
 
 ## Local Contracts
 
-- Skills are stored as markdown on disk and read at module load; never inline skill/reference content as TypeScript strings.
-- The package is source-consumed via `exports: { ".": "./src/index.ts" }` (like `conversation`); Node 22.19 type-strips it in place at runtime, so `import.meta.url` always resolves to the package source and the `.md` files are always reachable. No `dist` asset-copy step.
-- Public surface: `import { design } from '@workspace/agent-skills'` — `design` IS the Mastra `InlineSkill` (the `createSkill(...)` result). Attach directly to an Agent via `skills: [design]`. Reference contents live on `design.__referenceContents` (keyed by filename); `design.references` is the filename array.
-- Reference keys are bare filenames (e.g. `color.md`), matching the Mastra `skill_read` path convention and the `references/<file>` links in `SKILL.md`.
-- The `design` skill is landing-page-scoped and anchors the agent to the single project HTML document (`read`/`find`/`edit`, no files/reports). It complements — does not duplicate — the consumer's own instructions and tool guidance (hashline DSL, incremental build, "no markdown mockups" live in `LANDING_AGENT_INSTRUCTIONS` + tool guidance).
+- Skill content lives in markdown on disk; never inline instructions or references as TypeScript strings.
+- The package is source-consumed through `exports: { ".": "./src/index.ts" }`. Node type-strips source at runtime, so markdown remains available without a `dist` asset-copy step.
+- Public surface: `import { design } from '@workspace/agent-skills'`. `design` is the Mastra `InlineSkill` and attaches directly through `skills: [design]`.
+- Inline reference-content keys are bare filenames (for example `color.md`), while agent `skill_read` calls use root-relative paths (for example `references/color.md`).
+- `SKILL.md` is the only dependency manifest. References must not claim automatic loading or duplicate required-read lists.
+- Before the first project `edit` or `generate_image`, the active manifest's references must be read completely through `skill_read`. Full page creation/redesign use the broad 13-reference bundle; focused requests use their smaller declared routes.
+- Reading a supporting foundation informs the active operation; it does not activate a page-wide foundation mode or broaden explicit user scope.
+- The only writable design surface is the single project HTML document. The skill creates no reports, briefs, mockups, alternate HTML files, or design documentation. Diagnostic findings stay in the answer; treatment applies through project edits.
+- Verification is limited to source inspection and the consumer's named mobile/tablet/desktop screenshot profiles. The skill must not claim unavailable interaction, assistive-technology, simulation, profiling, exact-width, or prolonged-usage checks.
+- The skill complements rather than duplicates consumer instructions/tool guidance. Hashline DSL, incremental edit mechanics, tool schemas, and UI transcript behavior remain owned by `LANDING_AGENT_INSTRUCTIONS` and landing tools.
 
 ## Work Guidance
 
-- The design skill is a fork of pi specialized for the landing-page agent (landing-scoped, no file/report/CLI machinery) — it intentionally diverges from the pi source. Edit the markdown in place; do not re-copy verbatim or you'll reintroduce file-creation and non-landing content.
-- Keep `skill.ts` a thin loader; skill content lives in markdown.
-- Follow the repo's `catalog:` dependency convention (`@mastra/core`) and shared config packages.
+- Maintain this as a landing-page fork; do not re-copy the pi source or reintroduce app-wide/file/report/CLI machinery.
+- Keep `skill.ts` a thin loader and keep routing behavior in `SKILL.md`.
+- Keep the control plane concise. Detailed design methodology belongs in one owning reference, not repeated across the root and many references.
+- When adding or removing a reference, update the root manifest, expected inventory, route contract tests, and this DOX together.
+- Keep operation references focused on workflow and foundation references focused on one design dimension. Supporting references never determine mutation breadth.
 
 ## Verification
 
-- `pnpm --filter @workspace/agent-skills typecheck`
-- `pnpm --filter @workspace/agent-skills lint`
 - `pnpm --filter @workspace/agent-skills format:check`
+- `pnpm --filter @workspace/agent-skills lint`
+- `pnpm --filter @workspace/agent-skills typecheck`
 - `pnpm --filter @workspace/agent-skills test`
+- `git diff --check -- packages/agent-skills packages/AGENTS.md`
 
 ## Child DOX Index
 

@@ -10,7 +10,7 @@
 - `prompt-panel/`: landing-page prompt panel UI + conversation domain model, source-consumed by the client.
 - `conversation/`: canonical conversation model + the shared event→turn reducer (`applyEventToTurn`/`replayClientEvents`/`terminalizeTools`) consumed by both the server (hydration) and the client (live SSE stream); terminal outcomes include durable stopped state separate from errors.
 - `landing-preview/`: shared landing-page preview iframe runtime, DOM morphing, and browser screenshot capture, source-consumed by the client. The iframe carries `key={reloadKey}` and `reloadPreview()` bumps that key — do NOT remove it: browsers don't re-load an `<iframe srcDoc>` when React updates the attribute after an empty initial mount, so without the remount the preview renders blank on project open and on the first live `html_update`.
-- `agent-skills/`: Mastra agent skills stored as on-disk markdown and exported as Mastra inline skills (currently the verbatim pi `design` skill, loaded from disk, not inlined).
+- `agent-skills/`: Mastra agent skills stored as on-disk markdown and exported as inline skills; its landing-page `design` fork uses a concise control plane plus in-memory mode/foundation references.
 - `typescript-config/`: shared strict TypeScript 7 (tsc) configs.
 - `vite-config/`: shared Vite React config factory.
 - `vitest-preset/`: shared Vitest config factory.
@@ -40,4 +40,4 @@
 - `ui/AGENTS.md` — shared shadcn/Tailwind component system and globals.
 - `prompt-panel/AGENTS.md` — extracted prompt panel UI + landing conversation domain model.
 - `landing-preview/AGENTS.md` — extracted landing-page preview iframe runtime and screenshot capture.
-- `agent-skills/AGENTS.md` — Mastra agent skills package; verbatim pi `design` skill loaded from disk.
+- `agent-skills/AGENTS.md` — Mastra agent skills package and landing-page `design` skill contracts.
