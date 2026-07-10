@@ -36,7 +36,7 @@ import {
   type ProjectRawMessage,
 } from './lib/project-store.ts'
 import { createLandingAgentErrorProcessors } from './lib/retry.ts'
-import { sendSse, startSse } from './lib/sse.ts'
+import { endSse, sendSse, startSse } from './lib/sse.ts'
 
 const ATTACHMENT_OCR_PROMPT =
   'Analyze the attached image for landing-page generation. Extract all visible text exactly, then describe layout, hierarchy, colors, typography, UI components, imagery, brand cues, and any details the landing-page agent should use. If the image is a screenshot or mockup, call out sections, navigation, CTAs, spacing, and visual style.'
@@ -172,7 +172,7 @@ export async function streamLandingAgent({
     startSse(response, 404)
     sendSse(response, 'error', { message: 'Project not found' })
     sendSse(response, 'done', {})
-    response.end()
+    endSse(response)
     return
   }
 
@@ -190,13 +190,13 @@ export async function streamLandingAgent({
   // client-visible data at any moment is inspectable mid-run. `appendClientMessage`
   // serializes appends per file, so fire-and-forget is safe and order-preserving.
   const emit = (event: string, payload: unknown) => {
-    sendSse(response, event, payload)
     void appendClientMessage(projectId, {
       dir: 'out',
       event,
       payload,
       ts: new Date().toISOString(),
     } satisfies ClientMessageEntry)
+    sendSse(response, event, payload)
   }
   const startedAt = Date.now()
   const store = createProjectHtmlStore(projectId)
@@ -648,120 +648,130 @@ export async function streamLandingAgent({
           : 'Unknown error'
     }
   } finally {
-    // Cost/stats accounting runs here (not in the try body) so it executes
-    // even when the stream loop THREW (graceful stop / mid-stream error), not
-    // only on the clean/break path. `stream.usage`/`finishReason` may reject
-    // on an aborted stream; fall back so accounting (image/scrape/vision cost
-    // accumulated during the run, plus provider-reported LLM cost) records.
-    // A stream setup failure still emits zero-token stats plus any costs that
-    // were already accumulated before `agent.stream` rejected.
-    let usage: {
-      cachedInputTokens?: number
-      inputTokens?: number
-      outputTokens?: number
-      raw?: unknown
-      reasoningTokens?: number
-      totalTokens?: number
-    } = {}
-    let finishReason = 'stop'
-    if (streamError && !controller.signal.aborted) finishReason = 'error'
-    if (stream) {
-      try {
-        usage = await stream.usage
-        finishReason = (await stream.finishReason) ?? finishReason
-      } catch {
-        // Retain the stop/error fallback while preserving costs accumulated by
-        // image, scrape, vision, or raw provider chunks before termination.
+    try {
+      // Cost/stats accounting runs here (not in the try body) so it executes
+      // even when the stream loop THREW (graceful stop / mid-stream error), not
+      // only on the clean/break path. `stream.usage`/`finishReason` may reject
+      // on an aborted stream; fall back so accounting (image/scrape/vision cost
+      // accumulated during the run, plus provider-reported LLM cost) records.
+      // A stream setup failure still emits zero-token stats plus any costs that
+      // were already accumulated before `agent.stream` rejected.
+      let usage: {
+        cachedInputTokens?: number
+        inputTokens?: number
+        outputTokens?: number
+        raw?: unknown
+        reasoningTokens?: number
+        totalTokens?: number
+      } = {}
+      let finishReason = 'stop'
+      if (streamError && !controller.signal.aborted) finishReason = 'error'
+      if (stream) {
+        try {
+          usage = await stream.usage
+          finishReason = (await stream.finishReason) ?? finishReason
+        } catch {
+          // Retain the stop/error fallback while preserving costs accumulated by
+          // image, scrape, vision, or raw provider chunks before termination.
+        }
       }
-    }
-    const llmCost = calculateLlmCost(textModel, {
-      cachedInputTokens: usage.cachedInputTokens,
-      inputTokens: usage.inputTokens,
-      outputTokens: usage.outputTokens,
-      raw: llmProviderCostUsd > 0 ? llmProviderCostUsd : usage.raw,
-      reasoningTokens: usage.reasoningTokens,
-      totalTokens: usage.totalTokens,
-    })
-    const firecrawlCostUsd = firecrawlCost(
-      scrapeCredits,
-      config.firecrawl.creditUsd,
-    )
-    const scrapeCostUsd = firecrawlCostUsd + scrapeOcrCostUsd
-    const totalCost = llmCost + scrapeCostUsd + imageCostUsd + visionCostUsd
-
-    const statsPayload: RecordedStatsPayload = {
-      cost: totalCost,
-      costBreakdown: {
-        image: {
-          cost: imageCostUsd,
-          count: imageCount,
-        },
-        llm: llmCost,
-        scrape: {
-          calls: scrapeCalls,
-          cost: scrapeCostUsd,
-          credits: scrapeCredits,
-          firecrawlCost: firecrawlCostUsd,
-          ocrCalls: scrapeOcrCalls,
-          ocrCost: scrapeOcrCostUsd,
-          ocrImages: scrapeOcrImages,
-        },
-        total: totalCost,
-        vision: {
-          calls: visionCalls,
-          cost: visionCostUsd,
-          images: visionImages,
-        },
-      },
-      durationMs: Date.now() - startedAt,
-      finishReason,
-      model: textModel,
-      usage: {
+      const llmCost = calculateLlmCost(textModel, {
         cachedInputTokens: usage.cachedInputTokens,
         inputTokens: usage.inputTokens,
         outputTokens: usage.outputTokens,
+        raw: llmProviderCostUsd > 0 ? llmProviderCostUsd : usage.raw,
         reasoningTokens: usage.reasoningTokens,
         totalTokens: usage.totalTokens,
-      },
-    }
-    emit('stats', statsPayload)
-
-    // Final agent-message snapshot at run end (the last per-step snapshot via
-    // onStepFinish may not fire for every stream shape, so this guarantees the
-    // turn's Mastra messages are captured for replay). `dir: 'step'` with the
-    // next step number; replay takes the last snapshot per turn.
-    const finalAgentMessages = stream?.messageList?.get?.response?.db?.()
-    if (finalAgentMessages && finalAgentMessages.length > 0) {
-      agentStep += 1
-      void appendAgentMessages(projectId, {
-        dir: 'step',
-        messages: stripReasoning(finalAgentMessages) as ProjectRawMessage[],
-        step: agentStep,
-        ts: new Date().toISOString(),
-        turnId: recordedTurn.id,
       })
-    }
+      const firecrawlCostUsd = firecrawlCost(
+        scrapeCredits,
+        config.firecrawl.creditUsd,
+      )
+      const scrapeCostUsd = firecrawlCostUsd + scrapeOcrCostUsd
+      const totalCost = llmCost + scrapeCostUsd + imageCostUsd + visionCostUsd
 
-    // Terminal error: any controller-aborted non-fatal run is `stopped`, even
-    // when Mastra ends its iterator cleanly instead of throwing. This keeps a
-    // user stop from falling through to the unrelated empty-draft error. A
-    // fatal run error was already emitted during the loop.
-    if (!fatalRunError) {
-      const terminalError = controller.signal.aborted ? 'stopped' : streamError
-      if (terminalError) {
-        emit('error', { message: terminalError })
-      } else if (!project.hasHtml && htmlUpdateSequence === 0) {
-        emit('error', { message: NO_GENERATED_HTML_MESSAGE })
+      const statsPayload: RecordedStatsPayload = {
+        cost: totalCost,
+        costBreakdown: {
+          image: {
+            cost: imageCostUsd,
+            count: imageCount,
+          },
+          llm: llmCost,
+          scrape: {
+            calls: scrapeCalls,
+            cost: scrapeCostUsd,
+            credits: scrapeCredits,
+            firecrawlCost: firecrawlCostUsd,
+            ocrCalls: scrapeOcrCalls,
+            ocrCost: scrapeOcrCostUsd,
+            ocrImages: scrapeOcrImages,
+          },
+          total: totalCost,
+          vision: {
+            calls: visionCalls,
+            cost: visionCostUsd,
+            images: visionImages,
+          },
+        },
+        durationMs: Date.now() - startedAt,
+        finishReason,
+        model: textModel,
+        usage: {
+          cachedInputTokens: usage.cachedInputTokens,
+          inputTokens: usage.inputTokens,
+          outputTokens: usage.outputTokens,
+          reasoningTokens: usage.reasoningTokens,
+          totalTokens: usage.totalTokens,
+        },
+      }
+      emit('stats', statsPayload)
+
+      // Final agent-message snapshot at run end (the last per-step snapshot via
+      // onStepFinish may not fire for every stream shape, so this guarantees the
+      // turn's Mastra messages are captured for replay). `dir: 'step'` with the
+      // next step number; replay takes the last snapshot per turn.
+      const finalAgentMessages = stream?.messageList?.get?.response?.db?.()
+      if (finalAgentMessages && finalAgentMessages.length > 0) {
+        agentStep += 1
+        void appendAgentMessages(projectId, {
+          dir: 'step',
+          messages: stripReasoning(finalAgentMessages) as ProjectRawMessage[],
+          step: agentStep,
+          ts: new Date().toISOString(),
+          turnId: recordedTurn.id,
+        })
+      }
+
+      // Terminal error: any controller-aborted non-fatal run is `stopped`, even
+      // when Mastra ends its iterator cleanly instead of throwing. This keeps a
+      // user stop from falling through to the unrelated empty-draft error. A
+      // fatal run error was already emitted during the loop.
+      if (!fatalRunError) {
+        const terminalError = controller.signal.aborted
+          ? 'stopped'
+          : streamError
+        if (terminalError) {
+          emit('error', { message: terminalError })
+        } else if (!project.hasHtml && htmlUpdateSequence === 0) {
+          emit('error', { message: NO_GENERATED_HTML_MESSAGE })
+        }
+      }
+    } finally {
+      if (activeRuns.get(projectId) === controller) activeRuns.delete(projectId)
+      request.off('close', onClose)
+      try {
+        emit('done', {})
+      } finally {
+        // Flush any still-pending debug-log appends so they're durable before
+        // the response closes (and before callers/tests clean up the project dir).
+        try {
+          await flushProjectLogs(projectId)
+        } finally {
+          endSse(response)
+        }
       }
     }
-
-    if (activeRuns.get(projectId) === controller) activeRuns.delete(projectId)
-    request.off('close', onClose)
-    emit('done', {})
-    // Flush any still-pending debug-log appends so they're durable before the
-    // response closes (and before callers/tests clean up the project dir).
-    await flushProjectLogs(projectId)
-    response.end()
   }
 }
 

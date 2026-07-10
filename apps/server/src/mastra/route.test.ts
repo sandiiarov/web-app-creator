@@ -1975,6 +1975,40 @@ describe('streamLandingAgent stream errors + cleanup', () => {
     expect(request.listenerCount('close')).toBe(0)
   })
 
+  it('persists terminal events and cleans up when socket writes throw', async () => {
+    vi.stubEnv('OPENROUTER_API_KEY', 'test-openrouter-key')
+    vi.doMock('./index.ts', () => ({ mastra: {} }))
+    vi.doMock('./agents/landing-page-agent.ts', () => ({
+      createLandingPageAgent: () => ({
+        stream: async () => fakeAgentStream(),
+      }),
+    }))
+
+    const { createProject, readClientMessages } =
+      await import('./lib/project-store.ts')
+    const project = await createProject()
+    createdProjectIds.push(project.id)
+    const { stopLandingAgent, streamLandingAgent } = await import('./route.ts')
+    const request = fakeRequest()
+    const response = new FakeResponse({ throwOnWrite: true })
+
+    await streamLandingAgent({
+      projectId: project.id,
+      prompt: 'Persist despite a closed socket.',
+      request,
+      response: response as unknown as ServerResponse,
+      textModel: 'z-ai/glm-5.2',
+    })
+
+    const eventNames = (await readClientMessages(project.id))
+      .filter((entry) => entry.dir === 'out')
+      .map((entry) => entry.event)
+    expect(eventNames.slice(-3)).toEqual(['stats', 'error', 'done'])
+    expect(request.listenerCount('close')).toBe(0)
+    expect(stopLandingAgent(project.id)).toBe(false)
+    expect(response.writableEnded).toBe(true)
+  })
+
   it('emits the no-generated-html error when a run finishes without writing HTML', async () => {
     vi.stubEnv('OPENROUTER_API_KEY', 'test-openrouter-key')
     async function* textOnlyStream() {
@@ -2018,8 +2052,12 @@ describe('streamLandingAgent stream errors + cleanup', () => {
 
 class FakeResponse {
   readonly chunks: string[] = []
+  destroyed = false
   headersSent = false
   statusCode = 200
+  writableEnded = false
+
+  constructor(private readonly options: { throwOnWrite?: boolean } = {}) {}
 
   get body() {
     return this.chunks.join('')
@@ -2027,6 +2065,7 @@ class FakeResponse {
 
   end(chunk?: unknown) {
     if (chunk !== undefined) this.write(chunk)
+    this.writableEnded = true
     return this
   }
 
@@ -2035,6 +2074,7 @@ class FakeResponse {
   }
 
   write(chunk: unknown) {
+    if (this.options.throwOnWrite) throw new Error('socket write failed')
     this.chunks.push(String(chunk))
     return true
   }
