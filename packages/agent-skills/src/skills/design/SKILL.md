@@ -1,9 +1,29 @@
 ---
 name: design
-description: "Creates, edits, reviews, and redesigns the single-file HTML landing page. Use for any landing-page visual, brand, layout, copy, motion, interaction, responsive, diagnostic, or refinement request. Required references must be read before editing or generating imagery."
+description: "Creates, edits, reviews, and redesigns the single-file HTML landing page. Load this skill again on every turn that may edit HTML or generate imagery, including follow-ups. Required references must be read completely in the current turn before mutation; prior-turn and partial reads do not count."
 ---
 
 # Design
+
+## Before the first `edit` or `generate_image`
+
+The current-turn mutation lock is closed by default. Load this skill again for every user request that may change project HTML or generate imagery, including short follow-ups such as “finish,” “continue,” “fix this,” or “make it responsive.” The lock resets at every user message: activation and reads from earlier turns never count.
+
+Context gathering may happen while the lock is closed. Use `read` or `find` to inspect relevant project HTML, and use `scrape` or an initial `screenshot` when the request supplies reference or visual context. Then open the lock in this order:
+
+1. Classify the current request by active mode and scope: full page, full redesign, new section, focused discipline, diagnostic, or exact element change.
+2. Copy every path from the matching manifest below into an internal unread ledger. A manifest is a closed required set: relevance may add supporting references, but it never removes a listed path.
+3. Call `skill_read` with `skillName: "design"` for unread ledger paths. Use the exact `references/<file>.md` path. Omit `startLine` and `endLine` so each file is read completely. Reads may use one or more read-only tool batches.
+4. Receive the tool results before taking another action. Mark a path complete only after its full `skill_read` result succeeds.
+5. Compare the completed ledger with the manifest. Confirm every required read succeeded. If any path is missing, the next tool action must read the missing paths; do not mutate, generate imagery, or treat the most relevant subset as sufficient.
+6. If a required read fails, retry once with the exact listed path. If it still fails, stop and explain the blocker. Do not continue with `edit` or `generate_image`.
+7. Open the lock only when the completed current-turn ledger exactly contains the required manifest. The same completed reads may satisfy a materially expanded mode later in the turn, but every newly required path must be read first.
+
+Never place `edit` or `generate_image` in the same assistant tool-call batch as outstanding `skill_read` calls; the guidance must return before mutation is requested. A filename shown in this file, a prior-turn or prior-session read, a search excerpt, or a reference mentioned by another reference does not count as a read.
+
+A partial bundle never opens the lock. For full creation, reading `references/create.md`, `references/color.md`, and `references/layout.md` is only 3 of 13 required reads. Continue read-only batches until the ledger is 13 of 13. Do not optimize a manifest into a relevance sample.
+
+Reading a supporting reference informs the active mode; it does not activate that reference's page-wide system bar or broaden the current request. Reading an operation reference also does not open the lock by itself.
 
 You are the user's design partner for landing pages. Work on the single project HTML document through the available project tools. Do not create mockups, briefs, reports, style guides, alternate HTML files, or supporting documentation.
 
@@ -19,26 +39,11 @@ When guidance conflicts, follow this order:
 
 Preserve exact names, claims, content, brand assets, and exclusions from the current request. A supporting reference cannot broaden a narrow request, activate its own full mode, or override existing behavior unrelated to the requested change.
 
-## Before the first `edit` or `generate_image`
-
-Complete this gate before mutating the landing page or generating an asset:
-
-1. Use `read` or `find` to inspect the relevant project HTML. Use `scrape` or an initial `screenshot` when the request supplies a reference or visual context.
-2. Classify the request by active mode and scope: full page, full redesign, new section, focused discipline, diagnostic, or exact element change.
-3. Build an internal checklist from the matching manifest below.
-4. Call `skill_read` with `skillName: "design"` and every exact `references/<file>.md` path in that manifest. Omit `startLine` and `endLine` so each file is read completely.
-5. Confirm every required read succeeded. A filename shown in this file, a prior-session memory, a search excerpt, or a reference mentioned by another reference does not count as a read.
-6. If a required read fails, retry once with the exact listed path. If it still fails, stop and explain the blocker. Do not continue with `edit` or `generate_image`.
-
-The gate applies again when the requested mode changes materially during a turn. References already read completely in the current turn do not need to be read twice.
-
-Reading a supporting reference informs the active mode; it does not activate that reference's page-wide system bar. The user request and active mode determine breadth.
-
 ## Required reference manifests
 
 ### Full page creation
 
-Read all 13 before mutation:
+This is one indivisible 13-of-13 bundle. Read all 13 before mutation; selecting only the foundations that seem most relevant fails the lock:
 
 - `references/create.md`
 - `references/voice.md`
@@ -56,7 +61,7 @@ Read all 13 before mutation:
 
 ### Full page redesign
 
-Read all 13 before mutation:
+This is one indivisible 13-of-13 bundle. Read all 13 before mutation; selecting only the foundations that seem most relevant fails the lock:
 
 - `references/redesign.md`
 - `references/voice.md`
@@ -87,6 +92,8 @@ Before mutation, append the exact foundations for every dimension the new sectio
 
 ### Focused visual routes
 
+Each route line is a closed minimum manifest. Read every path on the selected line before mutation; add conditional paths when the line requires them.
+
 - **Relayout or layout:** `references/relayout.md`, `references/layout.md`, `references/responsive.md`
 - **Recolor:** `references/color.md`, `references/voice.md`, `references/smell.md`
 - **Typeset:** `references/typeset.md`, `references/voice.md`, `references/writing.md`, `references/responsive.md`
@@ -109,6 +116,8 @@ Before mutation, append the exact foundations for every dimension the new sectio
 Checkup, smell, and review are diagnostic when explicitly requested. State findings in the answer and do not mutate unless the user also requests fixes. Deslop is treatment: run all three diagnostics in memory, identify the foundations implicated by observed findings, read those remediation references completely, then edit.
 
 ### Completion and consolidation
+
+Each named route is a closed base manifest. Complete its listed reads before inspecting findings for any additional implicated foundations.
 
 - **Finish:** `references/finish.md`, `references/smell.md`, `references/responsive.md`, `references/interaction.md`, `references/writing.md`; add every foundation implicated by observed issues before editing
 - **Refine:** `references/refine.md`, `references/voice.md`, `references/smell.md`; add every foundation the chosen refinement move affects before editing

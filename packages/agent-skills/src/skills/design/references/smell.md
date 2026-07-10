@@ -2,6 +2,8 @@
 
 Use smell to detect design choices that look unchosen, recycled, or generated. Smell is diagnostic. It names visible tells and the foundations that should treat them; it does not edit unless the user also requests fixes.
 
+> **Current-turn mutation lock:** Reading this operation file never opens the lock by itself. If the request will mutate, complete every unread path in the root manifest and receive all results before calling `edit` or `generate_image`.
+
 A smell must be observed on the current page. Personal taste, technical imperfection, or suspicion without visible evidence is not a finding.
 
 ## Ten tells
