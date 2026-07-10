@@ -11,7 +11,7 @@
   - `SKILL.md`: concise advisory control plane. Owns single-document scope, scenario guidance, the `skill ref | when to use` index, conversation-scoped read reuse, broad versus narrow behavior, achievable verification, and truthful completion.
   - `references/*.md`: 16 landing-page references split into 7 operation modes (`create`, `finish`, `redesign`, `refine`, `relayout`, `review`, `smell`) and 9 design foundations (`voice`, `layout`, `color`, `typeset`, `writing`, `responsive`, `interaction`, `surface`, `motion`). `review` covers quick and thorough diagnostics; `smell` covers generated-pattern diagnosis and treatment; `interaction` owns CTA behavior; `surface` owns borders, radius, and depth.
   - `skill.ts`: reads `SKILL.md` plus every `references/*.md` from disk via `import.meta.url`, parses frontmatter, and builds the Mastra `InlineSkill` through `createSkill`.
-  - `skill.test.ts`: guards metadata, bounded control-plane size, advisory scenario/reference routing, exact reference inventory and paths, stale-workflow exclusions, and byte parity with disk.
+  - `skill.test.ts`: verifies executable loader contracts only: parsed metadata/instructions, exact reference inventory, inline-skill shape, source presence, and byte parity with disk. Prompt prose and Markdown wording are verified by review and live traces rather than regex assertions.
 - `package.json`, `tsconfig.json`, `oxfmt.config.ts`, `oxlint.config.ts`, `vitest.config.ts`: package scripts/config following workspace conventions.
 
 ## Local Contracts
@@ -32,7 +32,8 @@
 - Maintain this as a landing-page fork; do not re-copy the pi source or reintroduce app-wide/file/report/CLI machinery. Keep generic application state systems, destructive workflows, component-library abstraction, and unrelated code-organization guidance out of its references.
 - Keep `skill.ts` a thin loader and keep advisory routing behavior in `SKILL.md`.
 - Keep the control plane concise. Detailed design methodology belongs in one owning reference, not repeated across the root and many references.
-- When adding or removing a reference, update the scenario/reference tables, expected inventory, route contract tests, and this DOX together.
+- When adding or removing a reference, update the scenario/reference tables, loader inventory test, and this DOX together; verify routing behavior with a live trace.
+- Keep tests off prompt prose and Markdown wording. Test executable parsing, loading, inventory, and tool behavior instead.
 - Keep operation references focused on workflow and foundation references focused on one design dimension. Supporting references never determine mutation breadth.
 
 ## Verification

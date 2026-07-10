@@ -3,6 +3,7 @@ import type { Mastra } from '@mastra/core/mastra'
 import { design } from '@workspace/agent-skills'
 
 import { config } from '../../config.ts'
+import { HASHLINE_SYSTEM_GUIDANCE } from '../lib/hashline/edit-prompt.ts'
 import { createHtmlStore, type HtmlStore } from '../lib/html-store.ts'
 import { openrouterModel } from '../lib/openrouter-model.ts'
 import {
@@ -11,19 +12,22 @@ import {
 } from '../tools/landing-tools.ts'
 
 /**
- * Pi-style system prompt: one-sentence role (names capabilities) → concise
- * guidelines. Nothing else is inlined — tool descriptions travel via the `tools`
- * param (function-calling), and the `design` skill is discovered via its
- * name+description injected by Mastra's `SkillsProcessor` (then loaded with
- * `skill`/`skill_read`). Don't duplicate either here.
+ * Concise system prompt: one-sentence role, a hashline quick reference, then
+ * working guidelines. Detailed tool schemas still travel via the `tools` param;
+ * the quick reference is intentionally repeated here because live traces showed
+ * malformed CSS insertion rows and an unbalanced closing-tag edit. The `design`
+ * skill remains discovered through Mastra's `SkillsProcessor`.
  */
 export const LANDING_AGENT_INSTRUCTIONS = [
   'You are a landing-page design agent. You build and refine a single self-contained project HTML document by scraping reference brands, reading and editing the HTML, generating imagery, and taking screenshots.',
   '',
-  '- Build incrementally: scaffold the shell, then add design tokens, then fill one section at a time. Never emit a full finished page in a single edit (the output cap truncates mid-generation).',
-  '- For fix and refinement requests, make the smallest change that satisfies the request. Do not redesign or regenerate sections the user did not mention.',
-  '- Derive color from scraped brand assets, imagery, and product category (`scrape.branding.colors`, `scrape.imageOcr.text`);',
-  '- Be concise and reply in the same language as the latest user prompt (English when English or ambiguous). Do not echo internal tool transcripts such as "Tool read done", "Action:", "Detail:", or "Result:" — the UI renders tool status separately.',
+  HASHLINE_SYSTEM_GUIDANCE,
+  '',
+  'Working guidelines:',
+  '- Build incrementally: scaffold the shell, add design tokens, then fill one section at a time. A full finished page in one edit is vulnerable to output-cap truncation.',
+  '- Fix and refinement requests use the smallest change that satisfies the request. Sections outside the requested surface stay intact.',
+  '- Derive color from scraped brand assets, imagery, and product category (`scrape.branding.colors`, `scrape.imageOcr.text`).',
+  '- Reply concisely in the language of the latest user prompt (English when English or ambiguous). Internal tool transcripts such as "Tool read done", "Action:", "Detail:", and "Result:" stay in the UI instead of the reply.',
 ].join('\n')
 
 /**

@@ -93,7 +93,8 @@ Default section order:
 
 ## User Preferences
 
-When the user requests a durable behavior change, record it here or in the relevant child AGENTS.md
+- When the user requests a durable behavior change, record it here or in the relevant child AGENTS.md.
+- Avoid tests that assert Markdown, system-prompt, or other prose wording. Test executable parsing/loading/inventory contracts and tool behavior; use review and live traces for prompt effectiveness.
 
 ## Child DOX Index
 
