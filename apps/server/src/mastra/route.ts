@@ -69,6 +69,19 @@ export interface AgentImageAttachmentInput extends ProjectMessageAttachment {
   kind?: 'image'
 }
 
+interface ActiveStreamOptions {
+  attachments: AgentAttachmentInput[]
+  controller: AbortController
+  imageModel: string
+  project: Project
+  projectId: string
+  prompt: string
+  request: IncomingMessage
+  response: ServerResponse
+  textModel: string
+  visionModel: string
+}
+
 type AgentConversationMessage =
   | { content: string; role: 'assistant' }
   | { content: string; role: 'user' }
@@ -109,19 +122,6 @@ interface StreamOptions {
   response: ServerResponse
   textModel: string
   visionModel?: string
-}
-
-interface ActiveStreamOptions {
-  attachments: AgentAttachmentInput[]
-  controller: AbortController
-  imageModel: string
-  project: Project
-  projectId: string
-  prompt: string
-  request: IncomingMessage
-  response: ServerResponse
-  textModel: string
-  visionModel: string
 }
 
 type ToolArgs = Record<string, unknown>
@@ -207,7 +207,7 @@ export async function streamLandingAgent({
   startSse(response)
 
   try {
-    await streamActiveLandingAgent({
+    await activeStreamLandingAgent({
       attachments,
       controller,
       imageModel,
@@ -230,7 +230,7 @@ export async function streamLandingAgent({
   }
 }
 
-async function streamActiveLandingAgent({
+async function activeStreamLandingAgent({
   attachments,
   controller,
   imageModel,
