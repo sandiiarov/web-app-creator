@@ -217,6 +217,38 @@ describe('ocrImageInputs', () => {
       text: 'Image 1\nCTA visible',
     })
   })
+
+  it('propagates an external abort instead of converting it to an OCR failure', async () => {
+    const { ocrImageInputs } = await loadImageOcr()
+    const fetch = vi.fn<FetchMock>(
+      (_url, init) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener(
+            'abort',
+            () => reject(init.signal?.reason),
+            { once: true },
+          )
+        }),
+    )
+    vi.stubGlobal('fetch', fetch)
+    const controller = new AbortController()
+
+    const pending = ocrImageInputs(
+      [{ dataUrl: PNG_DATA_URL, sourceLabel: 'hero.png' }],
+      undefined,
+      undefined,
+      undefined,
+      { signal: controller.signal },
+    )
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalledOnce())
+    const rejected = expect(pending).rejects.toMatchObject({
+      name: 'AbortError',
+    })
+    controller.abort()
+
+    await rejected
+    expect(fetch).toHaveBeenCalledOnce()
+  })
 })
 
 describe('ocrImages', () => {
@@ -411,6 +443,57 @@ describe('boundedFetch', () => {
     if (result.ok) throw new Error('expected not ok')
     expect(result.reason).toMatch(/timed out/i)
     expect(fetch).toHaveBeenCalledTimes(3)
+  })
+
+  it('propagates an external abort without retrying a hanging fetch', async () => {
+    const fetch = vi.fn<FetchMock>(
+      (_url, init) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener(
+            'abort',
+            () => reject(init.signal?.reason),
+            { once: true },
+          )
+        }),
+    )
+    vi.stubGlobal('fetch', fetch)
+    const controller = new AbortController()
+
+    const pending = boundedFetch(
+      'https://x.test',
+      { method: 'POST' },
+      { baseDelayMs: 0, signal: controller.signal, timeoutMs: 1000 },
+    )
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalledOnce())
+    const rejected = expect(pending).rejects.toMatchObject({
+      name: 'AbortError',
+    })
+    controller.abort()
+
+    await rejected
+    expect(fetch).toHaveBeenCalledOnce()
+  })
+
+  it('cancels retry backoff after a transient response', async () => {
+    const fetch = vi.fn<FetchMock>(async () =>
+      Promise.resolve(new Response('down', { status: 503 })),
+    )
+    vi.stubGlobal('fetch', fetch)
+    const controller = new AbortController()
+
+    const pending = boundedFetch(
+      'https://x.test',
+      { method: 'POST' },
+      { baseDelayMs: 10_000, signal: controller.signal, timeoutMs: 1000 },
+    )
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalledOnce())
+    const rejected = expect(pending).rejects.toMatchObject({
+      name: 'AbortError',
+    })
+    controller.abort()
+
+    await rejected
+    expect(fetch).toHaveBeenCalledOnce()
   })
 })
 

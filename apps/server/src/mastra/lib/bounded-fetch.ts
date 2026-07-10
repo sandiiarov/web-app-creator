@@ -18,6 +18,8 @@ export interface BoundedFetchOptions {
   /** Label used in timeout/failure reasons, e.g. "OpenRouter image generation". */
   label?: string
   maxAttempts?: number
+  /** External cancellation for the whole attempt/retry sequence. */
+  signal?: AbortSignal
   timeoutMs?: number
 }
 
@@ -40,17 +42,30 @@ export async function boundedFetch(
   const maxAttempts = options.maxAttempts ?? DEFAULT_MAX_ATTEMPTS
   const baseDelayMs = options.baseDelayMs ?? DEFAULT_RETRY_BASE_DELAY_MS
   const label = options.label ?? DEFAULT_LABEL
+  const externalSignals = [options.signal, init.signal].filter(
+    (signal): signal is AbortSignal => signal != null,
+  )
+  const externalSignal =
+    externalSignals.length > 0 ? AbortSignal.any(externalSignals) : undefined
+
+  externalSignal?.throwIfAborted()
 
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    externalSignal?.throwIfAborted()
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), timeoutMs)
+    const signal = externalSignal
+      ? AbortSignal.any([externalSignal, controller.signal])
+      : controller.signal
     let response: Response
     try {
-      response = await fetch(url, { ...init, signal: controller.signal })
+      response = await fetch(url, { ...init, signal })
+      externalSignal?.throwIfAborted()
     } catch (error) {
       clearTimeout(timer)
+      externalSignal?.throwIfAborted()
       if (attempt < maxAttempts) {
-        await retryDelay(baseDelayMs, attempt)
+        await retryDelay(baseDelayMs, attempt, externalSignal)
         continue
       }
       return {
@@ -62,7 +77,7 @@ export async function boundedFetch(
     }
     clearTimeout(timer)
     if (response.status >= 500 && attempt < maxAttempts) {
-      await retryDelay(baseDelayMs, attempt)
+      await retryDelay(baseDelayMs, attempt, externalSignal)
       continue
     }
     return { ok: true, response }
@@ -79,9 +94,23 @@ function isAbortError(error: unknown): boolean {
   return error.name === 'AbortError' || /abort|timed\s*out/i.test(error.message)
 }
 
-function retryDelay(baseDelayMs: number, attempt: number): Promise<void> {
+function retryDelay(
+  baseDelayMs: number,
+  attempt: number,
+  signal?: AbortSignal,
+): Promise<void> {
+  signal?.throwIfAborted()
   const delay = Math.min(baseDelayMs * 2 ** (attempt - 1), baseDelayMs * 4)
-  return new Promise((resolve) => {
-    setTimeout(resolve, delay)
+
+  return new Promise((resolve, reject) => {
+    const onAbort = () => {
+      clearTimeout(timer)
+      reject(signal?.reason)
+    }
+    const timer = setTimeout(() => {
+      signal?.removeEventListener('abort', onAbort)
+      resolve()
+    }, delay)
+    signal?.addEventListener('abort', onAbort, { once: true })
   })
 }

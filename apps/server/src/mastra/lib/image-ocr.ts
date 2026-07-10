@@ -55,6 +55,10 @@ export interface ImageOcrDataUrlInput {
 
 export type ImageOcrInput = ImageOcrDataUrlInput | ImageOcrUrlInput
 
+export interface ImageOcrOptions {
+  signal?: AbortSignal
+}
+
 export interface ImageOcrResult {
   cost?: number
   imagesAnalyzed: number
@@ -112,6 +116,7 @@ export async function ocrImageInputs(
   userPrompt: string = DEFAULT_OCR_PROMPT,
   model: string = config.openrouter.defaultVisionModel,
   systemPrompt: string = UI_TO_ARTIFACT_SYSTEM_PROMPT,
+  options: ImageOcrOptions = {},
 ): Promise<ImageOcrResult> {
   const imageInputs = normalizeImageInputs(inputs)
 
@@ -127,8 +132,9 @@ export async function ocrImageInputs(
   const loadedImages = await Promise.all(
     imageInputs.map(async (input) => {
       try {
-        return await loadImageInput(input)
+        return await loadImageInput(input, options.signal)
       } catch (error) {
+        options.signal?.throwIfAborted()
         return {
           error:
             error instanceof Error ? error.message : 'Failed to load image',
@@ -191,7 +197,7 @@ export async function ocrImageInputs(
       },
       method: 'POST',
     },
-    { label: 'OpenRouter vision' },
+    { label: 'OpenRouter vision', signal: options.signal },
   )
   if (!fetched.ok) {
     return {
@@ -251,12 +257,14 @@ export async function ocrImages(
   userPrompt: string = DEFAULT_OCR_PROMPT,
   model: string = config.openrouter.defaultVisionModel,
   systemPrompt: string = UI_TO_ARTIFACT_SYSTEM_PROMPT,
+  options: ImageOcrOptions = {},
 ): Promise<ImageOcrResult> {
   return ocrImageInputs(
     imageUrls.map((url) => ({ sourceLabel: url, url })),
     userPrompt,
     model,
     systemPrompt,
+    options,
   )
 }
 
@@ -304,13 +312,21 @@ function extractMessageText(message: ChatCompletionChoice['message']): string {
 }
 
 /** Fetch an image and return a base64 data URL suitable for OpenRouter vision. */
-async function fetchAsDataUrl(url: string): Promise<string> {
+async function fetchAsDataUrl(
+  url: string,
+  signal?: AbortSignal,
+): Promise<string> {
   // External CDN images: shorter timeout + fewer retries than the paid
   // OpenRouter API, so one slow host doesn't stall the OCR batch for 90s.
   const fetched = await boundedFetch(
     url,
     { method: 'GET' },
-    { label: 'image download', maxAttempts: 2, timeoutMs: 15_000 },
+    {
+      label: 'image download',
+      maxAttempts: 2,
+      signal,
+      timeoutMs: 15_000,
+    },
   )
   if (!fetched.ok) {
     throw new Error(`${fetched.reason}: ${url}`)
@@ -365,12 +381,16 @@ function loadDataUrlInput(input: ImageOcrDataUrlInput): LoadedImageRef {
   }
 }
 
-async function loadImageInput(input: ImageOcrInput): Promise<LoadedImageRef> {
+async function loadImageInput(
+  input: ImageOcrInput,
+  signal?: AbortSignal,
+): Promise<LoadedImageRef> {
+  signal?.throwIfAborted()
   if ('dataUrl' in input && typeof input.dataUrl === 'string') {
     return loadDataUrlInput(input)
   }
 
-  const dataUrl = await fetchAsDataUrl(input.url)
+  const dataUrl = await fetchAsDataUrl(input.url, signal)
   return {
     dataUrl,
     sourceLabel: input.sourceLabel?.trim() || input.url,
