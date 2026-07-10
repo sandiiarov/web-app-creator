@@ -1865,7 +1865,10 @@ describe('streamLandingAgent stream errors + cleanup', () => {
     vi.doMock('./index.ts', () => ({ mastra: {} }))
     vi.doMock('./agents/landing-page-agent.ts', () => ({
       createLandingPageAgent: () => ({
-        stream: async () => fakeAgentStream(hangingStream()),
+        stream: async () =>
+          fakeAgentStream(hangingStream(), undefined, {
+            finishReason: Promise.resolve('tripwire'),
+          }),
       }),
     }))
     const { createProject } = await import('./lib/project-store.ts')
@@ -1894,6 +1897,10 @@ describe('streamLandingAgent stream errors + cleanup', () => {
     expect(events).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
+          data: expect.objectContaining({ finishReason: 'stopped' }),
+          event: 'stats',
+        }),
+        expect.objectContaining({
           data: { message: 'stopped' },
           event: 'error',
         }),
@@ -1918,7 +1925,10 @@ describe('streamLandingAgent stream errors + cleanup', () => {
     vi.doMock('./index.ts', () => ({ mastra: {} }))
     vi.doMock('./agents/landing-page-agent.ts', () => ({
       createLandingPageAgent: () => ({
-        stream: async () => fakeAgentStream(hangingStream()),
+        stream: async () =>
+          fakeAgentStream(hangingStream(), undefined, {
+            finishReason: Promise.resolve('tripwire'),
+          }),
       }),
     }))
     const { createProject } = await import('./lib/project-store.ts')
@@ -1950,7 +1960,10 @@ describe('streamLandingAgent stream errors + cleanup', () => {
     // client can render Spend / tokens for a stopped run.
     expect(events).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ event: 'stats' }),
+        expect.objectContaining({
+          data: expect.objectContaining({ finishReason: 'stopped' }),
+          event: 'stats',
+        }),
         expect.objectContaining({
           data: { message: 'stopped' },
           event: 'error',

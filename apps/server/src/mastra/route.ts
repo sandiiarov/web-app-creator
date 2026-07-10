@@ -723,12 +723,16 @@ async function streamActiveLandingAgent({
         reasoningTokens?: number
         totalTokens?: number
       } = {}
-      let finishReason = 'stop'
+      const wasStopped = controller.signal.aborted && !fatalRunError
+      let finishReason = wasStopped ? 'stopped' : 'stop'
       if (streamError && !controller.signal.aborted) finishReason = 'error'
       if (stream) {
         try {
           usage = await stream.usage
-          finishReason = (await stream.finishReason) ?? finishReason
+          const resolvedFinishReason = await stream.finishReason
+          if (!wasStopped && resolvedFinishReason) {
+            finishReason = resolvedFinishReason
+          }
         } catch {
           // Retain the stop/error fallback while preserving costs accumulated by
           // image, scrape, vision, or raw provider chunks before termination.
