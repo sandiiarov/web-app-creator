@@ -134,6 +134,96 @@ describe('useLandingPage transport reconciliation', () => {
   })
 })
 
+describe('useLandingPage run lifecycle', () => {
+  it('gracefully drains a stopped run, preserves stats, clears the safety timeout, and blocks another send', async () => {
+    await mount(project())
+    vi.useFakeTimers()
+    mocks.stopProjectAgent.mockResolvedValue(true)
+    let resolveStream!: () => void
+    let streamOptions!: StreamSSEOptions
+    mocks.streamSSE.mockImplementation(
+      async (_url, _body, options) =>
+        new Promise<void>((resolve) => {
+          resolveStream = resolve
+          streamOptions = options
+        }),
+    )
+
+    act(() => current.send({ prompt: 'Build it' }))
+    const requestBody = mocks.streamSSE.mock.calls[0]?.[1]
+    const turnId = requestTurnId(requestBody)
+    expect(turnId).toBe(current.turns[0]?.id)
+
+    act(() => current.stop())
+    expect(mocks.stopProjectAgent).toHaveBeenCalledOnce()
+    expect(streamOptions.signal.aborted).toBe(false)
+    expect(current.isStreaming).toBe(true)
+    expect(current.turns[0]).toMatchObject({
+      isStreaming: false,
+      stopped: true,
+    })
+
+    act(() => current.send({ prompt: 'Must stay blocked' }))
+    expect(mocks.streamSSE).toHaveBeenCalledOnce()
+    expect(current.turns).toHaveLength(1)
+
+    act(() => {
+      streamOptions.onEvent({
+        data: {
+          cost: 0.01,
+          durationMs: 250,
+          finishReason: 'stopped',
+          model: 'z-ai/glm-5.2',
+          usage: { totalTokens: 10 },
+        },
+        event: 'stats',
+      })
+      streamOptions.onEvent({ data: { message: 'stopped' }, event: 'error' })
+      streamOptions.onEvent({ data: {}, event: 'done' })
+    })
+    await act(async () => {
+      resolveStream()
+      await flushAsyncWork()
+    })
+
+    expect(current.isStreaming).toBe(false)
+    expect(current.turns[0]).toMatchObject({
+      isStreaming: false,
+      parts: [expect.objectContaining({ type: 'stats' })],
+      stopped: true,
+    })
+    expect(current.turns[0]?.error).toBeUndefined()
+    await vi.advanceTimersByTimeAsync(8001)
+    expect(streamOptions.signal.aborted).toBe(false)
+  })
+
+  it('blocks duplicate sends before streaming state rerenders', async () => {
+    await mount(project())
+    let resolveStream!: () => void
+    let streamOptions!: StreamSSEOptions
+    mocks.streamSSE.mockImplementation(
+      async (_url, _body, options) =>
+        new Promise<void>((resolve) => {
+          resolveStream = resolve
+          streamOptions = options
+        }),
+    )
+
+    act(() => {
+      current.send({ prompt: 'First' })
+      current.send({ prompt: 'Duplicate' })
+    })
+
+    expect(mocks.streamSSE).toHaveBeenCalledOnce()
+    expect(current.turns).toHaveLength(1)
+    act(() => streamOptions.onEvent({ data: {}, event: 'done' }))
+    await act(async () => {
+      resolveStream()
+      await flushAsyncWork()
+    })
+  })
+})
+
 async function flushAsyncWork(): Promise<void> {
   for (let index = 0; index < 8; index += 1) await Promise.resolve()
 }
