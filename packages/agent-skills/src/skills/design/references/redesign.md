@@ -2,7 +2,7 @@
 
 Use redesign when the user wants the same landing-page product and message to inhabit a genuinely different visual world. Redesign changes the system end to end; it is not a palette swap, hero makeover, or collection of louder effects.
 
-> **Current-turn mutation lock:** Reading this operation file never opens the lock by itself. If the request will mutate, complete every unread path in the root manifest and receive all results before calling `edit` or `generate_image`.
+> **Manifest mutation lock:** Reading this operation file never opens the lock by itself. Reuse successful full reads already present in the project conversation, then complete every still-unread root-manifest path and receive its result before calling `edit` or `generate_image`.
 
 The root skill loads the broad redesign foundations before mutation. This file governs how to transform the page while preserving what must remain true.
 

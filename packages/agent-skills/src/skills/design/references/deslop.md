@@ -2,7 +2,7 @@
 
 Use deslop to replace observed generated-design reflexes with specific decisions. It is treatment, not a second diagnosis and not a generic polish pass.
 
-> **Current-turn mutation lock:** Reading this operation file never opens the lock by itself. If the request will mutate, complete every unread path in the root manifest and receive all results before calling `edit` or `generate_image`.
+> **Manifest mutation lock:** Reading this operation file never opens the lock by itself. Reuse successful full reads already present in the project conversation, then complete every still-unread root-manifest path and receive its result before calling `edit` or `generate_image`.
 
 The root skill requires smell, checkup, and review before deslop. Run those diagnostics in memory, preserve their evidence, and rank only findings observed on the current page. Before editing, read the foundation references implicated by those findings.
 

@@ -2,7 +2,7 @@
 
 Use review for an evidence-grounded critique of the landing page as an experience. Review is diagnostic: when the user requests only a review, inspect and explain without editing. If fixes are also requested, carry prioritized findings into the appropriate treatment mode.
 
-> **Current-turn mutation lock:** Reading this operation file never opens the lock by itself. If the request will mutate, complete every unread path in the root manifest and receive all results before calling `edit` or `generate_image`.
+> **Manifest mutation lock:** Reading this operation file never opens the lock by itself. Reuse successful full reads already present in the project conversation, then complete every still-unread root-manifest path and receive its result before calling `edit` or `generate_image`.
 
 ## Evidence boundary
 

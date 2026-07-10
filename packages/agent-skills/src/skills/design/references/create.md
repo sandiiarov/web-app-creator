@@ -2,7 +2,7 @@
 
 Use create to build a new landing page or add a genuinely new section to the existing project HTML. The root skill owns required reference loading; this file owns the creation workflow after that gate is complete.
 
-> **Current-turn mutation lock:** Reading this operation file never opens the lock by itself. If the request will mutate, complete every unread path in the root manifest and receive all results before calling `edit` or `generate_image`.
+> **Manifest mutation lock:** Reading this operation file never opens the lock by itself. Reuse successful full reads already present in the project conversation, then complete every still-unread root-manifest path and receive its result before calling `edit` or `generate_image`.
 
 ## Start from the actual project
 

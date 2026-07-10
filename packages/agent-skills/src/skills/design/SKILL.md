@@ -1,25 +1,26 @@
 ---
 name: design
-description: "Creates, edits, reviews, and redesigns the single-file HTML landing page. Load this skill again on every turn that may edit HTML or generate imagery, including follow-ups. Required references must be read completely in the current turn before mutation; prior-turn and partial reads do not count."
+description: "Creates, edits, reviews, and redesigns the single-file HTML landing page. Required references must be read completely before mutation. Reuse successful full reads in the same project conversation: do not reload this skill or reread completed references solely for a follow-up; read only newly required paths."
 ---
 
 # Design
 
 ## Before the first `edit` or `generate_image`
 
-The current-turn mutation lock is closed by default. Load this skill again for every user request that may change project HTML or generate imagery, including short follow-ups such as “finish,” “continue,” “fix this,” or “make it responsive.” The lock resets at every user message: activation and reads from earlier turns never count.
+The conversation mutation lock is closed until successful complete `skill_read` results in this project conversation cover the active manifest. Do not reload this skill or reread a reference merely because the user sent a follow-up. Successful full reads remain valid while the project conversation and loaded skill version are unchanged.
 
 Context gathering may happen while the lock is closed. Use `read` or `find` to inspect relevant project HTML, and use `scrape` or an initial `screenshot` when the request supplies reference or visual context. Then open the lock in this order:
 
 1. Classify the current request by active mode and scope: full page, full redesign, new section, focused discipline, diagnostic, or exact element change.
-2. Copy every path from the matching manifest below into an internal unread ledger. A manifest is a closed required set: relevance may add supporting references, but it never removes a listed path.
-3. Call `skill_read` with `skillName: "design"` for unread ledger paths. Use the exact `references/<file>.md` path. Omit `startLine` and `endLine` so each file is read completely. Reads may use one or more read-only tool batches.
-4. Receive the tool results before taking another action. Mark a path complete only after its full `skill_read` result succeeds.
-5. Compare the completed ledger with the manifest. Confirm every required read succeeded. If any path is missing, the next tool action must read the missing paths; do not mutate, generate imagery, or treat the most relevant subset as sufficient.
-6. If a required read fails, retry once with the exact listed path. If it still fails, stop and explain the blocker. Do not continue with `edit` or `generate_image`.
-7. Open the lock only when the completed current-turn ledger exactly contains the required manifest. The same completed reads may satisfy a materially expanded mode later in the turn, but every newly required path must be read first.
+2. Build an internal completed ledger from successful full `skill_read` results already visible in this project conversation.
+3. Copy every path from the matching manifest below into a required ledger, then subtract the completed ledger to get unread paths. A manifest is a closed required set: relevance may add supporting references, but it never removes a listed path.
+4. Call `skill_read` with `skillName: "design"` only for unread paths. Use the exact `references/<file>.md` path. Omit `startLine` and `endLine` so each file is read completely. Reads may use one or more read-only tool batches.
+5. Receive the tool results before taking another action. Mark a path complete only after its full `skill_read` result succeeds.
+6. Compare the completed ledger with the active manifest. Confirm every required read succeeded. If any path is missing, the next tool action must read the missing paths; do not mutate, generate imagery, or treat the most relevant subset as sufficient.
+7. If a required read fails, retry once with the exact listed path. If it still fails, stop and explain the blocker. Do not continue with `edit` or `generate_image`.
+8. Open the lock only when the completed conversation ledger contains the full active manifest. When the mode changes or expands, preserve overlapping completed reads and read only newly required paths before mutation.
 
-Never place `edit` or `generate_image` in the same assistant tool-call batch as outstanding `skill_read` calls; the guidance must return before mutation is requested. A filename shown in this file, a prior-turn or prior-session read, a search excerpt, or a reference mentioned by another reference does not count as a read.
+Never place `edit` or `generate_image` in the same assistant tool-call batch as outstanding `skill_read` calls; the guidance must return before mutation is requested. A filename shown in this file, a read from another project conversation or earlier skill version, a search excerpt, or a reference mentioned by another reference does not count as a read.
 
 A partial bundle never opens the lock. For full creation, reading `references/create.md`, `references/color.md`, and `references/layout.md` is only 3 of 13 required reads. Continue read-only batches until the ledger is 13 of 13. Do not optimize a manifest into a relevance sample.
 
@@ -117,7 +118,7 @@ Checkup, smell, and review are diagnostic when explicitly requested. State findi
 
 ### Completion and consolidation
 
-Each named route is a closed base manifest. Complete its listed reads before inspecting findings for any additional implicated foundations.
+Each named route is a closed base manifest. Complete its listed reads before inspecting findings for any additional implicated foundations. Subtract overlap from the conversation ledger: after full creation, a finish follow-up normally reads only `references/finish.md` because its other four base references are already complete.
 
 - **Finish:** `references/finish.md`, `references/smell.md`, `references/responsive.md`, `references/interaction.md`, `references/writing.md`; add every foundation implicated by observed issues before editing
 - **Refine:** `references/refine.md`, `references/voice.md`, `references/smell.md`; add every foundation the chosen refinement move affects before editing
