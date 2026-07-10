@@ -249,6 +249,65 @@ describe('streamLandingAgent attachments', () => {
       ],
     })
   })
+
+  it('gracefully stops while attachment OCR is waiting on the provider', async () => {
+    vi.stubEnv('OPENROUTER_API_KEY', 'test-openrouter-key')
+
+    const stream = vi.fn(async () => fakeAgentStream())
+    vi.doUnmock('./lib/image-ocr.ts')
+    vi.doMock('./index.ts', () => ({ mastra: {} }))
+    vi.doMock('./agents/landing-page-agent.ts', () => ({
+      createLandingPageAgent: () => ({ stream }),
+    }))
+    const fetch = vi.fn<typeof globalThis.fetch>(
+      (_url, init) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener(
+            'abort',
+            () => reject(init.signal?.reason),
+            { once: true },
+          )
+        }),
+    )
+    vi.stubGlobal('fetch', fetch)
+
+    const { createProject } = await import('./lib/project-store.ts')
+    const project = await createProject()
+    createdProjectIds.push(project.id)
+    const { stopLandingAgent, streamLandingAgent } = await import('./route.ts')
+    const request = fakeRequest()
+    const response = new FakeResponse()
+
+    const running = streamLandingAgent({
+      attachments: [
+        {
+          dataUrl: PNG_DATA_URL,
+          id: 'image-1',
+          mediaType: 'image/png',
+          name: 'wireframe.png',
+          size: 68,
+        },
+      ],
+      projectId: project.id,
+      prompt: 'Use this reference image.',
+      request,
+      response: response as unknown as ServerResponse,
+      textModel: 'z-ai/glm-5.2',
+    })
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalledOnce())
+
+    expect(stopLandingAgent(project.id)).toBe(true)
+    await running
+
+    expect(stream).not.toHaveBeenCalled()
+    expect(fetch.mock.calls[0]?.[1]?.signal?.aborted).toBe(true)
+    expect(request.listenerCount('close')).toBe(0)
+    expect(parseSseEvents(response.body).slice(-3)).toEqual([
+      expect.objectContaining({ event: 'stats' }),
+      { data: { message: 'stopped' }, event: 'error' },
+      { data: {}, event: 'done' },
+    ])
+  })
 })
 
 describe('streamLandingAgent error handling', () => {
@@ -1779,6 +1838,7 @@ describe('streamLandingAgent stream errors + cleanup', () => {
     const events = parseSseEvents(response.body)
     expect(events).toEqual(
       expect.arrayContaining([
+        expect.objectContaining({ event: 'stats' }),
         expect.objectContaining({
           data: { message: 'upstream exploded' },
           event: 'error',
@@ -1837,6 +1897,78 @@ describe('streamLandingAgent stream errors + cleanup', () => {
         }),
       ]),
     )
+    expect(events.at(-1)).toEqual({ data: {}, event: 'done' })
+    expect(request.listenerCount('close')).toBe(0)
+  })
+
+  it('flushes final cost/stats on a graceful stop (stopLandingAgent)', async () => {
+    vi.stubEnv('OPENROUTER_API_KEY', 'test-openrouter-key')
+    let resolveHang!: () => void
+    const hang = new Promise<void>((resolve) => {
+      resolveHang = resolve
+    })
+    async function* hangingStream() {
+      yield { payload: { text: 'working' }, type: 'text-delta' }
+      await hang
+      // Mastra may end the iterator cleanly after abort rather than throwing.
+      // The run must still be classified as stopped (not empty-draft error).
+    }
+    vi.doMock('./index.ts', () => ({ mastra: {} }))
+    vi.doMock('./agents/landing-page-agent.ts', () => ({
+      createLandingPageAgent: () => ({
+        stream: async () => fakeAgentStream(hangingStream()),
+      }),
+    }))
+    const { createProject } = await import('./lib/project-store.ts')
+    const project = await createProject()
+    createdProjectIds.push(project.id)
+    const { stopLandingAgent, streamLandingAgent } = await import('./route.ts')
+    const request = fakeRequest()
+    const response = new FakeResponse()
+    const run = streamLandingAgent({
+      projectId: project.id,
+      prompt: 'Hang.',
+      request,
+      response: response as unknown as ServerResponse,
+      textModel: 'z-ai/glm-5.2',
+    })
+    // wait until the run has registered itself in the active-runs map (mid-run)
+    const registered = Date.now() + 2000
+    while (request.listenerCount('close') === 0 && Date.now() < registered) {
+      await new Promise((r) => setImmediate(r))
+    }
+    expect(request.listenerCount('close')).toBe(1)
+    // Graceful stop: aborts the run's Mastra stream but leaves the SSE response
+    // open so terminal cost/stats + done are delivered to the client.
+    expect(stopLandingAgent(project.id)).toBe(true)
+    resolveHang() // unblock the stream → it ends cleanly with signal.aborted
+    await run
+    const events = parseSseEvents(response.body)
+    // Cost/stats are flushed even though the run was stopped mid-stream, so the
+    // client can render Spend / tokens for a stopped run.
+    expect(events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ event: 'stats' }),
+        expect.objectContaining({
+          data: { message: 'stopped' },
+          event: 'error',
+        }),
+      ]),
+    )
+    expect(events).not.toContainEqual(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          message: expect.stringContaining('without generating project HTML'),
+        }),
+        event: 'error',
+      }),
+    )
+    // stats precedes the terminal error, which precedes done.
+    const statsIndex = events.findIndex((e) => e.event === 'stats')
+    const errorIndex = events.findIndex((e) => e.event === 'error')
+    const doneIndex = events.findIndex((e) => e.event === 'done')
+    expect(statsIndex).toBeLessThan(errorIndex)
+    expect(errorIndex).toBeLessThan(doneIndex)
     expect(events.at(-1)).toEqual({ data: {}, event: 'done' })
     expect(request.listenerCount('close')).toBe(0)
   })

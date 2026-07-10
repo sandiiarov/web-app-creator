@@ -128,9 +128,34 @@ export function resolveModelId(model?: string): string {
 }
 
 /**
+ * Active landing-agent runs keyed by projectId. A graceful stop (see
+ * `stopLandingAgent`) aborts the run's Mastra stream WITHOUT closing the SSE
+ * response, so the run still flushes its terminal cost/stats before `done` and
+ * the client can show what a stopped run spent. A client disconnect still
+ * aborts via the `request('close')` listener as a fallback. The map is mutated
+ * only inside `streamLandingAgent` (register on start, conditional delete in
+ * `finally`).
+ */
+const activeRuns = new Map<string, AbortController>()
+
+/**
+ * Gracefully stop the active run for a project: aborts its Mastra stream but
+ * leaves the SSE response open so final cost/stats + `done` are delivered.
+ * Returns whether an active run was found and aborted.
+ */
+export function stopLandingAgent(projectId: string): boolean {
+  const controller = activeRuns.get(projectId)
+  if (!controller) return false
+  controller.abort()
+  return true
+}
+
+/**
  * Run the landing-page agent and stream the custom SSE protocol by mapping
  * Mastra `fullStream` chunks. Emits: thinking, text, tool_call (with action +
- * terminal error/result states), stats, error, done.
+ * terminal error/result states), stats, error, done. Cost/stats accounting runs
+ * in `finally` so a `stats` event is emitted even when the loop throws (client
+ * stop / mid-stream error), not only on the clean/break path.
  */
 export async function streamLandingAgent({
   attachments = [],
@@ -212,6 +237,7 @@ export async function streamLandingAgent({
     { imageModel, projectId, turnId: recordedTurn.id, visionModel },
   )
   const controller = new AbortController()
+  activeRuns.set(projectId, controller)
 
   const onClose = () => controller.abort()
   request.on('close', onClose)
@@ -270,6 +296,13 @@ export async function streamLandingAgent({
     return true
   }
 
+  // Hoisted above the try so the post-stream cost/stats accounting in
+  // `finally` can read them even when the loop threw (graceful stop /
+  // mid-stream error), not only on the clean/break path.
+  let agentStep = 0
+  let stream: Awaited<ReturnType<typeof agent.stream>> | undefined
+  let streamError: string | undefined
+
   try {
     // Persist the streaming turn (prompt + isStreaming) before any work so a
     // crash during attachment analysis or the agent run still leaves the prompt
@@ -280,6 +313,7 @@ export async function streamLandingAgent({
       nextToolSeq: () => ++toolCallSeq,
       projectId,
       recordedTurn,
+      signal: controller.signal,
       visionModel,
     })
     // Surface the final attachment metadata (incl. OCR analysisText) so the
@@ -310,11 +344,11 @@ export async function streamLandingAgent({
       agentPrompt,
     )
 
-    let agentStep = 0
+    agentStep = 0
     let agentMessageList: {
       get?: { response?: { db?: () => MastraDBMessage[] } }
     }
-    const stream = await agent.stream(agentMessages, {
+    stream = await agent.stream(agentMessages, {
       abortSignal: controller.signal,
       errorProcessors: createLandingAgentErrorProcessors(
         config.agentRetry,
@@ -600,12 +634,27 @@ export async function streamLandingAgent({
           break
       }
     }
-
-    // Always account for cost and capture raw response messages, even on a
-    // fatal/aborted run, so the user sees what a run actually spent and the
-    // partial response is recoverable for history replay. `stream.usage`/
-    // `finishReason` may reject on an aborted stream; fall back so accounting
-    // (image/scrape/vision cost accumulated during the loop) still records.
+  } catch (error) {
+    // Capture (don't emit yet) so `finally` can run cost/stats accounting
+    // first — the user sees what an aborted/errored run actually spent. A
+    // fatal run error was already emitted during the loop and owns the
+    // terminal message.
+    if (!fatalRunError) {
+      const aborted = controller.signal.aborted
+      streamError = aborted
+        ? 'stopped'
+        : error instanceof Error
+          ? error.message
+          : 'Unknown error'
+    }
+  } finally {
+    // Cost/stats accounting runs here (not in the try body) so it executes
+    // even when the stream loop THREW (graceful stop / mid-stream error), not
+    // only on the clean/break path. `stream.usage`/`finishReason` may reject
+    // on an aborted stream; fall back so accounting (image/scrape/vision cost
+    // accumulated during the run, plus provider-reported LLM cost) records.
+    // A stream setup failure still emits zero-token stats plus any costs that
+    // were already accumulated before `agent.stream` rejected.
     let usage: {
       cachedInputTokens?: number
       inputTokens?: number
@@ -615,11 +664,15 @@ export async function streamLandingAgent({
       totalTokens?: number
     } = {}
     let finishReason = 'stop'
-    try {
-      usage = await stream.usage
-      finishReason = (await stream.finishReason) ?? 'stop'
-    } catch {
-      finishReason = 'stop'
+    if (streamError && !controller.signal.aborted) finishReason = 'error'
+    if (stream) {
+      try {
+        usage = await stream.usage
+        finishReason = (await stream.finishReason) ?? finishReason
+      } catch {
+        // Retain the stop/error fallback while preserving costs accumulated by
+        // image, scrape, vision, or raw provider chunks before termination.
+      }
     }
     const llmCost = calculateLlmCost(textModel, {
       cachedInputTokens: usage.cachedInputTokens,
@@ -677,7 +730,7 @@ export async function streamLandingAgent({
     // onStepFinish may not fire for every stream shape, so this guarantees the
     // turn's Mastra messages are captured for replay). `dir: 'step'` with the
     // next step number; replay takes the last snapshot per turn.
-    const finalAgentMessages = stream.messageList?.get?.response?.db?.()
+    const finalAgentMessages = stream?.messageList?.get?.response?.db?.()
     if (finalAgentMessages && finalAgentMessages.length > 0) {
       agentStep += 1
       void appendAgentMessages(projectId, {
@@ -689,26 +742,20 @@ export async function streamLandingAgent({
       })
     }
 
-    // The empty-draft guard is a real completion error, not an accounting
-    // concern, so it only fires when the run was not already fatal.
-    if (!fatalRunError && !project.hasHtml && htmlUpdateSequence === 0) {
-      emit('error', { message: NO_GENERATED_HTML_MESSAGE })
-    }
-  } catch (error) {
-    const aborted = controller.signal.aborted
+    // Terminal error: any controller-aborted non-fatal run is `stopped`, even
+    // when Mastra ends its iterator cleanly instead of throwing. This keeps a
+    // user stop from falling through to the unrelated empty-draft error. A
+    // fatal run error was already emitted during the loop.
     if (!fatalRunError) {
-      const message = aborted
-        ? 'stopped'
-        : error instanceof Error
-          ? error.message
-          : 'Unknown error'
-      if (aborted) {
-        // stopped — no terminal tool result needed; the client log captures the error event.
-      } else {
+      const terminalError = controller.signal.aborted ? 'stopped' : streamError
+      if (terminalError) {
+        emit('error', { message: terminalError })
+      } else if (!project.hasHtml && htmlUpdateSequence === 0) {
+        emit('error', { message: NO_GENERATED_HTML_MESSAGE })
       }
-      emit('error', { message })
     }
-  } finally {
+
+    if (activeRuns.get(projectId) === controller) activeRuns.delete(projectId)
     request.off('close', onClose)
     emit('done', {})
     // Flush any still-pending debug-log appends so they're durable before the
@@ -724,6 +771,7 @@ async function analyzePromptAttachments({
   nextToolSeq,
   projectId,
   recordedTurn,
+  signal,
   visionModel,
 }: {
   attachments: AgentAttachmentInput[]
@@ -731,6 +779,7 @@ async function analyzePromptAttachments({
   nextToolSeq: () => number
   projectId: string
   recordedTurn: ProjectMessageTurn
+  signal: AbortSignal
   visionModel: string
 }): Promise<AttachmentAnalysis> {
   if (attachments.length === 0) {
@@ -760,6 +809,8 @@ async function analyzePromptAttachments({
       })),
       ATTACHMENT_OCR_PROMPT,
       visionModel,
+      undefined,
+      { signal },
     )
     const cost = visionCost(result.usage ?? {}, result.cost)
     const images = result.imagesAnalyzed
@@ -815,6 +866,7 @@ async function analyzePromptAttachments({
       ok: true,
     }
   } catch (error) {
+    signal.throwIfAborted()
     const reason = summarizeToolError(error)
     const errorPayload: RecordedToolPayload = {
       action,
