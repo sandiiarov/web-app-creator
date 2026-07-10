@@ -253,7 +253,9 @@ describe('streamLandingAgent attachments', () => {
   it('gracefully stops while attachment OCR is waiting on the provider', async () => {
     vi.stubEnv('OPENROUTER_API_KEY', 'test-openrouter-key')
 
-    const stream = vi.fn(async () => fakeAgentStream())
+    const stream = vi.fn<() => Promise<ReturnType<typeof fakeAgentStream>>>(
+      async () => fakeAgentStream(),
+    )
     vi.doUnmock('./lib/image-ocr.ts')
     vi.doMock('./index.ts', () => ({ mastra: {} }))
     vi.doMock('./agents/landing-page-agent.ts', () => ({

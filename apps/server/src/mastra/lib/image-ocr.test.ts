@@ -241,12 +241,9 @@ describe('ocrImageInputs', () => {
       { signal: controller.signal },
     )
     await vi.waitFor(() => expect(fetch).toHaveBeenCalledOnce())
-    const rejected = expect(pending).rejects.toMatchObject({
-      name: 'AbortError',
-    })
-    controller.abort()
+    queueMicrotask(() => controller.abort())
 
-    await rejected
+    await expect(pending).rejects.toMatchObject({ name: 'AbortError' })
     expect(fetch).toHaveBeenCalledOnce()
   })
 })
@@ -465,12 +462,9 @@ describe('boundedFetch', () => {
       { baseDelayMs: 0, signal: controller.signal, timeoutMs: 1000 },
     )
     await vi.waitFor(() => expect(fetch).toHaveBeenCalledOnce())
-    const rejected = expect(pending).rejects.toMatchObject({
-      name: 'AbortError',
-    })
-    controller.abort()
+    queueMicrotask(() => controller.abort())
 
-    await rejected
+    await expect(pending).rejects.toMatchObject({ name: 'AbortError' })
     expect(fetch).toHaveBeenCalledOnce()
   })
 
@@ -487,12 +481,9 @@ describe('boundedFetch', () => {
       { baseDelayMs: 10_000, signal: controller.signal, timeoutMs: 1000 },
     )
     await vi.waitFor(() => expect(fetch).toHaveBeenCalledOnce())
-    const rejected = expect(pending).rejects.toMatchObject({
-      name: 'AbortError',
-    })
-    controller.abort()
+    queueMicrotask(() => controller.abort())
 
-    await rejected
+    await expect(pending).rejects.toMatchObject({ name: 'AbortError' })
     expect(fetch).toHaveBeenCalledOnce()
   })
 })
