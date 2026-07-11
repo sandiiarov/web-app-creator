@@ -11,6 +11,7 @@ export type {
   ConversationStatsPart,
   ConversationTextPart,
   ConversationThinkingPart,
+  ConversationToolCallImage,
   ConversationToolCallPart,
   ConversationTurn,
   ToolCallState,

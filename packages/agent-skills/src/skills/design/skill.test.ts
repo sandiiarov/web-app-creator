@@ -11,22 +11,9 @@ const SKILL_FILE = join(HERE, 'SKILL.md')
 const REFERENCES_DIR = join(HERE, 'references')
 
 const EXPECTED_REFERENCE_FILES = [
-  'color.md',
   'create.md',
-  'finish.md',
-  'interaction.md',
-  'layout.md',
-  'motion.md',
-  'redesign.md',
-  'refine.md',
-  'relayout.md',
-  'responsive.md',
+  'iterate.md',
   'review.md',
-  'smell.md',
-  'surface.md',
-  'typeset.md',
-  'voice.md',
-  'writing.md',
 ] as const
 
 type InlineSkillShape = {

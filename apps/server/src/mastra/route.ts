@@ -579,10 +579,16 @@ async function activeStreamLandingAgent({
             chunk.payload.result,
             isError,
           )
+          const images = toolCallImages(
+            chunk.payload.toolName,
+            chunk.payload.result,
+            baseUrl,
+          )
           const toolPayload: RecordedToolPayload = {
             action,
             detail: display.detail,
             id: display.id,
+            ...(images.length > 0 ? { images } : {}),
             providerId: chunk.payload.toolCallId,
             result,
             state: isError ? 'error' : 'done',
@@ -1418,16 +1424,12 @@ const summarizeResultForTool: Record<
     }
     const imageOcr = asToolArgs(data.imageOcr)
     const ocrImages = numberValue(imageOcr.imagesAnalyzed)
-    const selector = stringValue(data.selector)
-    const viewportSize = stringValue(data.viewportSize)
     const width = numberValue(data.width)
     const height = numberValue(data.height)
     return compactLines([
       width && height
         ? `Captured ${width}×${height} screenshot`
         : 'Captured screenshot',
-      selector ? `Selector: ${selector}` : null,
-      viewportSize ? `Viewport: ${viewportSize}` : null,
       ocrImages && ocrImages > 0
         ? `OCR ${ocrImages} image${ocrImages === 1 ? '' : 's'}`
         : null,
@@ -1452,6 +1454,30 @@ function summarizeToolResult(
     return reason ?? summarizeToolError(result)
   }
   return summarizeResultForTool[tool]?.(data, reason) ?? null
+}
+
+function toolCallImages(tool: string, result: unknown, baseUrl: string) {
+  if (tool !== 'screenshot') return []
+
+  const data = asToolArgs(result)
+  const imageUrl = stringValue(data.imageUrl)
+  if (!imageUrl) return []
+
+  let url: string
+  try {
+    url = new URL(imageUrl, baseUrl).href
+  } catch {
+    return []
+  }
+
+  const selector = stringValue(data.selector) ?? 'selected element'
+  const viewport = stringValue(data.viewportSize)
+  return [
+    {
+      alt: `Screenshot of ${selector}${viewport ? ` at ${viewport} viewport` : ''}`,
+      url,
+    },
+  ]
 }
 
 function toolResultIndicatesFailure(tool: string, result: unknown): boolean {

@@ -48,6 +48,7 @@ Update parent docs when parent-level structure, ownership, workflow, or child in
 - Verification must reflect an existing check; if no verification framework exists yet, leave it empty and update it when one exists
 
 Default section order:
+
 - Purpose
 - Ownership
 - Local Contracts
@@ -83,7 +84,7 @@ Default section order:
 - TypeScript 7 (the native Go compiler, invoked as `tsc`) is strict ESM via shared config packages; formatting/linting use Oxfmt/Oxlint. The catalog pins `typescript`; `@typescript/native-preview`/`tsgo` was retired once TS 7 shipped as the stable `typescript` package.
 - Keep generated or ignored outputs out of source edits: `node_modules`, `dist`, `coverage`, `.turbo`, `.fallow`, Mastra DB files, and `apps/server/.mastra/{.build,output}`.
 - Environment files stay package-local; do not create a root `.env`.
-- A `pnpm patch` is applied to `@mastra/core` (`patches/@mastra__core@1.47.0.patch`, declared in `pnpm-workspace.yaml` `patchedDependencies`): it defers streaming tool-call finalization to end-of-stream instead of the vendored AI-SDK's mid-stream `isParsableJson` early-finalize, which dropped GLM-5.2's multi-fragment tool arguments as empty `{}`. Re-verify the patch (and whether upstream has fixed it) on every `@mastra/core` upgrade; re-create with `pnpm patch @mastra/core@<new>` if it still applies.
+- A `pnpm patch` is applied to `@mastra/core` (`patches/@mastra__core@1.47.0.patch`, declared in `pnpm-workspace.yaml` `patchedDependencies`): the actual OpenRouter ESM/CommonJS adapters buffer streamed tool arguments through end-of-stream, replace GLM-5.2's initial `{}` placeholder when real cumulative JSON follows, and reject incomplete final JSON instead of coercing it to `{}`; the older generic OpenAI-compatible safeguard remains. `apps/server/src/mastra/lib/openrouter-tool-stream.test.ts` executes both patched adapters with fragmented streams. Re-verify the patch and upstream behavior on every `@mastra/core` upgrade; re-create it with `pnpm patch @mastra/core@<new>` if still needed.
 
 ## Verification
 

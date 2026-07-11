@@ -7,7 +7,8 @@
     ".": "./src/index.ts",
     "./browser-screenshot": "./src/browser-screenshot.ts",
     "./preview-morph": "./src/preview-morph.ts",
-    "./preview-srcdoc": "./src/preview-srcdoc.ts"
+    "./preview-srcdoc": "./src/preview-srcdoc.ts",
+    "./react": "./src/landing-preview.tsx"
   },
   "scripts": {
     "format": "oxfmt -c oxfmt.config.ts .",

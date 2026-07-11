@@ -38,7 +38,10 @@ describe('POST /api/screenshot-responses/:requestId', () => {
       )
 
       await expect(response.json()).resolves.toEqual({ ok: true })
-      await expect(promise).resolves.toEqual(SCREENSHOT)
+      await expect(promise).resolves.toEqual({
+        ...SCREENSHOT,
+        imageUrl: `/api/projects/${PROJECT_ID}/screenshots/001-${requestId}.jpg`,
+      })
     })
   })
 
@@ -86,7 +89,10 @@ describe('POST /api/screenshot-responses/:requestId', () => {
 
       await expect(response.json()).resolves.toEqual({ ok: true })
       await expect(promise).resolves.toMatchObject(SCREENSHOT)
-      await expect(promise).resolves.toEqual(SCREENSHOT)
+      await expect(promise).resolves.toEqual({
+        ...SCREENSHOT,
+        imageUrl: `/api/projects/${PROJECT_ID}/screenshots/001-${requestId}.jpg`,
+      })
     })
   })
 

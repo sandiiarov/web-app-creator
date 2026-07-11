@@ -1,122 +1,59 @@
 ---
 name: design
-description: "Design guidance for creating, editing, reviewing, and redesigning the single-file HTML landing page. Includes scenario and reference tables showing when each design reference is useful, with successful full reads reused throughout the same project conversation."
+description: "Design guidance for creating, iterating on, reviewing, and finishing the single-file HTML landing page. Uses three lifecycle references so each user turn loads only the context it needs."
 ---
 
 # Design
 
-You are the user's design partner for landing pages. The working surface is the single project HTML document exposed by the project tools. Mockups, briefs, reports, style guides, alternate HTML files, and supporting design documents sit outside this skill.
+You are the user's design partner for landing pages. The working surface is the single project HTML document exposed by the project tools. Users describe outcomes in ordinary language; do not require them to name a design operation.
 
-## Using reference context
+Mockups, briefs, reports, style guides, alternate HTML files, and supporting design documents sit outside this skill.
 
-A successful full reference read remains useful throughout the same project conversation. Follow-up requests reuse that context instead of loading the skill or reading the same reference again. When the scenario or design dimension changes, consult only references that add context not already present in the conversation.
+## Lifecycle references
 
-For a reference not yet available, use `skill_read` with `skillName: "design"` and the exact `references/<file>.md` path. Omitting `startLine` and `endLine` returns the complete reference. A table entry names useful context; the reference content comes from its successful read rather than from the filename alone.
+After activating this skill, start with the one reference matching the current request:
 
-The tables below are routing aids. The scenario table suggests a starting set, while the reference table explains the contribution of every file. Precise requests stay precise, and supporting context does not expand the user's requested surface.
-
-## Scenario guide
-
-| Scenario | Reference approach |
+| User intent | Reference |
 |---|---|
-| New page | Start with `references/create.md`, `references/voice.md`, `references/smell.md`, `references/layout.md`, `references/color.md`, `references/typeset.md`, `references/writing.md`, `references/responsive.md`, `references/interaction.md`, `references/surface.md`, and `references/motion.md`. |
-| New page inspired by or recreated from a URL | Scrape the URL and inspect the project placeholder, then use the new-page context above. The URL supplies evidence; the project HTML remains the working surface. |
-| Redesign a page supplied by URL | Scrape the URL, preserve its product and message constraints, and start with `references/redesign.md`, `references/voice.md`, `references/smell.md`, `references/layout.md`, `references/color.md`, `references/typeset.md`, `references/writing.md`, `references/responsive.md`, `references/interaction.md`, `references/surface.md`, and `references/motion.md`. |
-| Continue an unfinished page | Reuse the operation and foundation references already present in the conversation. Add context only for dimensions introduced by the continuation. |
-| Edit an existing page | Match the smallest operation or foundation rows below to the requested surface. A focused change keeps neighboring sections and systems intact. |
-| Add a new section | Start with `references/create.md`, `references/voice.md`, `references/layout.md`, `references/writing.md`, `references/responsive.md`, and `references/smell.md`, then add foundation references for dimensions the section introduces or changes. |
-| Full-page redesign | Use `references/redesign.md`, `references/voice.md`, `references/smell.md`, `references/layout.md`, `references/color.md`, `references/typeset.md`, `references/writing.md`, `references/responsive.md`, `references/interaction.md`, `references/surface.md`, and `references/motion.md`. After full creation, `references/redesign.md` is usually the only new read. |
-| Finish | Use `references/finish.md`, `references/smell.md`, `references/responsive.md`, `references/interaction.md`, and `references/writing.md`. After full creation, `references/finish.md` is usually the only new read. |
-| Refine | Use `references/refine.md`, `references/voice.md`, and `references/smell.md`, then add context for dimensions affected by the chosen refinement. |
-| Diagnostic only | Use `references/review.md` for general critique or `references/smell.md` for generated-pattern diagnosis. Findings stay in the response unless the user also asks for treatment. |
-| Generated-pattern cleanup | Use `references/smell.md`, then consult foundations connected to observed findings. |
-| Generate or replace imagery | Use the active create, redesign, or art-direction context together with the layout, color, responsive, and writing guidance relevant to placement, crop, palette, and alt text. |
+| Create a new page, recreate or take inspiration from a URL, or replace a placeholder | `references/create.md` |
+| Continue, edit, add a section, refine, relayout, redesign, or change imagery on an existing page | `references/iterate.md` |
+| Review, critique, finish, polish, or clean up generated patterns | `references/review.md` |
 
-## Reference guide
+Use `skill_read` with `skillName: "design"` and the exact path. Omit `startLine` and `endLine` for a complete read.
 
-### Operation references
+Do not preload all three references. A successful full read remains useful throughout the same project conversation; reuse it instead of reading it again. A later lifecycle reads only its missing reference. A broad redesign without creation context may use both `iterate.md` and `create.md`, but a focused follow-up normally needs only `iterate.md`.
 
-| Skill ref | When to use |
-|---|---|
-| `references/create.md` | Creating a new page, creating from a reference URL, or adding a genuinely new section. |
-| `references/redesign.md` | Replacing the visual system of an existing project or URL-derived page while preserving its product and message. |
-| `references/relayout.md` | Changing composition, order, grouping, or reading path without changing visual identity. |
-| `references/refine.md` | Strengthening, calming, simplifying, or adjusting an existing direction without a full redesign. |
-| `references/finish.md` | Running a final polish and verification pass on an already coherent page. |
-| `references/review.md` | Running a quick health check or a thorough evidence-based landing-page critique. |
-| `references/smell.md` | Detecting and treating generic generated-design patterns and prompt drift. |
-
-### Foundation references
-
-| Skill ref | When to use |
-|---|---|
-| `references/voice.md` | Establishing or changing brand expression, visual direction, imagery style, or overall character. |
-| `references/layout.md` | Designing or changing composition, hierarchy, section rhythm, proof placement, or reading path. |
-| `references/color.md` | Creating or changing palette, semantic color roles, contrast, or color mood. |
-| `references/typeset.md` | Creating or changing fonts, type hierarchy, measure, leading, or responsive type scale. |
-| `references/writing.md` | Creating or changing headlines, body copy, navigation, CTA labels, form text, terminology, or alt text. |
-| `references/responsive.md` | Creating or changing mobile, tablet, desktop, wrapping, ordering, touch, or breakpoint behavior. |
-| `references/interaction.md` | Creating or changing CTA hierarchy, links, landing-page forms, navigation, disclosures, demos, focus, or control behavior. |
-| `references/surface.md` | Creating or changing dividers, frames, radii, focus rings, depth, elevation, or the page's physical model. |
-| `references/motion.md` | Creating or changing animation, transitions, animated feedback, or reduced-motion behavior. |
+For diagnostic review, findings stay in the response unless the user also requests edits. Finish, polish, and cleanup requests may apply the treatment described by `review.md`.
 
 ## Scope and precedence
 
-The current request, supplied content, explicit scope, and constraints lead. The current project HTML, supplied or scraped assets, and existing working behavior come next. Active operation guidance then shapes the work, with foundation references supplying dimension-specific context.
+The current request, supplied content, explicit scope, constraints, and exclusions lead. The current project HTML, supplied or scraped assets, and valid working behavior come next. The active lifecycle reference then guides the work.
 
-Exact names, claims, content, brand assets, and exclusions remain stable unless the user changes them. A supporting reference informs the requested operation without turning a narrow edit into a page-wide pass.
+Exact names, claims, links, brand assets, and technical requirements remain stable unless the user changes them. A precise request stays within the smallest coherent surface. A full-page request may change the complete system while preserving product truth and valid behavior.
 
-A request is ready when the target, goal, audience or category, and domain artifact are clear from the prompt or nearby project context. Ordinary design details can be inferred. A focused question helps when a missing target, contradictory constraint, destructive ambiguity, or inaccessible source would materially change the result.
+For a page inspired by or recreated from a URL, inspect the source and the project placeholder. The URL supplies evidence; the project HTML remains the only working surface.
 
-Broad language points to a full named operation. Precise language points to the closest focused references. Existing links, forms, scripts, content, accessibility, and responsive behavior outside the requested surface remain part of the page's continuity.
-
-## Landing-page design context
-
-Before composing, identify:
-
-- **Name:** the exact product, person, venue, service, or feature
-- **Category:** what the first viewport communicates
-- **Audience and pressure:** who arrived and what decision or task brought them
-- **Artifact:** the concrete domain object that can carry visual proof
-- **Evidence:** what makes the promise credible
-- **Action:** the primary next step
-- **Drift:** unrelated names, proof objects, layouts, copy, or visual reflexes inherited from another page
-
-Composition follows the visitor's job: decide, learn, explore, or compare. Reading path, proof placement, imagery, hierarchy, and CTA emerge from that job rather than from a default centered hero and equal feature-card grid.
-
-Landing pages generally benefit from a specific visual lane, a domain-specific proof object, realistic content, and a memorable first viewport. Generic technology gradients, interchangeable mockups, repeated icon-card grids, decorative glass, arbitrary pills, vague claims, and category-default palettes usually weaken that specificity.
-
-Accessibility and semantics remain design context: meaningful landmarks and headings, readable text, visible focus styles, sufficient contrast, useful alt text, touch-sized controls, authored reduced-motion behavior, and responsive composition. Navigation, disclosures, forms, pricing controls, and demos receive behavior only when they actually exist.
-
-A consulted foundation can lead to no visible effect. Flat composition may use no depth, a confident page may use no expressive motion, and spacing may separate content better than another frame.
+Build landing-page behavior, not an adjacent application. Navigation, forms, disclosures, pricing controls, media, and demos receive behavior only when they actually exist. Infer ordinary design details; ask one focused question only when missing or contradictory information would materially change the product, audience, or target.
 
 ## Work loop
 
-1. Inspect the current HTML and relevant source or visual context.
-2. Choose the scenario and consult useful references not already available in the project conversation.
-3. Name the intended visual or structural move internally and map the smallest coherent edits.
-4. Build incrementally: structure and content, tokens and layout, responsive behavior, interaction, then purposeful motion.
-5. Use realistic content and preserve valid existing behavior.
-6. Take screenshots after substantial changes, compare the rendered result with the goal, and address observed problems.
-7. Re-read changed HTML where source evidence helps and keep completion claims aligned with what was observed.
+1. Inspect the current HTML and supplied source, asset, and visual context.
+2. Choose the current lifecycle and read only its reference if that context is not already present.
+3. Extract the prompt invariants, name the intended outcome, and map the smallest coherent build or change sequence.
+4. When edits are requested, work incrementally in the real document and preserve unaffected content and behavior.
+5. Take desktop and mobile screenshots after substantial changes; include tablet when its composition differs materially.
+6. Correct observed hierarchy, wrapping, clipping, overflow, imagery, control, and responsive problems.
+7. Inspect source for semantic structure, destinations, assets, fonts, focus states, media queries, hidden states, and reduced-motion rules.
 
-Tool descriptions own their argument formats and edit mechanics, so this skill stays focused on design decisions rather than duplicating tool syntax.
+Tool descriptions own argument formats and edit mechanics. Keep this skill focused on landing-page decisions.
 
-## Verification context
+## Evidence boundary
 
-For a full page or redesign, desktop and mobile screenshots provide the main visual evidence; tablet is useful when its composition differs materially. A focused request benefits from the affected selector and relevant viewport profile. Screenshot profiles represent their named sizes rather than every exact width.
+A screenshot verifies only the rendered state it shows. Source inspection can verify implementation but not exercised behavior. Do not claim keyboard, touch, submission, animation timing, assistive-technology, performance, or usability testing unless an available tool actually exercised it.
 
-Source inspection can establish semantic structure, links, media queries, focus styles, reduced-motion rules, and hidden-state implementation. A screenshot establishes only the rendered state it shows. Interaction traversal, assistive-technology testing, color-vision simulation, performance profiling, network failure, and prolonged usability remain unverified unless an available tool actually exercises them.
-
-If screenshot capture is unavailable, HTML inspection still provides source evidence and the final response can identify the missing visual check. Hidden or interactive states visible only in source can be described as implemented but not exercised.
-
-## Completion language
-
-A concise completion response can distinguish:
+Completion language must match the evidence:
 
 - **Visually verified:** observed in a screenshot
 - **Source-inspected:** confirmed in project HTML without runtime exercise
 - **Implemented but not exercised:** present for a hidden or interactive state without runtime proof
-- **Unverified:** limited by unavailable input or tooling
-
-Words such as added, fixed, redesigned, animated, and verified align with corresponding edits and evidence. When nothing changed, inspected is more accurate than fixed. Intentional omissions are useful when they affect the user's request.
+- **Unverified:** unavailable input or tooling prevented the check

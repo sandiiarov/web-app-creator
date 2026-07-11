@@ -70,10 +70,16 @@ export interface ConversationThinkingPart {
   type: 'thinking'
 }
 
+export interface ConversationToolCallImage {
+  alt: string
+  url: string
+}
+
 export interface ConversationToolCallPart {
   action: null | string
   detail?: null | string
   id: string
+  images?: ConversationToolCallImage[]
   providerId?: string
   result?: null | string
   state: ToolCallState

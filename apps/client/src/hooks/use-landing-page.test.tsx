@@ -222,6 +222,50 @@ describe('useLandingPage run lifecycle', () => {
       await flushAsyncWork()
     })
   })
+
+  it('adds attached image previews to analyze-image tool args', async () => {
+    await mount(project())
+    mocks.streamSSE.mockImplementation(async (_url, _body, options) => {
+      options.onEvent({
+        data: {
+          action: 'Analyze attached visual reference',
+          detail: 'Analyze attached visual reference\nwireframe.png',
+          id: 'tool-1-analyze_image',
+          state: 'running',
+          tool: 'analyze_image',
+        },
+        event: 'tool_call',
+      })
+      options.onEvent({ data: {}, event: 'done' })
+    })
+
+    await act(async () => {
+      current.send({
+        attachments: [
+          {
+            dataUrl: 'data:image/png;base64,iVBORw0KGgo=',
+            id: 'image-1',
+            mediaType: 'image/png',
+            name: 'wireframe.png',
+            size: 8,
+          },
+        ],
+        prompt: 'Use this reference',
+      })
+      await flushAsyncWork()
+    })
+
+    expect(current.turns[0]?.parts[0]).toMatchObject({
+      images: [
+        {
+          alt: 'wireframe.png',
+          url: 'data:image/png;base64,iVBORw0KGgo=',
+        },
+      ],
+      tool: 'analyze_image',
+      type: 'tool_call',
+    })
+  })
 })
 
 async function flushAsyncWork(): Promise<void> {

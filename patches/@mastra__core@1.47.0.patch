@@ -34,3 +34,311 @@ index ce8ef1a91e0dabe935929921b0f47ef7900c1147..5fcd197354888a9adc9b2973615af49c
              controller.enqueue({
                type: "finish",
                finishReason,
+diff --git a/dist/chunk-GHDHOLZS.js b/dist/chunk-GHDHOLZS.js
+index 33e6d4b73b127bf493113919a8a0017b532a0487..0aba4ea1e20e9ab47564af63a6f5aa08e4625ad1 100644
+--- a/dist/chunk-GHDHOLZS.js
++++ b/dist/chunk-GHDHOLZS.js
+@@ -9559,35 +9559,6 @@ var OpenRouterChatLanguageModel = class {
+                       message: `Tool call at index ${index} is missing after creation.`
+                     });
+                   }
+-                  if (((_g = toolCall2.function) == null ? void 0 : _g.name) != null && ((_h = toolCall2.function) == null ? void 0 : _h.arguments) != null && isParsableJson3(toolCall2.function.arguments)) {
+-                    toolCall2.inputStarted = true;
+-                    controller.enqueue({
+-                      type: "tool-input-start",
+-                      id: toolCall2.id,
+-                      toolName: toolCall2.function.name
+-                    });
+-                    controller.enqueue({
+-                      type: "tool-input-delta",
+-                      id: toolCall2.id,
+-                      delta: toolCall2.function.arguments
+-                    });
+-                    controller.enqueue({
+-                      type: "tool-input-end",
+-                      id: toolCall2.id
+-                    });
+-                    controller.enqueue({
+-                      type: "tool-call",
+-                      toolCallId: toolCall2.id,
+-                      toolName: toolCall2.function.name,
+-                      input: toolCall2.function.arguments,
+-                      providerMetadata: {
+-                        openrouter: {
+-                          reasoning_details: accumulatedReasoningDetails
+-                        }
+-                      }
+-                    });
+-                    toolCall2.sent = true;
+-                  }
+                   continue;
+                 }
+                 const toolCall = toolCalls[index];
+@@ -9601,35 +9572,14 @@ var OpenRouterChatLanguageModel = class {
+                     message: `Tool call at index ${index} is missing during merge.`
+                   });
+                 }
+-                if (!toolCall.inputStarted) {
+-                  toolCall.inputStarted = true;
+-                  controller.enqueue({
+-                    type: "tool-input-start",
+-                    id: toolCall.id,
+-                    toolName: toolCall.function.name
+-                  });
+-                }
+-                if (((_i = toolCallDelta.function) == null ? void 0 : _i.arguments) != null) {
+-                  toolCall.function.arguments += (_k = (_j = toolCallDelta.function) == null ? void 0 : _j.arguments) != null ? _k : "";
+-                }
+-                controller.enqueue({
+-                  type: "tool-input-delta",
+-                  id: toolCall.id,
+-                  delta: (_l = toolCallDelta.function.arguments) != null ? _l : ""
+-                });
+-                if (((_m = toolCall.function) == null ? void 0 : _m.name) != null && ((_n = toolCall.function) == null ? void 0 : _n.arguments) != null && isParsableJson3(toolCall.function.arguments)) {
+-                  controller.enqueue({
+-                    type: "tool-call",
+-                    toolCallId: (_o = toolCall.id) != null ? _o : generateId3(),
+-                    toolName: toolCall.function.name,
+-                    input: toolCall.function.arguments,
+-                    providerMetadata: {
+-                      openrouter: {
+-                        reasoning_details: accumulatedReasoningDetails
+-                      }
+-                    }
+-                  });
+-                  toolCall.sent = true;
++                const argumentDelta = (_i = toolCallDelta.function.arguments) != null ? _i : "";
++                if (argumentDelta !== "") {
++                  const currentArguments = toolCall.function.arguments;
++                  if (currentArguments.trim() === "{}" && argumentDelta.trim().startsWith("{") || argumentDelta.startsWith(currentArguments)) {
++                    toolCall.function.arguments = argumentDelta;
++                  } else {
++                    toolCall.function.arguments += argumentDelta;
++                  }
+                 }
+               }
+             }
+@@ -9644,31 +9594,49 @@ var OpenRouterChatLanguageModel = class {
+             }
+           },
+           flush(controller) {
+-            var _a16;
+             const hasToolCalls = toolCalls.length > 0;
+-            const hasEncryptedReasoning = accumulatedReasoningDetails.some(
+-              (d) => d.type === "reasoning.encrypted" && d.data
+-            );
+-            if (hasToolCalls && hasEncryptedReasoning && finishReason === "stop") {
++            if (hasToolCalls && finishReason === "stop") {
+               finishReason = "tool-calls";
+             }
+-            if (finishReason === "tool-calls") {
+-              for (const toolCall of toolCalls) {
+-                if (toolCall && !toolCall.sent) {
+-                  controller.enqueue({
+-                    type: "tool-call",
+-                    toolCallId: (_a16 = toolCall.id) != null ? _a16 : generateId3(),
+-                    toolName: toolCall.function.name,
+-                    // Coerce invalid arguments to an empty JSON object
+-                    input: isParsableJson3(toolCall.function.arguments) ? toolCall.function.arguments : "{}",
+-                    providerMetadata: {
+-                      openrouter: {
+-                        reasoning_details: accumulatedReasoningDetails
+-                      }
+-                    }
++            for (const toolCall of toolCalls) {
++              if (toolCall && !toolCall.sent) {
++                const input = toolCall.function.arguments;
++                if (!isParsableJson3(input)) {
++                  throw new InvalidResponseDataError3({
++                    data: {
++                      argumentLength: input.length,
++                      toolCallId: toolCall.id,
++                      toolName: toolCall.function.name
++                    },
++                    message: "OpenRouter stream ended with incomplete tool-call arguments."
+                   });
+-                  toolCall.sent = true;
+                 }
++                controller.enqueue({
++                  type: "tool-input-start",
++                  id: toolCall.id,
++                  toolName: toolCall.function.name
++                });
++                controller.enqueue({
++                  type: "tool-input-delta",
++                  id: toolCall.id,
++                  delta: input
++                });
++                controller.enqueue({
++                  type: "tool-input-end",
++                  id: toolCall.id
++                });
++                controller.enqueue({
++                  type: "tool-call",
++                  toolCallId: toolCall.id != null ? toolCall.id : generateId3(),
++                  toolName: toolCall.function.name,
++                  input,
++                  providerMetadata: {
++                    openrouter: {
++                      reasoning_details: accumulatedReasoningDetails
++                    }
++                  }
++                });
++                toolCall.sent = true;
+               }
+             }
+             if (reasoningStarted) {
+diff --git a/dist/chunk-YYUDVZJC.cjs b/dist/chunk-YYUDVZJC.cjs
+index ed85bcd8b8dea06ba08b26d3e070cfb5f369fd42..3126c215b9b096ed1fa597c812b71158cee57026 100644
+--- a/dist/chunk-YYUDVZJC.cjs
++++ b/dist/chunk-YYUDVZJC.cjs
+@@ -9561,35 +9561,6 @@ var OpenRouterChatLanguageModel = class {
+                       message: `Tool call at index ${index} is missing after creation.`
+                     });
+                   }
+-                  if (((_g = toolCall2.function) == null ? void 0 : _g.name) != null && ((_h = toolCall2.function) == null ? void 0 : _h.arguments) != null && isParsableJson3(toolCall2.function.arguments)) {
+-                    toolCall2.inputStarted = true;
+-                    controller.enqueue({
+-                      type: "tool-input-start",
+-                      id: toolCall2.id,
+-                      toolName: toolCall2.function.name
+-                    });
+-                    controller.enqueue({
+-                      type: "tool-input-delta",
+-                      id: toolCall2.id,
+-                      delta: toolCall2.function.arguments
+-                    });
+-                    controller.enqueue({
+-                      type: "tool-input-end",
+-                      id: toolCall2.id
+-                    });
+-                    controller.enqueue({
+-                      type: "tool-call",
+-                      toolCallId: toolCall2.id,
+-                      toolName: toolCall2.function.name,
+-                      input: toolCall2.function.arguments,
+-                      providerMetadata: {
+-                        openrouter: {
+-                          reasoning_details: accumulatedReasoningDetails
+-                        }
+-                      }
+-                    });
+-                    toolCall2.sent = true;
+-                  }
+                   continue;
+                 }
+                 const toolCall = toolCalls[index];
+@@ -9603,35 +9574,14 @@ var OpenRouterChatLanguageModel = class {
+                     message: `Tool call at index ${index} is missing during merge.`
+                   });
+                 }
+-                if (!toolCall.inputStarted) {
+-                  toolCall.inputStarted = true;
+-                  controller.enqueue({
+-                    type: "tool-input-start",
+-                    id: toolCall.id,
+-                    toolName: toolCall.function.name
+-                  });
+-                }
+-                if (((_i = toolCallDelta.function) == null ? void 0 : _i.arguments) != null) {
+-                  toolCall.function.arguments += (_k = (_j = toolCallDelta.function) == null ? void 0 : _j.arguments) != null ? _k : "";
+-                }
+-                controller.enqueue({
+-                  type: "tool-input-delta",
+-                  id: toolCall.id,
+-                  delta: (_l = toolCallDelta.function.arguments) != null ? _l : ""
+-                });
+-                if (((_m = toolCall.function) == null ? void 0 : _m.name) != null && ((_n = toolCall.function) == null ? void 0 : _n.arguments) != null && isParsableJson3(toolCall.function.arguments)) {
+-                  controller.enqueue({
+-                    type: "tool-call",
+-                    toolCallId: (_o = toolCall.id) != null ? _o : generateId3(),
+-                    toolName: toolCall.function.name,
+-                    input: toolCall.function.arguments,
+-                    providerMetadata: {
+-                      openrouter: {
+-                        reasoning_details: accumulatedReasoningDetails
+-                      }
+-                    }
+-                  });
+-                  toolCall.sent = true;
++                const argumentDelta = (_i = toolCallDelta.function.arguments) != null ? _i : "";
++                if (argumentDelta !== "") {
++                  const currentArguments = toolCall.function.arguments;
++                  if (currentArguments.trim() === "{}" && argumentDelta.trim().startsWith("{") || argumentDelta.startsWith(currentArguments)) {
++                    toolCall.function.arguments = argumentDelta;
++                  } else {
++                    toolCall.function.arguments += argumentDelta;
++                  }
+                 }
+               }
+             }
+@@ -9646,31 +9596,49 @@ var OpenRouterChatLanguageModel = class {
+             }
+           },
+           flush(controller) {
+-            var _a16;
+             const hasToolCalls = toolCalls.length > 0;
+-            const hasEncryptedReasoning = accumulatedReasoningDetails.some(
+-              (d) => d.type === "reasoning.encrypted" && d.data
+-            );
+-            if (hasToolCalls && hasEncryptedReasoning && finishReason === "stop") {
++            if (hasToolCalls && finishReason === "stop") {
+               finishReason = "tool-calls";
+             }
+-            if (finishReason === "tool-calls") {
+-              for (const toolCall of toolCalls) {
+-                if (toolCall && !toolCall.sent) {
+-                  controller.enqueue({
+-                    type: "tool-call",
+-                    toolCallId: (_a16 = toolCall.id) != null ? _a16 : generateId3(),
+-                    toolName: toolCall.function.name,
+-                    // Coerce invalid arguments to an empty JSON object
+-                    input: isParsableJson3(toolCall.function.arguments) ? toolCall.function.arguments : "{}",
+-                    providerMetadata: {
+-                      openrouter: {
+-                        reasoning_details: accumulatedReasoningDetails
+-                      }
+-                    }
++            for (const toolCall of toolCalls) {
++              if (toolCall && !toolCall.sent) {
++                const input = toolCall.function.arguments;
++                if (!isParsableJson3(input)) {
++                  throw new InvalidResponseDataError3({
++                    data: {
++                      argumentLength: input.length,
++                      toolCallId: toolCall.id,
++                      toolName: toolCall.function.name
++                    },
++                    message: "OpenRouter stream ended with incomplete tool-call arguments."
+                   });
+-                  toolCall.sent = true;
+                 }
++                controller.enqueue({
++                  type: "tool-input-start",
++                  id: toolCall.id,
++                  toolName: toolCall.function.name
++                });
++                controller.enqueue({
++                  type: "tool-input-delta",
++                  id: toolCall.id,
++                  delta: input
++                });
++                controller.enqueue({
++                  type: "tool-input-end",
++                  id: toolCall.id
++                });
++                controller.enqueue({
++                  type: "tool-call",
++                  toolCallId: toolCall.id != null ? toolCall.id : generateId3(),
++                  toolName: toolCall.function.name,
++                  input,
++                  providerMetadata: {
++                    openrouter: {
++                      reasoning_details: accumulatedReasoningDetails
++                    }
++                  }
++                });
++                toolCall.sent = true;
+               }
+             }
+             if (reasoningStarted) {

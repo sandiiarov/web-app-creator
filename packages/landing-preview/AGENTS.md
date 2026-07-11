@@ -12,12 +12,13 @@
 - `src/agent-map-plugin.ts`: typed wrapper for the `@zumer/snapdom-plugins` agent-map plugin (the package ships JavaScript only). Exports a cast `agentMap` factory + the `AgentMapEntry`/`AgentMapResult` shapes (modeled on v2.2.0); `AgentMapOptions` is an internal type. A regular module (not an ambient `.d.ts`) so the types travel through the import graph into every source-consuming package.
 - `src/preview-morph.ts`: DOM morphing via `morphdom` (catalog dep); `parsePreviewRoot` + `preparePreviewMorphHtml` build the target document, and `getScriptSignature` / `shouldRerunScriptsAfterMorph` / `rerunPreviewScripts` handle script re-execution (morphdom does not run scripts).
 - `src/preview-srcdoc.ts`: `preparePreviewSrcDoc` base-tag injection plus unclosed-`<style>` repair (closes unbalanced `<style>` before `<body>` so the parser keeps body content out of the head) used by both initial `srcDoc` and morph targets.
-- `src/index.ts`: public barrel over the above modules.
+- `src/index.ts`: public barrel over the preview utilities and component for non-React-boundary consumers.
+- `package.json`: exposes `@workspace/landing-preview/react` directly from `src/landing-preview.tsx` as the React-only Fast Refresh boundary.
 - `src/landing-preview.test.ts`: pure helper tests for base-tag injection, script signature detection, and screenshot viewport/padding helpers.
 
 ## Local Contracts
 
-- Source-consumed like `@workspace/ui` and `@workspace/prompt-panel`: `exports` point at `./src/*`, there is no build step, and consumers import through package exports.
+- Source-consumed like `@workspace/ui` and `@workspace/prompt-panel`: `exports` point at `./src/*`, there is no build step, and consumers import through package exports. React renderers must import `LandingPreview` from `@workspace/landing-preview/react`, not the mixed utility barrel; the component-only Fast Refresh boundary preserves the live iframe document during HMR.
 - Depends on `@workspace/prompt-panel` for `ElementAttachmentInput` and `ScreenshotMediaType`, on catalog `@zumer/snapdom` for rasterization, on catalog `@zumer/snapdom-plugins` for the `agent-map` Set-of-Marks plugin, and on catalog `morphdom` for preview DOM morphing; `react`/`react-dom` are peer deps.
 - Owns preview runtime and screenshot capture only. It must not import app code, reference `import.meta.env`, contain SSE/transport logic, or persist projects. Transport stays in the consuming app.
 - Screenshot capture uses the instance `snapdom(el, {plugins})` API (not the static `snapdom.toBlob`, which cannot surface plugin exports) with `agentMap({image:'annotated', fields:'minimal'})`. It returns padded JPEG data URLs with explicit width/height/media type/size PLUS an `elementMap` string (Set-of-Marks: one line per interactive element, `index → role / name / bbox / state`); the consuming app posts both to the server screenshot-response route.

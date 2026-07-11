@@ -194,10 +194,16 @@ export type TokenUsage = {
   totalTokens?: number
 }
 
+export type ToolCallImage = {
+  alt: string
+  url: string
+}
+
 export type ToolCallPart = {
   action: null | string
   detail?: null | string
   id: string
+  images?: ToolCallImage[]
   providerId?: string
   result?: null | string
   state: ToolCallState

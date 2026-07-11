@@ -1,4 +1,4 @@
-import { LandingPreview } from '@workspace/landing-preview'
+import { LandingPreview } from '@workspace/landing-preview/react'
 import {
   DEFAULT_PREVIEW_VIEWPORT,
   type ElementAttachmentInput,
@@ -10,7 +10,7 @@ import {
 import { Button } from '@workspace/ui/components/button'
 import { cn } from '@workspace/ui/lib/utils'
 import { ArrowLeft } from 'lucide-react'
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
 
 import { useTheme } from '#components/theme-provider'
@@ -23,7 +23,32 @@ export interface EditorPageProps {
   projectId: string
 }
 
-export function EditorPage({ projectId }: EditorPageProps) {
+// Vite's accept() marks a boundary; it does not opt a React subtree out of
+// Fast Refresh. Keep this exported component identity stable and swap only its
+// render function so React reconciles the editor without remounting the iframe.
+type EditorPageHotState = {
+  component?: (props: EditorPageProps) => ReactNode
+  render: (props: EditorPageProps) => ReactNode
+  rerender?: () => void
+}
+
+function useEditorPageProxy(props: EditorPageProps) {
+  const [, setRevision] = useState(0)
+
+  useEffect(() => {
+    const rerender = () => setRevision((revision) => revision + 1)
+    editorPageHotState.rerender = rerender
+    return () => {
+      if (editorPageHotState.rerender === rerender) {
+        editorPageHotState.rerender = undefined
+      }
+    }
+  }, [])
+
+  return editorPageHotState.render(props)
+}
+
+function useEditorPageRender({ projectId }: EditorPageProps) {
   const navigate = useNavigate()
   const { setTheme, theme } = useTheme()
   const [error, setError] = useState<null | string>(null)
@@ -159,4 +184,18 @@ export function EditorPage({ projectId }: EditorPageProps) {
       ) : null}
     </main>
   )
+}
+
+const editorPageHotState: EditorPageHotState = (import.meta.hot?.data
+  .editorPage as EditorPageHotState | undefined) ?? {
+  render: useEditorPageRender,
+}
+editorPageHotState.render = useEditorPageRender
+if (import.meta.hot) import.meta.hot.data.editorPage = editorPageHotState
+editorPageHotState.component ??= useEditorPageProxy
+
+export const EditorPage = editorPageHotState.component
+
+if (import.meta.hot) {
+  import.meta.hot.accept(() => editorPageHotState.rerender?.())
 }

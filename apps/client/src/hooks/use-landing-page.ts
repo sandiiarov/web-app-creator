@@ -235,7 +235,7 @@ export function useLandingPage({
               applyEventToTurn(turn, {
                 dir: 'out',
                 event,
-                payload: data,
+                payload: withAnalyzeImageArgs(data, event, attachments),
                 ts: '',
               }),
             )
@@ -389,4 +389,29 @@ function stripAttachmentData({
 
 function wait(delayMs: number): Promise<void> {
   return new Promise((resolve) => window.setTimeout(resolve, delayMs))
+}
+
+function withAnalyzeImageArgs(
+  data: unknown,
+  event: string,
+  attachments: PromptAttachmentInput[],
+) {
+  if (
+    event !== 'tool_call' ||
+    !data ||
+    typeof data !== 'object' ||
+    !('tool' in data) ||
+    data.tool !== 'analyze_image' ||
+    attachments.length === 0
+  ) {
+    return data
+  }
+
+  return {
+    ...data,
+    images: attachments.map((attachment) => ({
+      alt: attachment.name,
+      url: attachment.dataUrl,
+    })),
+  }
 }

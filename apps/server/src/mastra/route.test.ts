@@ -1452,7 +1452,7 @@ describe('streamLandingAgent screenshots', () => {
       }),
     }))
 
-    const { createProject } = await import('./lib/project-store.ts')
+    const { createProject, getProject } = await import('./lib/project-store.ts')
     const project = await createProject()
     createdProjectIds.push(project.id)
     const { streamLandingAgent } = await import('./route.ts')
@@ -1471,7 +1471,15 @@ describe('streamLandingAgent screenshots', () => {
       expect.arrayContaining([
         expect.objectContaining({
           data: expect.objectContaining({
-            result: expect.stringContaining('Captured 800×600 screenshot'),
+            images: [
+              {
+                alt: 'Screenshot of #hero at tablet viewport',
+                url: expect.stringMatching(
+                  /\/api\/projects\/project-test\/screenshots\/shot\.jpg$/,
+                ),
+              },
+            ],
+            result: 'Captured 800×600 screenshot\nOCR 1 image',
             state: 'done',
             tool: 'screenshot',
           }),
@@ -1488,6 +1496,24 @@ describe('streamLandingAgent screenshots', () => {
         }),
       ]),
     )
+    await expect(getProject(project.id)).resolves.toMatchObject({
+      messages: [
+        expect.objectContaining({
+          parts: expect.arrayContaining([
+            expect.objectContaining({
+              images: [
+                expect.objectContaining({
+                  url: expect.stringMatching(
+                    /\/api\/projects\/project-test\/screenshots\/shot\.jpg$/,
+                  ),
+                }),
+              ],
+              tool: 'screenshot',
+            }),
+          ]),
+        }),
+      ],
+    })
   })
 
   it('marks failed screenshot result payloads as tool errors', async () => {
@@ -2479,6 +2505,7 @@ async function* screenshotToolStream({ failed = false } = {}) {
                 totalTokens: 50,
               },
             },
+            imageUrl: '/api/projects/project-test/screenshots/shot.jpg',
             mediaType: 'image/jpeg',
             ok: true,
             selector: '#hero',

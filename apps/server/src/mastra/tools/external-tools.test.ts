@@ -578,12 +578,14 @@ describe('createScreenshotTool', () => {
       () => Promise<{
         dataUrl: string
         height: number
+        imageUrl: string
         mediaType: 'image/png'
         width: number
       }>
     >(async () => ({
       dataUrl: 'data:image/png;base64,iVBORw0KGgo=',
       height: 600,
+      imageUrl: '/api/projects/project-1/screenshots/shot.png',
       mediaType: 'image/png' as const,
       width: 800,
     }))
@@ -616,6 +618,7 @@ describe('createScreenshotTool', () => {
     expect(result).toMatchObject({
       height: 600,
       imageOcr: { cost: 0.004, ok: true },
+      imageUrl: '/api/projects/project-1/screenshots/shot.png',
       mediaType: 'image/png',
       ok: true,
       text: 'Image 1\nHero headline visible',

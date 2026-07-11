@@ -52,20 +52,22 @@ describe('replayClientEvents (hydration fold)', () => {
     const turns = replayClientEvents([
       prompt('turn-1'),
       out('tool_call', {
-        action: 'Edit hero',
+        action: 'Review hero',
         id: 'call-1',
+        images: [{ alt: 'Hero screenshot', url: '/screenshots/hero.png' }],
         state: 'running',
-        tool: 'edit',
+        tool: 'screenshot',
       }),
       out('tool_call', { id: 'call-1', result: 'ok', state: 'done' }),
     ])
     expect(turns[0]?.parts).toEqual([
       {
-        action: 'Edit hero',
+        action: 'Review hero',
         id: 'call-1',
+        images: [{ alt: 'Hero screenshot', url: '/screenshots/hero.png' }],
         result: 'ok',
         state: 'done',
-        tool: 'edit',
+        tool: 'screenshot',
         type: 'tool_call',
       },
     ])

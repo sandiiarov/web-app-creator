@@ -10,6 +10,8 @@ export interface BrowserScreenshotResult {
   /** Optional Set-of-Marks element map from the agent-map plugin; absent when the client did not send one. */
   elementMap?: string
   height: number
+  /** Server URL added after the accepted screenshot bytes are persisted. */
+  imageUrl?: string
   mediaType: BrowserScreenshotMediaType
   width: number
 }
@@ -45,6 +47,12 @@ export function createPendingBrowserScreenshot({
 
 export function pendingBrowserScreenshotCount(): number {
   return pendingScreenshots.size
+}
+
+export function pendingBrowserScreenshotProjectId(
+  requestId: string,
+): null | string {
+  return pendingScreenshots.get(requestId)?.projectId ?? null
 }
 
 /** Reject a pending screenshot and return its project id (so the caller can

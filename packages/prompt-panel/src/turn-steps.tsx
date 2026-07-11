@@ -18,9 +18,9 @@ import {
   Search,
   Wrench,
 } from 'lucide-react'
-import { useState } from 'react'
+import { type ReactNode, useState } from 'react'
 
-import type { ToolCallPart, ToolCallState } from './domain'
+import type { ToolCallImage, ToolCallPart, ToolCallState } from './domain'
 
 const TOOL_ICONS: Record<string, LucideIcon> = {
   analyze_image: Image,
@@ -50,9 +50,40 @@ const TOOL_LABELS: Record<string, string> = {
   skill_search: 'Skill search',
 }
 
+export function ToolArgsImages({ images }: { images: ToolCallImage[] }) {
+  if (images.length === 0) return null
+
+  return (
+    <div
+      className={cn(
+        'grid gap-1.5',
+        images.length > 1 ? 'grid-cols-2' : 'grid-cols-1',
+      )}
+    >
+      {images.map((image, index) => (
+        <figure className="min-w-0" key={`${image.url}-${index}`}>
+          <img
+            alt={image.alt}
+            className="max-h-40 w-full border border-border/70 bg-muted/20 object-contain"
+            loading="lazy"
+            src={image.url}
+          />
+          {images.length > 1 ? (
+            <figcaption className="mt-1 truncate text-[10px] leading-tight text-muted-foreground/75">
+              {image.alt}
+            </figcaption>
+          ) : null}
+        </figure>
+      ))}
+    </div>
+  )
+}
+
 export function TurnToolBlock({ step }: { step: ToolCallPart }) {
   const [open, setOpen] = useState(false)
   const args = argsFromDetail(step)
+  const images = renderableToolImages(step.images)
+  const hasArgs = !!args || images.length > 0
   const Icon = TOOL_ICONS[step.tool] ?? Wrench
   const action = displayIntent(step)
   const isActive = isActiveState(step.state)
@@ -99,22 +130,28 @@ export function TurnToolBlock({ step }: { step: ToolCallPart }) {
       <CollapsibleContent>
         <Separator className={cn(isError && 'bg-destructive/30')} />
         <div className="flex flex-col gap-2 p-2.5">
-          {args ? <ToolSection label="Args">{args}</ToolSection> : null}
-          {args ? (
+          {hasArgs ? (
+            <ToolSection label="Args">
+              {args ? <ToolBodyText>{args}</ToolBodyText> : null}
+              <ToolArgsImages images={images} />
+            </ToolSection>
+          ) : null}
+          {hasArgs ? (
             <Separator
               className={cn('opacity-60', isError && 'bg-destructive/25')}
             />
           ) : null}
           {resultBody ? (
-            <ToolSection
-              label={isError ? 'Error' : 'Result'}
-              tone={isError ? 'error' : result ? 'default' : 'muted'}
-            >
-              {resultBody}
+            <ToolSection label={isError ? 'Error' : 'Result'}>
+              <ToolBodyText
+                tone={isError ? 'error' : result ? 'default' : 'muted'}
+              >
+                {resultBody}
+              </ToolBodyText>
             </ToolSection>
           ) : isActive ? (
-            <ToolSection label="Result" tone="muted">
-              Waiting for result…
+            <ToolSection label="Result">
+              <ToolBodyText tone="muted">Waiting for result…</ToolBodyText>
             </ToolSection>
           ) : null}
         </div>
@@ -228,9 +265,24 @@ function isActiveState(state: ToolCallState) {
   return state === 'running' || state === 'start'
 }
 
+function isRenderableImageSrc(src: string) {
+  return (
+    /^https?:\/\//i.test(src) ||
+    /^\/[^/]/.test(src) ||
+    /^data:image\/(?:gif|jpeg|png|webp);base64,/i.test(src)
+  )
+}
+
 function normalizeText(text: null | string | undefined) {
   const trimmed = text?.trim()
   return trimmed && trimmed.length > 0 ? trimmed : null
+}
+
+function renderableToolImages(images: ToolCallImage[] | undefined) {
+  return (images ?? []).filter(
+    (image) =>
+      normalizeText(image.alt) !== null && isRenderableImageSrc(image.url),
+  )
 }
 
 function resultFallback(state: ToolCallState) {
@@ -294,18 +346,16 @@ function toolLabel(tool: string) {
 function ToolSection({
   children,
   label,
-  tone = 'default',
 }: {
-  children: string
+  children: ReactNode
   label: string
-  tone?: 'default' | 'error' | 'muted'
 }) {
   return (
-    <div className="flex flex-col gap-1">
+    <div className="flex flex-col gap-1.5">
       <span className="text-[10px] leading-none font-medium tracking-[0.12em] text-muted-foreground/70 uppercase">
         {label}
       </span>
-      <ToolBodyText tone={tone}>{children}</ToolBodyText>
+      {children}
     </div>
   )
 }

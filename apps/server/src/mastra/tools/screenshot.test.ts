@@ -81,6 +81,7 @@ describe('createScreenshotTool execute — elementMap', () => {
     dataUrl: 'data:image/jpeg;base64,/9j/4AAQSkZJRg==',
     elementMap: '0 link "Start subscription" @10,20 100×40',
     height: 800,
+    imageUrl: '/api/projects/project-1/screenshots/shot.jpg',
     mediaType: 'image/jpeg',
     width: 1200,
   }
@@ -93,10 +94,11 @@ describe('createScreenshotTool execute — elementMap', () => {
     const res = (await tool.execute?.(
       { selector: 'main', viewportSize: 'desktop' },
       undefined as never,
-    )) as { elementMap: string; ok: boolean }
+    )) as { elementMap: string; imageUrl: null | string; ok: boolean }
 
     expect(res.ok).toBe(true)
     expect(res.elementMap).toBe('0 link "Start subscription" @10,20 100×40')
+    expect(res.imageUrl).toBe('/api/projects/project-1/screenshots/shot.jpg')
   })
 
   it('returns an empty elementMap when selector/viewportSize are missing', async () => {

@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url'
 import { config } from './config.ts'
 import { readRequestBody } from './http-body.ts'
 import {
+  pendingBrowserScreenshotProjectId,
   rejectPendingBrowserScreenshot,
   resolvePendingBrowserScreenshot,
   type BrowserScreenshotMediaType,
@@ -384,7 +385,7 @@ async function handleScreenshotResponse(
     return
   }
 
-  const projectId = resolvePendingBrowserScreenshot(requestId, screenshot)
+  const projectId = pendingBrowserScreenshotProjectId(requestId)
   if (!projectId) {
     sendJson(response, 404, {
       error: 'Screenshot request not found',
@@ -393,16 +394,27 @@ async function handleScreenshotResponse(
     return
   }
 
-  // Persist the captured bytes (single durable copy under screenshots/) and
-  // record the inbound response in client-messages.jsonl — metadata + file
-  // path only, never base64. The agent's screenshot tool still receives the
-  // live image; this is debugging persistence.
+  // Persist the captured bytes (single durable copy under screenshots/) before
+  // resolving the pending tool call, so its result can carry the stable URL.
+  // The JSON logs contain that pointer only, never the base64 image bytes.
   const shot = writeProjectScreenshotSync(
     projectId,
     requestId,
     screenshot.dataUrl,
     screenshot.mediaType,
   )
+  if (
+    !resolvePendingBrowserScreenshot(requestId, {
+      ...screenshot,
+      imageUrl: shot.path,
+    })
+  ) {
+    sendJson(response, 404, {
+      error: 'Screenshot request not found',
+      ok: false,
+    })
+    return
+  }
   recordScreenshotResponse(projectId, requestId, {
     height: screenshot.height,
     mediaType: screenshot.mediaType,
