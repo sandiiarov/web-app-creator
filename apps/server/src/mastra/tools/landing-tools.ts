@@ -91,16 +91,6 @@ const LANDING_TOOL_DEFINITIONS = [
   ),
 ] satisfies LandingToolDefinition[]
 
-export const LANDING_TOOL_COUNT = LANDING_TOOL_DEFINITIONS.length
-
-export const LANDING_TOOL_GUIDANCE = LANDING_TOOL_DEFINITIONS.map(
-  ({ guidance }) => `- ${guidance}`,
-).join('\n')
-
-export const LANDING_TOOL_LIST = LANDING_TOOL_DEFINITIONS.map(
-  ({ id }) => id,
-).join(', ')
-
 export function createLandingTools(
   store: HtmlStore,
   baseUrl: string,

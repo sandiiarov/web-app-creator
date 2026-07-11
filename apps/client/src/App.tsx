@@ -19,10 +19,6 @@ import { ErrorBanner } from './components/error-banner'
 import { useLandingPage } from './hooks/use-landing-page'
 import { downloadProjectHtml } from './lib/projects-api'
 
-export interface EditorPageProps {
-  projectId: string
-}
-
 // Vite's accept() marks a boundary; it does not opt a React subtree out of
 // Fast Refresh. Keep this exported component identity stable and swap only its
 // render function so React reconciles the editor without remounting the iframe.
@@ -30,6 +26,10 @@ type EditorPageHotState = {
   component?: (props: EditorPageProps) => ReactNode
   render: (props: EditorPageProps) => ReactNode
   rerender?: () => void
+}
+
+interface EditorPageProps {
+  projectId: string
 }
 
 function useEditorPageProxy(props: EditorPageProps) {

@@ -18,7 +18,7 @@ import {
  * malformed CSS insertion rows and an unbalanced closing-tag edit. The `design`
  * skill remains discovered through Mastra's `SkillsProcessor`.
  */
-export const LANDING_AGENT_INSTRUCTIONS = [
+const LANDING_AGENT_INSTRUCTIONS = [
   'You are a landing-page design agent. You build and refine a single self-contained project HTML document by scraping reference brands, reading and editing the HTML, generating imagery, and taking screenshots.',
   '',
   HASHLINE_SYSTEM_GUIDANCE,
