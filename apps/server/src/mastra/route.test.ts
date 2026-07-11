@@ -514,6 +514,49 @@ describe('streamLandingAgent cost accounting', () => {
     )
   })
 
+  it('sums provider-reported cost across every LLM step', async () => {
+    vi.stubEnv('OPENROUTER_API_KEY', 'test-openrouter-key')
+
+    vi.doMock('./index.ts', () => ({ mastra: {} }))
+    vi.doMock('./agents/landing-page-agent.ts', () => ({
+      createLandingPageAgent: () => ({
+        stream: async () =>
+          fakeAgentStream(multiStepRawCostStream(), {
+            cachedInputTokens: 10,
+            inputTokens: 100,
+            outputTokens: 20,
+            totalTokens: 120,
+          }),
+      }),
+    }))
+
+    const { createProject } = await import('./lib/project-store.ts')
+    const project = await createProject()
+    createdProjectIds.push(project.id)
+    const { streamLandingAgent } = await import('./route.ts')
+    const response = new FakeResponse()
+
+    await streamLandingAgent({
+      projectId: project.id,
+      prompt: 'Test multi-step provider cost.',
+      request: fakeRequest(),
+      response: response as unknown as ServerResponse,
+      textModel: 'z-ai/glm-5.2',
+    })
+
+    expect(parseSseEvents(response.body)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          data: expect.objectContaining({
+            cost: 0.016,
+            costBreakdown: expect.objectContaining({ llm: 0.016 }),
+          }),
+          event: 'stats',
+        }),
+      ]),
+    )
+  })
+
   it('aborts the run when accumulated cost exceeds the cap', async () => {
     vi.stubEnv('OPENROUTER_API_KEY', 'test-openrouter-key')
     vi.stubEnv('AGENT_MAX_COST_USD', '0.01')
@@ -661,6 +704,14 @@ describe('streamLandingAgent stream mapping', () => {
             result: '2 matches · truncated',
             state: 'done',
             tool: 'find',
+          }),
+          event: 'tool_call',
+        }),
+        expect.objectContaining({
+          data: expect.objectContaining({
+            result: 'Read 25 lines of 100',
+            state: 'done',
+            tool: 'read',
           }),
           event: 'tool_call',
         }),
@@ -2415,12 +2466,49 @@ async function* mixedToolStream() {
   }
   yield {
     payload: {
+      args: { action: 'Inspect current project HTML' },
+      isError: false,
+      result: {
+        endLine: 34,
+        ok: true,
+        startLine: 10,
+        tag: 'ABCD',
+        text: '[index.html#ABCD]',
+        totalLines: 100,
+        truncated: true,
+      },
+      toolCallId: 'call-read',
+      toolName: 'read',
+    },
+    type: 'tool-result',
+  }
+  yield {
+    payload: {
       args: { path: 'reference.md', skillName: 'design' },
       error: 'Boom',
       toolCallId: 'call-skill-read',
       toolName: 'skill_read',
     },
     type: 'tool-error',
+  }
+}
+
+async function* multiStepRawCostStream() {
+  yield {
+    payload: {
+      id: 'chatcmpl-step-1',
+      object: 'chat.completion.chunk',
+      usage: { cost: 0.004 },
+    },
+    type: 'raw',
+  }
+  yield {
+    payload: {
+      id: 'chatcmpl-step-2',
+      object: 'chat.completion.chunk',
+      usage: { cost: 0.012 },
+    },
+    type: 'raw',
   }
 }
 

@@ -20,11 +20,15 @@ export type LandingModelRole = 'image' | 'text' | 'vision'
 
 // All model ids are OpenRouter slugs, verified live against the OpenRouter API.
 export const TEXT_MODEL_OPTIONS: LandingModelOption[] = [
-  { id: 'z-ai/glm-5.2', label: 'GLM 5.2' },
-  { id: 'tencent/hy3', label: 'Tencent Hy3' },
-  { id: 'moonshotai/kimi-k2.7-code', label: 'Kimi K2.7 Code' },
-  { id: 'deepseek/deepseek-v4-pro', label: 'DeepSeek V4 Pro' },
-  { id: 'nvidia/nemotron-3-ultra-550b-a55b', label: 'Nemotron Ultra' },
+  { id: 'z-ai/glm-5.2:nitro', label: 'GLM 5.2' },
+  { id: 'tencent/hy3:nitro', label: 'Tencent Hy3' },
+  { id: 'moonshotai/kimi-k2.7-code:nitro', label: 'Kimi K2.7 Code' },
+  { id: 'deepseek/deepseek-v4-pro:nitro', label: 'DeepSeek V4 Pro' },
+  { id: 'deepseek/deepseek-v4-flash:nitro', label: 'DeepSeek V4 Flash' },
+  {
+    id: 'nvidia/nemotron-3-ultra-550b-a55b:nitro',
+    label: 'Nemotron Ultra',
+  },
 ]
 
 export const IMAGE_MODEL_OPTIONS: LandingModelOption[] = [
@@ -273,7 +277,14 @@ export function resolveLandingModels(input: {
 }): LandingModels {
   return {
     image: input.image?.trim() || DEFAULT_LANDING_MODELS.image,
-    text: input.text?.trim() || DEFAULT_LANDING_MODELS.text,
+    text: resolveTextModel(input.text),
     vision: input.vision?.trim() || DEFAULT_LANDING_MODELS.vision,
   }
+}
+
+function resolveTextModel(input: string | undefined) {
+  const model = input?.trim()
+  if (!model) return DEFAULT_LANDING_MODELS.text
+  const base = model.replace(/:(?:floor|free|nitro|online)$/, '')
+  return `${base}:nitro`
 }

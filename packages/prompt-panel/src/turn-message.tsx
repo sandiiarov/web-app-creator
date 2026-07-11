@@ -24,7 +24,6 @@ import {
   type TurnPart,
 } from './domain'
 import { StreamdownContent } from './streamdown-content'
-import { TurnMetadata } from './turn-metadata'
 import { TurnToolBlock } from './turn-steps'
 
 export function TurnMessage({ turn }: { turn: LandingTurn }) {
@@ -94,7 +93,7 @@ function PartView({
       return <RetryNotice isStreaming={isStreaming} retry={part} />
     }
     case 'stats': {
-      return <TurnMetadata stats={part} />
+      return null
     }
     case 'text': {
       if (!part.text.trim()) return null

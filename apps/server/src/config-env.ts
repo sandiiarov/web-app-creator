@@ -2,7 +2,7 @@ export type Config = ReturnType<typeof createConfigFromEnv>
 
 export type ConfigEnvironment = Record<string, string | undefined>
 
-const DEFAULT_OPENROUTER_CHAT_MODEL = 'z-ai/glm-5.2'
+const DEFAULT_OPENROUTER_CHAT_MODEL = 'z-ai/glm-5.2:nitro'
 const DEFAULT_OPENROUTER_IMAGE_MODEL = 'bytedance-seed/seedream-4.5'
 const DEFAULT_OPENROUTER_VISION_MODEL = 'z-ai/glm-5v-turbo'
 const DEFAULT_OPENROUTER_API_URL = 'https://openrouter.ai/api/v1'

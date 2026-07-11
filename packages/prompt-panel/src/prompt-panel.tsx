@@ -600,6 +600,7 @@ export function PromptPanel({
                 onStop={onStop}
                 onSubmit={handleSubmit}
                 prompt={prompt}
+                turns={turns}
               />
             </ResizablePanel>
           </ResizablePanelGroup>

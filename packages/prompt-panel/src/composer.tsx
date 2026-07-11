@@ -9,10 +9,15 @@ import { cn } from '@workspace/ui/lib/utils'
 import { ArrowUp, MousePointerClick, Paperclip, Square, X } from 'lucide-react'
 import { type FormEvent, type KeyboardEvent, memo, useRef } from 'react'
 
-import type { LandingModels, PromptAttachmentInput } from './domain'
+import type {
+  LandingModels,
+  LandingTurn,
+  PromptAttachmentInput,
+} from './domain'
 import { KeyboardShortcut } from './keyboard-shortcut'
 import { KEYBOARD_SHORTCUTS } from './keyboard-shortcuts'
 import { ModelDropdown } from './model-dropdown'
+import { SpendPopover } from './spend-popover'
 
 export const Composer = memo(function Composer({
   attachmentError,
@@ -30,6 +35,7 @@ export const Composer = memo(function Composer({
   onStop,
   onSubmit,
   prompt,
+  turns,
 }: {
   attachmentError: null | string
   attachments: PromptAttachmentInput[]
@@ -46,6 +52,7 @@ export const Composer = memo(function Composer({
   onStop: () => void
   onSubmit: (event: FormEvent<HTMLFormElement>) => void
   prompt: string
+  turns: LandingTurn[]
 }) {
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
@@ -152,6 +159,7 @@ export const Composer = memo(function Composer({
               </TooltipContent>
             </Tooltip>
             <ModelDropdown models={models} onModelsChange={onModelsChange} />
+            <SpendPopover turns={turns} />
           </div>
           <div>
             {isStreaming ? (

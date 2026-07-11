@@ -339,7 +339,9 @@ async function activeStreamLandingAgent({
   let visionCalls = 0
   let visionCostUsd = 0
   let visionImages = 0
-  // Capture provider-reported LLM cost from raw response chunks when present.
+  // Sum the final provider-reported cost chunk from every LLM step. OpenRouter
+  // reports usage/cost once at the end of each SSE generation, while Mastra's
+  // aggregate usage.raw retains only the latest step.
   let llmProviderCostUsd = 0
   // Accumulate bundled image-OCR OpenRouter-reported cost inside scrape cost.
   let scrapeOcrCalls = 0
@@ -469,7 +471,7 @@ async function activeStreamLandingAgent({
         }
         case 'raw': {
           const providerCost = providerReportedCost(chunk.payload)
-          if (providerCost > 0) llmProviderCostUsd = providerCost
+          if (providerCost > 0) llmProviderCostUsd += providerCost
           if (checkCostCap()) break streamLoop
           break
         }
@@ -1393,8 +1395,14 @@ const summarizeResultForTool: Record<
   },
   grep: summarizeFindOrGrepResult,
   read: (data) => {
-    const lines = numberValue(data.lines)
+    const endLine = numberValue(data.endLine)
+    const legacyLines = numberValue(data.lines)
+    const startLine = numberValue(data.startLine)
     const totalLines = numberValue(data.totalLines)
+    const lines =
+      typeof startLine === 'number' && typeof endLine === 'number'
+        ? Math.max(0, endLine - startLine + 1)
+        : legacyLines
     return typeof lines === 'number'
       ? `Read ${lines} line${lines === 1 ? '' : 's'}${typeof totalLines === 'number' ? ` of ${totalLines}` : ''}`
       : null

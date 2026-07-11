@@ -12,7 +12,7 @@ import {
   TooltipTrigger,
 } from '@workspace/ui/components/tooltip'
 import { cn } from '@workspace/ui/lib/utils'
-import { ChevronDown, Eye, Image as ImageIcon, Type } from 'lucide-react'
+import { ChevronDown } from 'lucide-react'
 import { useState, type ComponentType } from 'react'
 
 import { BytedanceIcon } from './bytedance-icon'
@@ -26,6 +26,7 @@ import { GeminiIcon } from './gemini-icon'
 import { GlmIcon } from './glm-icon'
 import { KimiIcon } from './kimi-icon'
 import { MinimaxIcon } from './minimax-icon'
+import { MODEL_ROLE_META } from './model-role-meta'
 import { NvidiaIcon } from './nvidia-icon'
 import { OpenaiIcon } from './openai-icon'
 import { TencentIcon } from './tencent-icon'
@@ -34,29 +35,22 @@ import { XiaomiIcon } from './xiaomi-icon'
 
 const MODEL_ICONS: Record<string, ComponentType<{ className?: string }>> = {
   'bytedance-seed/seedream-4.5': BytedanceIcon,
-  'deepseek/deepseek-v4-pro': DeepseekIcon,
+  'deepseek/deepseek-v4-flash:nitro': DeepseekIcon,
+  'deepseek/deepseek-v4-pro:nitro': DeepseekIcon,
   'google/gemini-3.1-flash-lite-image': GeminiIcon,
   'minimax/minimax-m3': MinimaxIcon,
   'moonshotai/kimi-k2.7-code': KimiIcon,
-  'nvidia/nemotron-3-ultra-550b-a55b': NvidiaIcon,
+  'moonshotai/kimi-k2.7-code:nitro': KimiIcon,
+  'nvidia/nemotron-3-ultra-550b-a55b:nitro': NvidiaIcon,
   'openai/gpt-image-2': OpenaiIcon,
-  'tencent/hy3': TencentIcon,
+  'tencent/hy3:nitro': TencentIcon,
   'x-ai/grok-imagine-image-quality': XaiIcon,
   'xiaomi/mimo-v2.5': XiaomiIcon,
-  'z-ai/glm-5.2': GlmIcon,
+  'z-ai/glm-5.2:nitro': GlmIcon,
   'z-ai/glm-5v-turbo': GlmIcon,
 }
 
 const ROLE_ORDER: LandingModelRole[] = ['text', 'image', 'vision']
-
-const ROLE_META: Record<
-  LandingModelRole,
-  { color: string; Icon: ComponentType<{ className?: string }>; label: string }
-> = {
-  image: { color: 'text-emerald-500', Icon: ImageIcon, label: 'Image' },
-  text: { color: 'text-blue-500', Icon: Type, label: 'Text' },
-  vision: { color: 'text-violet-500', Icon: Eye, label: 'Vision' },
-}
 
 export interface ModelDropdownProps {
   models: LandingModels
@@ -87,7 +81,7 @@ export function ModelDropdown({ models, onModelsChange }: ModelDropdownProps) {
           {ROLE_ORDER.map((role, index) => {
             const option = optionFor(role, models[role])
             const Logo = option ? MODEL_ICONS[option.id] : undefined
-            const RoleIcon = ROLE_META[role].Icon
+            const RoleIcon = MODEL_ROLE_META[role].Icon
             return (
               <Tooltip key={role}>
                 <TooltipTrigger asChild>
@@ -97,7 +91,9 @@ export function ModelDropdown({ models, onModelsChange }: ModelDropdownProps) {
                       index > 0 && 'border-l border-border',
                     )}
                   >
-                    <RoleIcon className={cn('size-3', ROLE_META[role].color)} />
+                    <RoleIcon
+                      className={cn('size-3', MODEL_ROLE_META[role].color)}
+                    />
                     {Logo ? <Logo className="size-3" /> : null}
                   </span>
                 </TooltipTrigger>
@@ -114,7 +110,7 @@ export function ModelDropdown({ models, onModelsChange }: ModelDropdownProps) {
       <DropdownMenuContent align="start" className="w-60" sideOffset={6}>
         <div className="flex gap-0.5 p-1 pb-2">
           {ROLE_ORDER.map((role) => {
-            const meta = ROLE_META[role]
+            const meta = MODEL_ROLE_META[role]
             const active = role === activeRole
             return (
               <Button

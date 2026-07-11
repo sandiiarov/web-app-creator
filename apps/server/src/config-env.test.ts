@@ -13,7 +13,7 @@ describe('createConfigFromEnv', () => {
     expect(config.openrouter).toEqual({
       apiKey: 'test-openrouter-key',
       chatApiUrl: 'https://openrouter.ai/api/v1',
-      defaultChatModel: 'z-ai/glm-5.2',
+      defaultChatModel: 'z-ai/glm-5.2:nitro',
       defaultImageModel: 'bytedance-seed/seedream-4.5',
       defaultVisionModel: 'z-ai/glm-5v-turbo',
       imageApiUrl: 'https://openrouter.ai/api/v1/images',
@@ -82,6 +82,6 @@ describe('createConfigFromEnv', () => {
     const config = createConfigFromEnv({})
 
     expect(config.openrouter.apiKey).toBeUndefined()
-    expect(config.openrouter.defaultChatModel).toBe('z-ai/glm-5.2')
+    expect(config.openrouter.defaultChatModel).toBe('z-ai/glm-5.2:nitro')
   })
 })
