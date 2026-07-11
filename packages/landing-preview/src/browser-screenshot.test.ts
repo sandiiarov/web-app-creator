@@ -6,14 +6,18 @@ import {
   fitScreenshotSize,
   formatElementMap,
   getPaddedScreenshotSize,
+  SCREENSHOT_CAPTURE_SCALE,
 } from './browser-screenshot.ts'
 
 describe('fitScreenshotSize', () => {
-  it('leaves small elements untouched', () => {
+  it('renders regular screenshots at half resolution', () => {
     const targetSize = { height: 600, width: 800 }
+    const scaledTarget = { height: 300, width: 400 }
+
+    expect(SCREENSHOT_CAPTURE_SCALE).toBe(0.5)
     expect(fitScreenshotSize(targetSize)).toEqual({
-      paddedSize: getPaddedScreenshotSize(targetSize),
-      targetSize,
+      paddedSize: getPaddedScreenshotSize(scaledTarget),
+      targetSize: scaledTarget,
     })
   })
 
@@ -32,14 +36,14 @@ describe('fitScreenshotSize', () => {
     expect(paddedSize).toEqual(getPaddedScreenshotSize(targetSize))
   })
 
-  it('keeps the 1:1 element under the cap unscaled', () => {
+  it('halves a square element that would fit under the hard cap unscaled', () => {
     const { paddedSize, targetSize } = fitScreenshotSize({
       height: 4080,
       width: 4080,
     })
-    // 4080 + 2*padding = 4096 (== cap) -> no scaling needed
-    expect(targetSize).toEqual({ height: 4080, width: 4080 })
-    expect(paddedSize.height).toBe(4080 + ELEMENT_CAPTURE_PADDING_PX * 2)
+
+    expect(targetSize).toEqual({ height: 2040, width: 2040 })
+    expect(paddedSize.height).toBe(2040 + ELEMENT_CAPTURE_PADDING_PX * 2)
   })
 
   it('never returns a zero-size target for huge inputs', () => {

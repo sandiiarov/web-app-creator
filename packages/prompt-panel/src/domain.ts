@@ -39,6 +39,7 @@ export const IMAGE_MODEL_OPTIONS: LandingModelOption[] = [
 ]
 
 export const VISION_MODEL_OPTIONS: LandingModelOption[] = [
+  { id: 'bytedance-seed/seed-2.0-mini', label: 'Seed 2.0 Mini' },
   { id: 'z-ai/glm-5v-turbo', label: 'GLM 5V Turbo' },
   { id: 'moonshotai/kimi-k2.7-code', label: 'Kimi K2.7 Code' },
   { id: 'minimax/minimax-m3', label: 'MiniMax M3' },

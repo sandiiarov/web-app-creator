@@ -1,6 +1,20 @@
 import { describe, expect, it } from 'vitest'
 
-import { DEFAULT_LANDING_MODELS, resolveLandingModels } from './domain'
+import {
+  DEFAULT_LANDING_MODELS,
+  resolveLandingModels,
+  VISION_MODEL_OPTIONS,
+} from './domain'
+
+describe('model inventory', () => {
+  it('defaults vision to ByteDance Seed 2.0 Mini', () => {
+    expect(VISION_MODEL_OPTIONS).toContainEqual({
+      id: 'bytedance-seed/seed-2.0-mini',
+      label: 'Seed 2.0 Mini',
+    })
+    expect(DEFAULT_LANDING_MODELS.vision).toBe('bytedance-seed/seed-2.0-mini')
+  })
+})
 
 describe('resolveLandingModels', () => {
   it('routes every text model through the OpenRouter nitro variant', () => {

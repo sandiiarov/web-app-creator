@@ -73,7 +73,7 @@ The server reads `apps/server/.env` (package-local; do not create a root `.env`)
 | `OPENROUTER_API_URL` | `https://openrouter.ai/api/v1` |
 | `OPENROUTER_CHAT_MODEL` | `z-ai/glm-5.2:nitro` |
 | `OPENROUTER_IMAGE_MODEL` | `bytedance-seed/seedream-4.5` |
-| `OPENROUTER_VISION_MODEL` | `z-ai/glm-5v-turbo` |
+| `OPENROUTER_VISION_MODEL` | `bytedance-seed/seed-2.0-mini` |
 
 **Other** — all optional:
 

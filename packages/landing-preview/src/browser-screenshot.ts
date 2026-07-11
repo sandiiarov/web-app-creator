@@ -14,6 +14,7 @@ export interface CaptureProjectScreenshotInput {
 }
 
 export const ELEMENT_CAPTURE_PADDING_PX = 8
+export const SCREENSHOT_CAPTURE_SCALE = 0.5
 
 export type ElementScreenshotCapture = ScreenshotCapture & { size: number }
 
@@ -138,10 +139,9 @@ export async function captureProjectScreenshot({
 }
 
 /**
- * Fit an element capture within MAX_SCREENSHOT_DIMENSION by downscaling
- * (aspect-ratio preserved) instead of rejecting tall/wide elements. The OCR /
- * vision model receives a model-safe image no matter how tall the captured
- * element is.
+ * Render screenshots at half the element's CSS dimensions, then enforce
+ * MAX_SCREENSHOT_DIMENSION for exceptionally large elements. Both reductions
+ * preserve aspect ratio so OCR receives fewer pixels without layout reflow.
  */
 export function fitScreenshotSize(targetSize: {
   height: number
@@ -151,13 +151,11 @@ export function fitScreenshotSize(targetSize: {
   targetSize: { height: number; width: number }
 } {
   // Scale against the target dim (cap minus padding) so the padded result
-  // stays within MAX_SCREENSHOT_DIMENSION.
+  // stays within MAX_SCREENSHOT_DIMENSION. Half-resolution is the normal path;
+  // exceptionally large elements receive the stricter cap-derived scale.
   const maxTarget = MAX_SCREENSHOT_DIMENSION - ELEMENT_CAPTURE_PADDING_PX * 2
   const longest = Math.max(targetSize.width, targetSize.height)
-  if (longest <= maxTarget) {
-    return { paddedSize: getPaddedScreenshotSize(targetSize), targetSize }
-  }
-  const scale = maxTarget / longest
+  const scale = Math.min(SCREENSHOT_CAPTURE_SCALE, maxTarget / longest)
   const scaledTarget = {
     height: Math.max(1, Math.floor(targetSize.height * scale)),
     width: Math.max(1, Math.floor(targetSize.width * scale)),

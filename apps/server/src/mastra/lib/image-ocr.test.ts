@@ -132,7 +132,7 @@ describe('ocrImageInputs', () => {
       }>
       model: string
     }
-    expect(body.model).toBe('z-ai/glm-5v-turbo')
+    expect(body.model).toBe('bytedance-seed/seed-2.0-mini')
     const systemMessage = body.messages[0] as { content: string; role: string }
     expect(systemMessage).toMatchObject({ role: 'system' })
     expect(systemMessage.content).toEqual(

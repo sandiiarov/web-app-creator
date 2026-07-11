@@ -8,7 +8,7 @@ const DEFAULT_HOST = '127.0.0.1'
 const INVALID_CLIENT_ORIGIN_VALUES = new Set(['*', 'null'])
 const DEFAULT_OPENROUTER_CHAT_MODEL = 'z-ai/glm-5.2:nitro'
 const DEFAULT_OPENROUTER_IMAGE_MODEL = 'bytedance-seed/seedream-4.5'
-const DEFAULT_OPENROUTER_VISION_MODEL = 'z-ai/glm-5v-turbo'
+const DEFAULT_OPENROUTER_VISION_MODEL = 'bytedance-seed/seed-2.0-mini'
 const DEFAULT_OPENROUTER_API_URL = 'https://openrouter.ai/api/v1'
 const DEFAULT_FIRECRAWL_CREDIT_USD = 0.002
 

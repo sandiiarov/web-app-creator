@@ -415,7 +415,7 @@ describe('createScrapeTool', () => {
         'https://example.test/social.jpg',
       ],
       undefined,
-      'z-ai/glm-5v-turbo',
+      'bytedance-seed/seed-2.0-mini',
     )
     expect(result).toMatchObject({
       branding: { colorScheme: 'dark' },
@@ -470,7 +470,7 @@ describe('createScrapeTool', () => {
       'proj-1',
       expect.objectContaining({
         imagesAnalyzed: 1,
-        model: 'z-ai/glm-5v-turbo',
+        model: 'bytedance-seed/seed-2.0-mini',
         ok: true,
         source: 'scrape',
         text: 'a hero shot',
@@ -613,7 +613,7 @@ describe('createScreenshotTool', () => {
         },
       ],
       expect.stringContaining('Target selector: #hero'),
-      'z-ai/glm-5v-turbo',
+      'bytedance-seed/seed-2.0-mini',
     )
     expect(result).toMatchObject({
       height: 600,
