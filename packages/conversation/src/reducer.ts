@@ -54,13 +54,14 @@ export function applyEventToTurn<T extends ConversationTurn>(
       } as T
     }
     case 'stats': {
-      return {
-        ...turn,
-        parts: [
-          ...turn.parts,
-          { ...(data as object), type: 'stats' } as ConversationPart,
-        ],
-      } as T
+      const stats = { ...(data as object), type: 'stats' } as ConversationPart
+      const index = turn.parts.findIndex((part) => part.type === 'stats')
+      if (index === -1) {
+        return { ...turn, parts: [...turn.parts, stats] } as T
+      }
+      const parts = [...turn.parts]
+      parts[index] = stats
+      return { ...turn, parts } as T
     }
     case 'text': {
       return appendDelta(

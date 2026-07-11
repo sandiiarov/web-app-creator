@@ -501,7 +501,8 @@ describe('streamLandingAgent cost accounting', () => {
       | Array<{ id: string }>
       | undefined
     expect(errorProcessors?.[0]?.id).toBe('landing-agent-retry-processor')
-    expect(parseSseEvents(response.body)).toEqual(
+    const events = parseSseEvents(response.body)
+    expect(events).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           data: expect.objectContaining({
@@ -511,6 +512,65 @@ describe('streamLandingAgent cost accounting', () => {
           event: 'stats',
         }),
       ]),
+    )
+    const liveStatsIndex = events.findIndex(
+      ({ data, event }) =>
+        event === 'stats' &&
+        isRecord(data) &&
+        data.finishReason === 'in-progress' &&
+        data.cost === 0.0123,
+    )
+    const terminalStatsIndex = events.findLastIndex(
+      ({ data, event }) =>
+        event === 'stats' && isRecord(data) && data.finishReason === 'stop',
+    )
+    expect(liveStatsIndex).toBeGreaterThanOrEqual(0)
+    expect(liveStatsIndex).toBeLessThan(terminalStatsIndex)
+  })
+
+  it('streams cumulative token usage after each completed LLM step', async () => {
+    vi.stubEnv('OPENROUTER_API_KEY', 'test-openrouter-key')
+
+    vi.doMock('./index.ts', () => ({ mastra: {} }))
+    vi.doMock('./agents/landing-page-agent.ts', () => ({
+      createLandingPageAgent: () => ({
+        stream: async () =>
+          fakeAgentStream(liveUsageStepFinishStream(), {
+            cachedInputTokens: 3,
+            inputTokens: 23,
+            outputTokens: 8,
+            totalTokens: 31,
+          }),
+      }),
+    }))
+
+    const { createProject } = await import('./lib/project-store.ts')
+    const project = await createProject()
+    createdProjectIds.push(project.id)
+    const { streamLandingAgent } = await import('./route.ts')
+    const response = new FakeResponse()
+
+    await streamLandingAgent({
+      projectId: project.id,
+      prompt: 'Stream usage.',
+      request: fakeRequest(),
+      response: response as unknown as ServerResponse,
+      textModel: 'z-ai/glm-5.2',
+    })
+
+    expect(parseSseEvents(response.body)).toContainEqual(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          finishReason: 'in-progress',
+          usage: {
+            cachedInputTokens: 3,
+            inputTokens: 23,
+            outputTokens: 8,
+            totalTokens: 31,
+          },
+        }),
+        event: 'stats',
+      }),
     )
   })
 
@@ -744,6 +804,29 @@ describe('streamLandingAgent stream mapping', () => {
         }),
       ]),
     )
+
+    for (const tool of [
+      'generate_image',
+      'scrape',
+      'find',
+      'read',
+      'skill_read',
+    ]) {
+      const toolResultIndex = events.findIndex(
+        ({ data, event }) =>
+          event === 'tool_call' &&
+          isRecord(data) &&
+          data.tool === tool &&
+          (data.state === 'done' || data.state === 'error'),
+      )
+      expect(toolResultIndex).toBeGreaterThanOrEqual(0)
+      expect(events[toolResultIndex + 1]).toEqual(
+        expect.objectContaining({
+          data: expect.objectContaining({ finishReason: 'in-progress' }),
+          event: 'stats',
+        }),
+      )
+    }
 
     const saved = await getProject(project.id)
     expect(saved?.messages[0]?.parts).toEqual(
@@ -2383,6 +2466,23 @@ function jsonResponse(body: unknown): Response {
     headers: { 'content-type': 'application/json' },
     status: 200,
   })
+}
+
+async function* liveUsageStepFinishStream() {
+  yield {
+    payload: {
+      output: {
+        usage: {
+          cachedInputTokens: 3,
+          inputTokens: 23,
+          outputTokens: 8,
+          totalTokens: 31,
+        },
+      },
+      stepResult: { reason: 'tool-calls' },
+    },
+    type: 'step-finish',
+  }
 }
 
 async function* mixedToolStream() {

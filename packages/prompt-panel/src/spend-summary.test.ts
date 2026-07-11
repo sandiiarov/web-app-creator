@@ -48,6 +48,33 @@ function turn(id: string, parts: LandingTurn['parts']): LandingTurn {
 }
 
 describe('summarizeSpend', () => {
+  it('includes the latest rolling stats from an active turn', () => {
+    const activeTurn = turn('turn-streaming', [
+      stats({
+        cost: 0.03,
+        costBreakdown: {
+          image: { cost: 0, count: 0 },
+          llm: 0.03,
+          scrape: { calls: 0, cost: 0, credits: 0 },
+          total: 0.03,
+          vision: { calls: 0, cost: 0, images: 0 },
+        },
+        usage: { inputTokens: 20, outputTokens: 10, totalTokens: 30 },
+      }),
+    ])
+    activeTurn.isStreaming = true
+
+    const summary = summarizeSpend([activeTurn])
+
+    expect(summary.cost).toBe(0.03)
+    expect(summary.turnCount).toBe(1)
+    expect(summary.usage).toEqual({
+      inputTokens: 20,
+      outputTokens: 10,
+      totalTokens: 30,
+    })
+  })
+
   it('aggregates cost and tokens across completed turns', () => {
     const summary = summarizeSpend([
       turn('turn-1', [stats()]),

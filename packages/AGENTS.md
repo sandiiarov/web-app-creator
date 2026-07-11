@@ -8,7 +8,7 @@
 
 - `ui/`: shared shadcn/Tailwind React component package.
 - `prompt-panel/`: landing-page prompt panel UI + conversation domain model, source-consumed by the client.
-- `conversation/`: canonical conversation model + the shared event→turn reducer (`applyEventToTurn`/`replayClientEvents`/`terminalizeTools`) consumed by both the server (hydration) and the client (live SSE stream); terminal outcomes include durable stopped state separate from errors, and tool-call parts may carry `{ alt, url }` image arguments for diagnostic previews.
+- `conversation/`: canonical conversation model + the shared event→turn reducer (`applyEventToTurn`/`replayClientEvents`/`terminalizeTools`) consumed by both the server (hydration) and the client (live SSE stream); rolling `stats` events upsert one latest snapshot per turn, terminal outcomes include durable stopped state separate from errors, and tool-call parts may carry `{ alt, url }` image arguments for diagnostic previews.
 - `landing-preview/`: shared landing-page preview iframe runtime, DOM morphing, and browser screenshot capture, source-consumed by the client through a dedicated React Fast Refresh export. The iframe carries `key={reloadKey}` and `reloadPreview()` bumps that key — do NOT remove it: browsers don't re-load an `<iframe srcDoc>` when React updates the attribute after an empty initial mount, so without the remount the preview renders blank on project open and on the first live `html_update`.
 - `agent-skills/`: Mastra agent skills stored as on-disk markdown and exported as inline skills; its landing-page `design` fork uses a concise control plane plus in-memory mode/foundation references.
 - `typescript-config/`: shared strict TypeScript 7 (tsc) configs.

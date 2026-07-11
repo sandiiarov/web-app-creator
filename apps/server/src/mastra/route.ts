@@ -135,6 +135,15 @@ interface ToolCallDisplay {
   tool: string
 }
 
+interface UsageSnapshot {
+  cachedInputTokens?: number
+  inputTokens?: number
+  outputTokens?: number
+  raw?: unknown
+  reasoningTokens?: number
+  totalTokens?: number
+}
+
 export function resolveModelId(model?: string): string {
   const requested = model ?? config.openrouter.defaultChatModel
   // Allow a model dropdown to send either the bare id or the openrouter/ prefix.
@@ -169,9 +178,9 @@ export function stopLandingAgent(projectId: string): boolean {
 /**
  * Run the landing-page agent and stream the custom SSE protocol by mapping
  * Mastra `fullStream` chunks. Emits: thinking, text, tool_call (with action +
- * terminal error/result states), stats, error, done. Cost/stats accounting runs
- * in `finally` so a `stats` event is emitted even when the loop throws (client
- * stop / mid-stream error), not only on the clean/break path.
+ * terminal error/result states), stats, error, done. Rolling `stats` snapshots
+ * follow completed LLM steps, provider cost metadata, and terminal tool events;
+ * final accounting still runs in `finally` for stops and mid-stream errors.
  */
 export async function streamLandingAgent({
   attachments = [],
@@ -362,10 +371,69 @@ async function activeStreamLandingAgent({
     controller.abort()
     return true
   }
+  let liveUsage: UsageSnapshot = {}
+  const createStatsPayload = (
+    usage: UsageSnapshot,
+    finishReason: string,
+  ): RecordedStatsPayload => {
+    const llmCost = calculateLlmCost(textModel, {
+      cachedInputTokens: usage.cachedInputTokens,
+      inputTokens: usage.inputTokens,
+      outputTokens: usage.outputTokens,
+      raw: llmProviderCostUsd > 0 ? llmProviderCostUsd : usage.raw,
+      reasoningTokens: usage.reasoningTokens,
+      totalTokens: usage.totalTokens,
+    })
+    const firecrawlCostUsd = firecrawlCost(
+      scrapeCredits,
+      config.firecrawl.creditUsd,
+    )
+    const scrapeCostUsd = firecrawlCostUsd + scrapeOcrCostUsd
+    const totalCost = llmCost + scrapeCostUsd + imageCostUsd + visionCostUsd
 
-  // Hoisted above the try so the post-stream cost/stats accounting in
-  // `finally` can read them even when the loop threw (graceful stop /
-  // mid-stream error), not only on the clean/break path.
+    return {
+      cost: totalCost,
+      costBreakdown: {
+        image: {
+          cost: imageCostUsd,
+          count: imageCount,
+        },
+        llm: llmCost,
+        scrape: {
+          calls: scrapeCalls,
+          cost: scrapeCostUsd,
+          credits: scrapeCredits,
+          firecrawlCost: firecrawlCostUsd,
+          ocrCalls: scrapeOcrCalls,
+          ocrCost: scrapeOcrCostUsd,
+          ocrImages: scrapeOcrImages,
+        },
+        total: totalCost,
+        vision: {
+          calls: visionCalls,
+          cost: visionCostUsd,
+          images: visionImages,
+        },
+      },
+      durationMs: Date.now() - startedAt,
+      finishReason,
+      model: textModel,
+      usage: {
+        cachedInputTokens: usage.cachedInputTokens,
+        inputTokens: usage.inputTokens,
+        outputTokens: usage.outputTokens,
+        reasoningTokens: usage.reasoningTokens,
+        totalTokens: usage.totalTokens,
+      },
+    }
+  }
+  const emitStats = (finishReason = 'in-progress') => {
+    emit('stats', createStatsPayload(liveUsage, finishReason))
+  }
+
+  // Hoisted above the try so both rolling snapshots and final accounting can
+  // read the stream state when the loop throws (graceful stop / mid-stream
+  // error), not only on the clean/break path.
   let agentStep = 0
   let stream: Awaited<ReturnType<typeof agent.stream>> | undefined
   let streamError: string | undefined
@@ -393,6 +461,8 @@ async function activeStreamLandingAgent({
       visionImages += attachmentAnalysis.images
       visionCostUsd += attachmentAnalysis.cost
       if (attachmentAnalysis.ok) visionCalls += 1
+      emitStats()
+      if (checkCostCap()) controller.signal.throwIfAborted()
     }
 
     const agentPrompt = attachmentAnalysis.contextBlock
@@ -471,12 +541,25 @@ async function activeStreamLandingAgent({
         }
         case 'raw': {
           const providerCost = providerReportedCost(chunk.payload)
-          if (providerCost > 0) llmProviderCostUsd += providerCost
+          if (providerCost > 0) {
+            llmProviderCostUsd += providerCost
+            emitStats()
+          }
           if (checkCostCap()) break streamLoop
           break
         }
         case 'reasoning-delta': {
           emit('thinking', { delta: chunk.payload.text })
+          break
+        }
+        case 'step-finish': {
+          liveUsage = chunk.payload.totalUsage
+            ? toUsageSnapshot(chunk.payload.totalUsage)
+            : addUsageSnapshots(
+                liveUsage,
+                toUsageSnapshot(chunk.payload.output.usage),
+              )
+          emitStats()
           break
         }
         case 'text-delta': {
@@ -548,6 +631,7 @@ async function activeStreamLandingAgent({
           }
           emit('tool_call', toolPayload)
           completedCallIds.add(chunk.payload.toolCallId)
+          emitStats()
           if (chunk.payload.toolName === 'edit') {
             editFailures += 1
             if (editFailures >= MAX_EDIT_FAILURES) {
@@ -658,6 +742,7 @@ async function activeStreamLandingAgent({
               )
             }
           }
+          let checkToolCostCap = false
           // Accumulate image-generation cost from successful generate_image calls.
           if (chunk.payload.toolName === 'generate_image' && !isError) {
             const result = chunk.payload.result as {
@@ -668,7 +753,7 @@ async function activeStreamLandingAgent({
             if (typeof result.imagesGenerated === 'number') {
               imageCount += result.imagesGenerated
               imageCostUsd += imageGenCost(result.imagesGenerated, result.cost)
-              if (checkCostCap()) break streamLoop
+              checkToolCostCap = true
             }
             // Persist generated image bytes to the project folder at
             // generation time so they are durable even if a later edit fails
@@ -705,13 +790,15 @@ async function activeStreamLandingAgent({
                 },
                 imageOcr.cost,
               )
-              if (checkCostCap()) break streamLoop
+              checkToolCostCap = true
             }
           }
+          emitStats()
+          if (checkToolCostCap && checkCostCap()) break streamLoop
           break
         }
         default:
-          // start, step-start, step-finish, text-start/end, reasoning-start/end,
+          // start, step-start, text-start/end, reasoning-start/end,
           // tool-call-delta, tool-call-input-streaming-end, finish — not
           // surfaced individually in the custom protocol.
           break
@@ -739,14 +826,7 @@ async function activeStreamLandingAgent({
       // accumulated during the run, plus provider-reported LLM cost) records.
       // A stream setup failure still emits zero-token stats plus any costs that
       // were already accumulated before `agent.stream` rejected.
-      let usage: {
-        cachedInputTokens?: number
-        inputTokens?: number
-        outputTokens?: number
-        raw?: unknown
-        reasoningTokens?: number
-        totalTokens?: number
-      } = {}
+      let usage: UsageSnapshot = liveUsage
       const wasStopped = controller.signal.aborted && !fatalRunError
       let finishReason = wasStopped ? 'stopped' : 'stop'
       if (streamError && !controller.signal.aborted) finishReason = 'error'
@@ -762,57 +842,8 @@ async function activeStreamLandingAgent({
           // image, scrape, vision, or raw provider chunks before termination.
         }
       }
-      const llmCost = calculateLlmCost(textModel, {
-        cachedInputTokens: usage.cachedInputTokens,
-        inputTokens: usage.inputTokens,
-        outputTokens: usage.outputTokens,
-        raw: llmProviderCostUsd > 0 ? llmProviderCostUsd : usage.raw,
-        reasoningTokens: usage.reasoningTokens,
-        totalTokens: usage.totalTokens,
-      })
-      const firecrawlCostUsd = firecrawlCost(
-        scrapeCredits,
-        config.firecrawl.creditUsd,
-      )
-      const scrapeCostUsd = firecrawlCostUsd + scrapeOcrCostUsd
-      const totalCost = llmCost + scrapeCostUsd + imageCostUsd + visionCostUsd
-
-      const statsPayload: RecordedStatsPayload = {
-        cost: totalCost,
-        costBreakdown: {
-          image: {
-            cost: imageCostUsd,
-            count: imageCount,
-          },
-          llm: llmCost,
-          scrape: {
-            calls: scrapeCalls,
-            cost: scrapeCostUsd,
-            credits: scrapeCredits,
-            firecrawlCost: firecrawlCostUsd,
-            ocrCalls: scrapeOcrCalls,
-            ocrCost: scrapeOcrCostUsd,
-            ocrImages: scrapeOcrImages,
-          },
-          total: totalCost,
-          vision: {
-            calls: visionCalls,
-            cost: visionCostUsd,
-            images: visionImages,
-          },
-        },
-        durationMs: Date.now() - startedAt,
-        finishReason,
-        model: textModel,
-        usage: {
-          cachedInputTokens: usage.cachedInputTokens,
-          inputTokens: usage.inputTokens,
-          outputTokens: usage.outputTokens,
-          reasoningTokens: usage.reasoningTokens,
-          totalTokens: usage.totalTokens,
-        },
-      }
-      emit('stats', statsPayload)
+      liveUsage = usage
+      emitStats(finishReason)
 
       // Final agent-message snapshot at run end (the last per-step snapshot via
       // onStepFinish may not fire for every stream shape, so this guarantees the
@@ -847,6 +878,28 @@ async function activeStreamLandingAgent({
     } finally {
       emit('done', {})
     }
+  }
+}
+
+function addUsageSnapshots(
+  current: UsageSnapshot,
+  next: UsageSnapshot,
+): UsageSnapshot {
+  const sum = (key: keyof Omit<UsageSnapshot, 'raw'>) => {
+    const currentValue = current[key]
+    const nextValue = next[key]
+    if (typeof currentValue !== 'number') return nextValue
+    if (typeof nextValue !== 'number') return currentValue
+    return currentValue + nextValue
+  }
+
+  return {
+    cachedInputTokens: sum('cachedInputTokens'),
+    inputTokens: sum('inputTokens'),
+    outputTokens: sum('outputTokens'),
+    raw: next.raw ?? current.raw,
+    reasoningTokens: sum('reasoningTokens'),
+    totalTokens: sum('totalTokens'),
   }
 }
 
@@ -1492,6 +1545,17 @@ function toolResultIndicatesFailure(tool: string, result: unknown): boolean {
   const data = asToolArgs(result)
   if (tool === 'edit') return !isValidEditResult(result)
   return booleanValue(data.ok) === false
+}
+
+function toUsageSnapshot(usage: UsageSnapshot): UsageSnapshot {
+  return {
+    cachedInputTokens: usage.cachedInputTokens,
+    inputTokens: usage.inputTokens,
+    outputTokens: usage.outputTokens,
+    raw: usage.raw,
+    reasoningTokens: usage.reasoningTokens,
+    totalTokens: usage.totalTokens,
+  }
 }
 
 function truncateAttachmentHtml(html: string, maxLength = 20_000) {

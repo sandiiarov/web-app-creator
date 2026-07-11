@@ -91,26 +91,35 @@ describe('replayClientEvents (hydration fold)', () => {
     expect(turns[0]?.htmlSwaps).toBe(1)
   })
 
-  it('appends a stats part', () => {
+  it('upserts rolling stats so a turn keeps only its latest snapshot', () => {
     const turns = replayClientEvents([
       prompt('turn-1'),
       out('stats', {
         cost: 0.01,
         durationMs: 5,
-        finishReason: 'stop',
+        finishReason: 'in-progress',
         model: 'm',
         usage: { totalTokens: 10 },
+      }),
+      out('text', { delta: 'Working' }),
+      out('stats', {
+        cost: 0.03,
+        durationMs: 15,
+        finishReason: 'stop',
+        model: 'm',
+        usage: { totalTokens: 30 },
       }),
     ])
     expect(turns[0]?.parts).toEqual([
       {
-        cost: 0.01,
-        durationMs: 5,
+        cost: 0.03,
+        durationMs: 15,
         finishReason: 'stop',
         model: 'm',
         type: 'stats',
-        usage: { totalTokens: 10 },
+        usage: { totalTokens: 30 },
       },
+      { id: 'turn-1-text', text: 'Working', type: 'text' },
     ])
   })
 
