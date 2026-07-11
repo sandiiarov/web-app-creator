@@ -1,14 +1,18 @@
-import type { Server } from 'node:http'
+import { request as httpRequest, type Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
+
+const MEBIBYTE = 1024 * 1024
+const MEDIA_JSON_BODY_LIMIT = 24 * MEBIBYTE
+const PROJECT_JSON_BODY_LIMIT = 64 * 1024
 
 const IMAGE_ATTACHMENT = {
   dataUrl: 'data:image/png;base64,iVBORw0KGgo=',
   id: 'image-1',
   mediaType: 'image/png',
   name: 'hero.png',
-  size: 68,
+  size: 8,
 }
 
 const ELEMENT_ATTACHMENT = {
@@ -57,6 +61,48 @@ describe('server HTTP routes', () => {
       expect(missing.status).toBe(404)
       await expect(missing.json()).resolves.toEqual({
         error: 'Not found',
+        ok: false,
+      })
+    })
+  })
+
+  it('bounds encoded JSON bodies by route without invoking handlers', async () => {
+    await withServer(async ({ baseUrl, streamLandingAgent }) => {
+      const accepted = await postJson(`${baseUrl}/api/projects`, {
+        title: 'Small request',
+      })
+      expect(accepted.status).toBe(201)
+      const created = (await accepted.json()) as { project: { id: string } }
+      createdProjectIds.push(created.project.id)
+
+      const smallOverflow = await postJson(`${baseUrl}/api/projects`, {
+        padding: 'x'.repeat(PROJECT_JSON_BODY_LIMIT),
+      })
+      expect(smallOverflow.status).toBe(413)
+      await expect(smallOverflow.json()).resolves.toEqual({
+        error: 'Request body exceeds the allowed size.',
+        ok: false,
+      })
+
+      const chunkedOverflow = await postChunkedJson(`${baseUrl}/agent`, [
+        '{"projectId":"project-1","prompt":"',
+        'x'.repeat(MEDIA_JSON_BODY_LIMIT),
+        '"}',
+      ])
+      expect(chunkedOverflow.status).toBe(413)
+      expect(chunkedOverflow.body).toEqual({
+        error: 'Request body exceeds the allowed size.',
+        ok: false,
+      })
+      expect(streamLandingAgent).not.toHaveBeenCalled()
+
+      const screenshotOverflow = await postJson(
+        `${baseUrl}/api/screenshot-responses/00000000-0000-0000-0000-000000000000`,
+        { ...SCREENSHOT, padding: 'x'.repeat(MEDIA_JSON_BODY_LIMIT) },
+      )
+      expect(screenshotOverflow.status).toBe(413)
+      await expect(screenshotOverflow.json()).resolves.toEqual({
+        error: 'Request body exceeds the allowed size.',
         ok: false,
       })
     })
@@ -143,6 +189,60 @@ describe('server HTTP routes', () => {
         expect(response.status).toBe(400)
         await expect(response.json()).resolves.toEqual({ error, ok: false })
       }
+      expect(streamLandingAgent).not.toHaveBeenCalled()
+    })
+  })
+
+  it('validates decoded attachment sizes before streaming', async () => {
+    await withServer(async ({ baseUrl, streamLandingAgent }) => {
+      const mismatch = await postJson(`${baseUrl}/agent`, {
+        attachments: [{ ...IMAGE_ATTACHMENT, size: IMAGE_ATTACHMENT.size + 1 }],
+        projectId: 'project-1',
+        prompt: 'Build',
+      })
+      expect(mismatch.status).toBe(400)
+      await expect(mismatch.json()).resolves.toEqual({
+        error:
+          'Invalid attachment 1: declared size must match decoded dataUrl bytes.',
+        ok: false,
+      })
+
+      const oversizedBytes = Buffer.alloc(8 * MEBIBYTE + 1)
+      const oversized = await postJson(`${baseUrl}/agent`, {
+        attachments: [
+          {
+            ...IMAGE_ATTACHMENT,
+            dataUrl: `data:image/png;base64,${oversizedBytes.toString('base64')}`,
+            size: 1,
+          },
+        ],
+        projectId: 'project-1',
+        prompt: 'Build',
+      })
+      expect(oversized.status).toBe(400)
+      await expect(oversized.json()).resolves.toEqual({
+        error:
+          'Invalid attachment 1: decoded image must be between 1 byte and 8 MiB.',
+        ok: false,
+      })
+
+      const aggregateBytes = Buffer.alloc(4 * MEBIBYTE + 1)
+      const aggregateDataUrl = `data:image/png;base64,${aggregateBytes.toString('base64')}`
+      const aggregate = await postJson(`${baseUrl}/agent`, {
+        attachments: Array.from({ length: 4 }, (_, index) => ({
+          ...IMAGE_ATTACHMENT,
+          dataUrl: aggregateDataUrl,
+          id: `image-${index}`,
+          size: aggregateBytes.byteLength,
+        })),
+        projectId: 'project-1',
+        prompt: 'Build',
+      })
+      expect(aggregate.status).toBe(400)
+      await expect(aggregate.json()).resolves.toEqual({
+        error: 'Attached items must be 16 MiB or smaller in total.',
+        ok: false,
+      })
       expect(streamLandingAgent).not.toHaveBeenCalled()
     })
   })
@@ -427,6 +527,26 @@ describe('server HTTP routes', () => {
       )
       expect(invalidWidth.status).toBe(400)
 
+      const oversizedBytes = Buffer.alloc(16 * MEBIBYTE + 1)
+      const oversized = await postJson(
+        `${baseUrl}/api/screenshot-responses/00000000-0000-0000-0000-000000000000`,
+        {
+          ...SCREENSHOT,
+          dataUrl: `data:image/jpeg;base64,${oversizedBytes.toString('base64')}`,
+        },
+      )
+      expect(oversized.status).toBe(400)
+      await expect(oversized.json()).resolves.toEqual({
+        error: 'Screenshot must be 16 MiB or smaller.',
+        ok: false,
+      })
+
+      const valid = await postJson(
+        `${baseUrl}/api/screenshot-responses/00000000-0000-0000-0000-000000000000`,
+        SCREENSHOT,
+      )
+      expect(valid.status).toBe(404)
+
       const nonPost = await fetch(
         `${baseUrl}/api/screenshot-responses/00000000-0000-0000-0000-000000000000`,
       )
@@ -465,6 +585,32 @@ async function fetchJson(url: string) {
 async function listen(server: Server) {
   await new Promise<void>((resolve) => {
     server.listen(0, '127.0.0.1', () => resolve())
+  })
+}
+
+async function postChunkedJson(url: string, chunks: Iterable<string>) {
+  return new Promise<{ body: unknown; status: number }>((resolve, reject) => {
+    const request = httpRequest(
+      url,
+      {
+        headers: { 'content-type': 'application/json' },
+        method: 'POST',
+      },
+      (response) => {
+        const responseChunks: Buffer[] = []
+        response.on('data', (chunk: Buffer) => responseChunks.push(chunk))
+        response.once('error', reject)
+        response.once('end', () => {
+          resolve({
+            body: JSON.parse(Buffer.concat(responseChunks).toString('utf8')),
+            status: response.statusCode ?? 0,
+          })
+        })
+      },
+    )
+    request.once('error', reject)
+    for (const chunk of chunks) request.write(chunk)
+    request.end()
   })
 }
 

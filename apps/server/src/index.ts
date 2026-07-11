@@ -7,7 +7,7 @@ import {
 import { fileURLToPath } from 'node:url'
 
 import { config } from './config.ts'
-import { readRequestBody } from './http-body.ts'
+import { readRequestBody, RequestBodyTooLargeError } from './http-body.ts'
 import {
   pendingBrowserScreenshotProjectId,
   rejectPendingBrowserScreenshot,
@@ -48,6 +48,9 @@ const MAX_ATTACHMENT_COUNT = 4
 const MAX_ATTACHMENT_ELEMENT_HTML_SIZE = 256 * 1024
 const MAX_ATTACHMENT_SIZE = 8 * 1024 * 1024
 const MAX_ATTACHMENT_TOTAL_SIZE = 16 * 1024 * 1024
+const MAX_MEDIA_JSON_BODY_SIZE = 24 * 1024 * 1024
+const MAX_PROJECT_JSON_BODY_SIZE = 64 * 1024
+const MAX_SCREENSHOT_SIZE = 16 * 1024 * 1024
 const SCREENSHOT_MEDIA_TYPES = new Set<BrowserScreenshotMediaType>([
   'image/jpeg',
   'image/png',
@@ -71,7 +74,14 @@ const server = createServer(async (request, response) => {
     await routeRequest(request, response)
   } catch (error) {
     if (!response.headersSent) {
-      sendJson(response, 500, { error: errorMessage(error), ok: false })
+      if (error instanceof RequestBodyTooLargeError) {
+        sendJson(response, 413, {
+          error: 'Request body exceeds the allowed size.',
+          ok: false,
+        })
+      } else {
+        sendJson(response, 500, { error: errorMessage(error), ok: false })
+      }
     } else {
       response.end()
     }
@@ -101,6 +111,11 @@ function attachmentSize(attachment: AgentAttachmentInput) {
   )
 }
 
+function decodedDataUrlSize(dataUrl: string) {
+  const payload = dataUrl.slice(dataUrl.indexOf(',') + 1).replace(/\s/g, '')
+  return Buffer.from(payload, 'base64').byteLength
+}
+
 function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : 'Unknown error'
 }
@@ -110,7 +125,7 @@ function errorMessage(error: unknown) {
  * `{ prompt: string, projectId: string, textModel?: string, imageModel?: string, visionModel?: string }`.
  */
 async function handleAgent(request: IncomingMessage, response: ServerResponse) {
-  const body = await readJson(request)
+  const body = await readJson(request, MAX_MEDIA_JSON_BODY_SIZE)
 
   if (typeof body.prompt !== 'string' || body.prompt.trim() === '') {
     sendJson(response, 400, {
@@ -222,8 +237,11 @@ function isValidImageDataUrl(dataUrl: string, mediaType: string) {
   return /^[A-Za-z0-9+/=\s]+$/.test(payload) && payload.trim().length > 0
 }
 
-async function readJson(request: IncomingMessage): Promise<AgentRequestBody> {
-  const body = await readRequestBody(request)
+async function readJson(
+  request: IncomingMessage,
+  maxBytes: number,
+): Promise<AgentRequestBody> {
+  const body = await readRequestBody(request, maxBytes)
 
   return body.trim().length > 0 ? (JSON.parse(body) as AgentRequestBody) : {}
 }
@@ -280,7 +298,7 @@ async function handleCreateProject(
   request: IncomingMessage,
   response: ServerResponse,
 ) {
-  const body = await readJsonObject(request)
+  const body = await readJsonObject(request, MAX_PROJECT_JSON_BODY_SIZE)
   const project = await createProject({
     model: typeof body.textModel === 'string' ? body.textModel : undefined,
     title: typeof body.title === 'string' ? body.title : undefined,
@@ -314,7 +332,7 @@ async function handlePatchProject(
   request: IncomingMessage,
   response: ServerResponse,
 ) {
-  const body = await readJsonObject(request)
+  const body = await readJsonObject(request, MAX_PROJECT_JSON_BODY_SIZE)
 
   if (typeof body.textModel !== 'string' || body.textModel.trim() === '') {
     sendJson(response, 400, {
@@ -362,7 +380,7 @@ async function handleScreenshotResponse(
   request: IncomingMessage,
   response: ServerResponse,
 ) {
-  const body = await readJsonObject(request)
+  const body = await readJsonObject(request, MAX_MEDIA_JSON_BODY_SIZE)
   const error = stringField(body.error, 500)
 
   if (error) {
@@ -435,8 +453,9 @@ async function handleStopProject(id: string, response: ServerResponse) {
 
 async function readJsonObject(
   request: IncomingMessage,
+  maxBytes: number,
 ): Promise<Record<string, unknown>> {
-  const body = await readRequestBody(request)
+  const body = await readRequestBody(request, maxBytes)
   if (body.trim().length === 0) return {}
   const parsed = JSON.parse(body)
   return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
@@ -736,16 +755,19 @@ function validateAgentImageAttachment(
   if (!mediaType || !mediaTypes.has(mediaType)) {
     return 'expected PNG, JPEG, WEBP, or GIF mediaType'
   }
-  if (
-    typeof size !== 'number' ||
-    !Number.isInteger(size) ||
-    size <= 0 ||
-    size > MAX_ATTACHMENT_SIZE
-  ) {
-    return 'expected size between 1 byte and 8 MiB'
+  if (typeof size !== 'number' || !Number.isInteger(size) || size <= 0) {
+    return 'expected a positive integer size'
   }
   if (!isValidImageDataUrl(dataUrl, mediaType)) {
     return 'expected matching base64 dataUrl'
+  }
+
+  const decodedSize = decodedDataUrlSize(dataUrl)
+  if (decodedSize <= 0 || decodedSize > MAX_ATTACHMENT_SIZE) {
+    return 'decoded image must be between 1 byte and 8 MiB'
+  }
+  if (size !== decodedSize) {
+    return 'declared size must match decoded dataUrl bytes'
   }
 
   return {
@@ -753,7 +775,7 @@ function validateAgentImageAttachment(
     id,
     mediaType,
     name,
-    size,
+    size: decodedSize,
   }
 }
 
@@ -769,6 +791,9 @@ function validateScreenshotResponse(
     return 'Expected screenshot mediaType image/jpeg, image/png, or image/webp.'
   if (!isValidImageDataUrl(dataUrl, mediaType)) {
     return 'Expected matching screenshot base64 dataUrl.'
+  }
+  if (decodedDataUrlSize(dataUrl) > MAX_SCREENSHOT_SIZE) {
+    return 'Screenshot must be 16 MiB or smaller.'
   }
   if (
     typeof width !== 'number' ||
