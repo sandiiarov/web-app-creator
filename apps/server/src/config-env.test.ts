@@ -23,10 +23,37 @@ describe('createConfigFromEnv', () => {
   it('applies server binding and Firecrawl cost defaults', () => {
     const config = createConfigFromEnv(createEnv())
 
-    expect(config.host).toBe('0.0.0.0')
+    expect(config.host).toBe('127.0.0.1')
     expect(config.port).toBe(3001)
-    expect(config.clientOrigin).toBe('*')
+    expect(config.clientOrigin).toBe('http://localhost:5173')
     expect(config.firecrawl.creditUsd).toBe(0.002)
+  })
+
+  it.each([
+    ['http://localhost:5173', 'http://localhost:5173'],
+    ['http://localhost:5173/', 'http://localhost:5173'],
+    ['https://CLIENT.test:443/', 'https://client.test'],
+  ])('normalizes a safe CLIENT_ORIGIN %s', (value, expected) => {
+    expect(
+      createConfigFromEnv(createEnv({ CLIENT_ORIGIN: value })).clientOrigin,
+    ).toBe(expected)
+  })
+
+  it.each([
+    '*',
+    'null',
+    'ftp://client.test',
+    'https://user:password@client.test',
+    'https://client.test/app',
+    'https://client.test?mode=app',
+    'https://client.test#app',
+    'https://client.test,https://other.test',
+  ])('rejects an unsafe CLIENT_ORIGIN', (value) => {
+    expect(() =>
+      createConfigFromEnv(
+        createEnv({ CLIENT_ORIGIN: value, OPENROUTER_API_KEY: 'unrelated' }),
+      ),
+    ).toThrow(/^Invalid CLIENT_ORIGIN value$/)
   })
 
   it('parses agent retry defaults', () => {

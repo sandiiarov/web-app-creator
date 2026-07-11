@@ -82,13 +82,13 @@ The server reads `apps/server/.env` (package-local; do not create a root `.env`)
 | `FIRECRAWL_API_KEY` | — | enables the `scrape` tool's keyed Firecrawl tier (free tier otherwise) |
 | `FIRECRAWL_CREDIT_USD` | `0.002` | per-scrape cost for stats |
 | `MASTRA_PROJECT_ID` / `MASTRA_PLATFORM_ACCESS_TOKEN` | — | optional Mastra platform telemetry |
-| `CLIENT_ORIGIN` | `*` | CORS allow-origin |
-| `HOST` / `PORT` | `0.0.0.0` / `3001` | bind address |
+| `CLIENT_ORIGIN` | `http://localhost:5173` | exact allowed browser origin; other `Origin` values receive `403` |
+| `HOST` / `PORT` | `127.0.0.1` / `3001` | bind address |
 | `AGENT_MODEL_MAX_RETRIES` | `0` | per-call model retries |
 | `AGENT_RETRY_BASE_DELAY_MS` / `AGENT_RETRY_MAX_DELAY_MS` | `1000` / `10000` | retry backoff |
 | `AGENT_STREAM_ERROR_MAX_RETRIES` | `10` | mid-stream error retries |
 
-Set `VITE_SERVER_URL` on the client if the server is not at `http://localhost:3001`.
+Requests without an `Origin` header remain available to CLI/server clients. Set `VITE_SERVER_URL` on the client if the server is not at `http://localhost:3001`, and set `CLIENT_ORIGIN` to that browser app's exact HTTP(S) origin. Binding `HOST` to a non-loopback address does not add authentication; expose it only behind an operator-controlled network boundary.
 
 ## shadcn/ui
 

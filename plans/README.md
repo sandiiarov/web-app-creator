@@ -37,7 +37,7 @@ Not audited: live OpenRouter/Firecrawl traffic, a real-browser E2E session, prod
 |------|-------|----------|--------|------------|--------|
 | 001 | Restore the dead-code verification gate | P1 | S | — | DONE |
 | 002 | Bound and validate inbound JSON media payloads | P1 | M | 001 | DONE |
-| 003 | Enforce safe local API defaults and browser origins | P1 | M | 002 | TODO |
+| 003 | Enforce safe local API defaults and browser origins | P1 | M | 002 | DONE |
 | 004 | Block SSRF and resource amplification in scrape-image OCR | P1 | M | 003 | TODO |
 | 005 | Preserve valid JSONL prefixes after torn writes | P1 | S | 004 | TODO |
 

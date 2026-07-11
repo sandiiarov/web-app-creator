@@ -48,7 +48,10 @@ afterEach(async () => {
 describe('server HTTP routes', () => {
   it('handles CORS preflight and not found responses', async () => {
     await withServer(async ({ baseUrl }) => {
-      const options = await fetch(`${baseUrl}/agent`, { method: 'OPTIONS' })
+      const options = await fetch(`${baseUrl}/agent`, {
+        headers: { origin: 'https://client.test' },
+        method: 'OPTIONS',
+      })
       expect(options.status).toBe(204)
       expect(options.headers.get('access-control-allow-origin')).toBe(
         'https://client.test',
@@ -56,6 +59,7 @@ describe('server HTTP routes', () => {
       expect(options.headers.get('access-control-allow-methods')).toBe(
         'DELETE,GET,PATCH,POST,OPTIONS',
       )
+      expect(options.headers.get('vary')).toBe('Origin')
 
       const missing = await fetch(`${baseUrl}/missing`)
       expect(missing.status).toBe(404)
@@ -64,6 +68,60 @@ describe('server HTTP routes', () => {
         ok: false,
       })
     })
+  })
+
+  it('allows matching browser origins to reach state-changing routes', async () => {
+    await withServer(async ({ baseUrl, streamLandingAgent }) => {
+      const response = await postJson(
+        `${baseUrl}/agent`,
+        { projectId: 'project-1', prompt: 'Build' },
+        { origin: 'https://client.test' },
+      )
+
+      expect(response.status).toBe(200)
+      expect(response.headers.get('access-control-allow-origin')).toBe(
+        'https://client.test',
+      )
+      expect(response.headers.get('vary')).toBe('Origin')
+      expect(streamLandingAgent).toHaveBeenCalledOnce()
+    })
+  })
+
+  it('rejects mismatching browser origins before route side effects', async () => {
+    await withServer(
+      async ({ baseUrl, stopLandingAgent, streamLandingAgent }) => {
+        for (const origin of ['https://other.test', 'null']) {
+          const response = await postJson(
+            `${baseUrl}/agent`,
+            { projectId: 'project-1', prompt: 'Build' },
+            { origin },
+          )
+          expect(response.status).toBe(403)
+          await expect(response.json()).resolves.toEqual({
+            error: 'Origin is not allowed.',
+            ok: false,
+          })
+        }
+
+        const preflight = await fetch(`${baseUrl}/agent`, {
+          headers: { origin: 'https://other.test' },
+          method: 'OPTIONS',
+        })
+        expect(preflight.status).toBe(403)
+
+        const stop = await fetch(
+          `${baseUrl}/api/projects/00000000-0000-0000-0000-000000000000/stop`,
+          {
+            headers: { origin: 'https://other.test' },
+            method: 'POST',
+          },
+        )
+        expect(stop.status).toBe(403)
+
+        expect(streamLandingAgent).not.toHaveBeenCalled()
+        expect(stopLandingAgent).not.toHaveBeenCalled()
+      },
+    )
   })
 
   it('bounds encoded JSON bodies by route without invoking handlers', async () => {
@@ -614,10 +672,14 @@ async function postChunkedJson(url: string, chunks: Iterable<string>) {
   })
 }
 
-async function postJson(url: string, body: unknown) {
+async function postJson(
+  url: string,
+  body: unknown,
+  headers: Record<string, string> = {},
+) {
   return fetch(url, {
     body: JSON.stringify(body),
-    headers: { 'content-type': 'application/json' },
+    headers: { 'content-type': 'application/json', ...headers },
     method: 'POST',
   })
 }

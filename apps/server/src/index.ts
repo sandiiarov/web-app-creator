@@ -68,9 +68,13 @@ type AgentRequestBody = {
 }
 
 const server = createServer(async (request, response) => {
-  setCorsHeaders(response)
-
   try {
+    if (!isRequestOriginAllowed(request)) {
+      sendJson(response, 403, { error: 'Origin is not allowed.', ok: false })
+      return
+    }
+
+    setCorsHeaders(response)
     await routeRequest(request, response)
   } catch (error) {
     if (!response.headersSent) {
@@ -229,6 +233,11 @@ function isPositiveDimension(value: unknown): value is number {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object' && !Array.isArray(value)
+}
+
+function isRequestOriginAllowed(request: IncomingMessage) {
+  const origin = request.headers.origin
+  return origin === undefined || origin === config.clientOrigin
 }
 
 function isValidImageDataUrl(dataUrl: string, mediaType: string) {
@@ -660,6 +669,7 @@ function setCorsHeaders(response: ServerResponse) {
     'DELETE,GET,PATCH,POST,OPTIONS',
   )
   response.setHeader('access-control-allow-origin', config.clientOrigin)
+  response.appendHeader('vary', 'Origin')
 }
 
 function stringField(value: unknown, maxLength: number): string | undefined {

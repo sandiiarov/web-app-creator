@@ -2,6 +2,10 @@ export type Config = ReturnType<typeof createConfigFromEnv>
 
 export type ConfigEnvironment = Record<string, string | undefined>
 
+const ALLOWED_CLIENT_ORIGIN_PROTOCOLS = new Set(['http:', 'https:'])
+const DEFAULT_CLIENT_ORIGIN = 'http://localhost:5173'
+const DEFAULT_HOST = '127.0.0.1'
+const INVALID_CLIENT_ORIGIN_VALUES = new Set(['*', 'null'])
 const DEFAULT_OPENROUTER_CHAT_MODEL = 'z-ai/glm-5.2:nitro'
 const DEFAULT_OPENROUTER_IMAGE_MODEL = 'bytedance-seed/seedream-4.5'
 const DEFAULT_OPENROUTER_VISION_MODEL = 'z-ai/glm-5v-turbo'
@@ -45,7 +49,9 @@ export function createConfigFromEnv(source: ConfigEnvironment) {
         'AGENT_STREAM_ERROR_MAX_RETRIES',
       ),
     },
-    clientOrigin: optionalEnv(source, 'CLIENT_ORIGIN') ?? '*',
+    clientOrigin: parseClientOrigin(
+      optionalEnv(source, 'CLIENT_ORIGIN') ?? DEFAULT_CLIENT_ORIGIN,
+    ),
     firecrawl: {
       apiKey: optionalEnv(source, 'FIRECRAWL_API_KEY'),
       creditUsd: parseNonNegativeNumber(
@@ -54,7 +60,7 @@ export function createConfigFromEnv(source: ConfigEnvironment) {
         'FIRECRAWL_CREDIT_USD',
       ),
     },
-    host: optionalEnv(source, 'HOST') ?? '0.0.0.0',
+    host: optionalEnv(source, 'HOST') ?? DEFAULT_HOST,
     mastra: {
       platformAccessToken: optionalEnv(source, 'MASTRA_PLATFORM_ACCESS_TOKEN'),
       projectId: optionalEnv(source, 'MASTRA_PROJECT_ID'),
@@ -82,6 +88,33 @@ function optionalEnv(source: ConfigEnvironment, name: string) {
   const value = source[name]?.trim()
 
   return value ? value : undefined
+}
+
+function parseClientOrigin(value: string) {
+  if (INVALID_CLIENT_ORIGIN_VALUES.has(value) || value.includes(',')) {
+    throw new Error('Invalid CLIENT_ORIGIN value')
+  }
+  if (!URL.canParse(value)) {
+    throw new Error('Invalid CLIENT_ORIGIN value')
+  }
+
+  const url = new URL(value)
+  const hasUnsupportedParts = [
+    url.username,
+    url.password,
+    url.pathname === '/' ? '' : url.pathname,
+    url.search,
+    url.hash,
+  ].some(Boolean)
+
+  if (
+    !ALLOWED_CLIENT_ORIGIN_PROTOCOLS.has(url.protocol) ||
+    hasUnsupportedParts
+  ) {
+    throw new Error('Invalid CLIENT_ORIGIN value')
+  }
+
+  return url.origin
 }
 
 function parseNonNegativeInteger(value: string, name: string) {
