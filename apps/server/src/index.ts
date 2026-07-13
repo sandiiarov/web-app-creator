@@ -8,16 +8,8 @@ import { fileURLToPath } from 'node:url'
 
 import { config } from './config.ts'
 import { readRequestBody, RequestBodyTooLargeError } from './http-body.ts'
-import {
-  pendingBrowserScreenshotProjectId,
-  rejectPendingBrowserScreenshot,
-  resolvePendingBrowserScreenshot,
-  type BrowserScreenshotMediaType,
-  type BrowserScreenshotResult,
-} from './mastra/lib/browser-screenshot.ts'
 import { getImage } from './mastra/lib/image-store.ts'
 import {
-  appendClientMessage,
   createProject,
   deleteProject,
   getProject,
@@ -26,8 +18,6 @@ import {
   readProjectImage,
   readProjectScreenshot,
   updateProjectModel,
-  writeProjectScreenshotSync,
-  type ClientMessageEntry,
 } from './mastra/lib/project-store.ts'
 import {
   resolveModelId,
@@ -50,8 +40,7 @@ const MAX_ATTACHMENT_SIZE = 8 * 1024 * 1024
 const MAX_ATTACHMENT_TOTAL_SIZE = 16 * 1024 * 1024
 const MAX_MEDIA_JSON_BODY_SIZE = 24 * 1024 * 1024
 const MAX_PROJECT_JSON_BODY_SIZE = 64 * 1024
-const MAX_SCREENSHOT_SIZE = 16 * 1024 * 1024
-const SCREENSHOT_MEDIA_TYPES = new Set<BrowserScreenshotMediaType>([
+const SCREENSHOT_MEDIA_TYPES = new Set([
   'image/jpeg',
   'image/png',
   'image/webp',
@@ -275,10 +264,6 @@ async function routeRequest(
     return
   }
 
-  if (await routeScreenshotResponse(request, response, pathname)) {
-    return
-  }
-
   if (await routeProjects(request, response, pathname)) {
     return
   }
@@ -298,7 +283,6 @@ const PROJECT_LIST_RE = /^\/api\/projects\/?$/i
 const PROJECT_SCREENSHOT_RE =
   /^\/api\/projects\/([a-f0-9-]+)\/screenshots\/([^/]+)$/i
 const PROJECT_STOP_RE = /^\/api\/projects\/([a-f0-9-]+)\/stop$/i
-const SCREENSHOT_RESPONSE_RE = /^\/api\/screenshot-responses\/([a-f0-9-]+)$/i
 const PROJECT_ITEM_RE = /^\/api\/projects\/([a-f0-9-]+)$/i
 const PROJECT_IMAGE_RE = /^\/api\/projects\/([a-f0-9-]+)\/images\/([^/]+)$/i
 const PROJECT_HTML_RE = /^\/api\/projects\/([a-f0-9-]+)\/html$/i
@@ -384,75 +368,6 @@ async function handlePatchProject(
   sendJson(response, 200, { ok: true, project })
 }
 
-async function handleScreenshotResponse(
-  requestId: string,
-  request: IncomingMessage,
-  response: ServerResponse,
-) {
-  const body = await readJsonObject(request, MAX_MEDIA_JSON_BODY_SIZE)
-  const error = stringField(body.error, 500)
-
-  if (error) {
-    const projectId = rejectPendingBrowserScreenshot(requestId, error)
-    if (!projectId) {
-      sendJson(response, 404, {
-        error: 'Screenshot request not found',
-        ok: false,
-      })
-      return
-    }
-    recordScreenshotResponse(projectId, requestId, { error, ok: false })
-    sendJson(response, 200, { ok: true })
-    return
-  }
-
-  const screenshot = validateScreenshotResponse(body)
-  if (typeof screenshot === 'string') {
-    sendJson(response, 400, { error: screenshot, ok: false })
-    return
-  }
-
-  const projectId = pendingBrowserScreenshotProjectId(requestId)
-  if (!projectId) {
-    sendJson(response, 404, {
-      error: 'Screenshot request not found',
-      ok: false,
-    })
-    return
-  }
-
-  // Persist the captured bytes (single durable copy under screenshots/) before
-  // resolving the pending tool call, so its result can carry the stable URL.
-  // The JSON logs contain that pointer only, never the base64 image bytes.
-  const shot = writeProjectScreenshotSync(
-    projectId,
-    requestId,
-    screenshot.dataUrl,
-    screenshot.mediaType,
-  )
-  if (
-    !resolvePendingBrowserScreenshot(requestId, {
-      ...screenshot,
-      imageUrl: shot.path,
-    })
-  ) {
-    sendJson(response, 404, {
-      error: 'Screenshot request not found',
-      ok: false,
-    })
-    return
-  }
-  recordScreenshotResponse(projectId, requestId, {
-    height: screenshot.height,
-    mediaType: screenshot.mediaType,
-    ok: true,
-    screenshotFile: shot.path,
-    width: screenshot.width,
-  })
-
-  sendJson(response, 200, { ok: true })
-}
-
 async function handleStopProject(id: string, response: ServerResponse) {
   // Graceful stop: aborts the run's Mastra stream but leaves its SSE response
   // open so terminal cost/stats + `done` are still delivered to the client.
@@ -470,21 +385,6 @@ async function readJsonObject(
   return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
     ? (parsed as Record<string, unknown>)
     : {}
-}
-
-/** Record an inbound screenshot POST-back (client→server) in the client log. */
-function recordScreenshotResponse(
-  projectId: string,
-  requestId: string,
-  detail: Record<string, unknown>,
-): void {
-  void appendClientMessage(projectId, {
-    ...detail,
-    dir: 'in',
-    requestId,
-    ts: new Date().toISOString(),
-    type: 'screenshot_response',
-  } satisfies ClientMessageEntry)
 }
 
 /** REST router for project CRUD + persisted project images. Returns true if handled. */
@@ -551,28 +451,6 @@ async function routeProjects(
   }
 
   return false
-}
-
-async function routeScreenshotResponse(
-  request: IncomingMessage,
-  response: ServerResponse,
-  pathname: string,
-): Promise<boolean> {
-  const match = pathname.match(SCREENSHOT_RESPONSE_RE)
-  if (!match) return false
-  if (request.method !== 'POST') return false
-
-  await handleScreenshotResponse(match[1]!, request, response)
-  return true
-}
-
-function screenshotMediaType(
-  value: unknown,
-): BrowserScreenshotMediaType | undefined {
-  return typeof value === 'string' &&
-    SCREENSHOT_MEDIA_TYPES.has(value as BrowserScreenshotMediaType)
-    ? (value as BrowserScreenshotMediaType)
-    : undefined
 }
 
 function sendJson(
@@ -787,45 +665,4 @@ function validateAgentImageAttachment(
     name,
     size: decodedSize,
   }
-}
-
-function validateScreenshotResponse(
-  value: Record<string, unknown>,
-): BrowserScreenshotResult | string {
-  const mediaType = screenshotMediaType(value.mediaType)
-  const dataUrl = typeof value.dataUrl === 'string' ? value.dataUrl.trim() : ''
-  const height = value.height
-  const width = value.width
-
-  if (!mediaType)
-    return 'Expected screenshot mediaType image/jpeg, image/png, or image/webp.'
-  if (!isValidImageDataUrl(dataUrl, mediaType)) {
-    return 'Expected matching screenshot base64 dataUrl.'
-  }
-  if (decodedDataUrlSize(dataUrl) > MAX_SCREENSHOT_SIZE) {
-    return 'Screenshot must be 16 MiB or smaller.'
-  }
-  if (
-    typeof width !== 'number' ||
-    !Number.isInteger(width) ||
-    width <= 0 ||
-    width > 4096
-  ) {
-    return 'Expected screenshot width between 1 and 4096.'
-  }
-  if (
-    typeof height !== 'number' ||
-    !Number.isInteger(height) ||
-    height <= 0 ||
-    height > 4096
-  ) {
-    return 'Expected screenshot height between 1 and 4096.'
-  }
-
-  const elementMap =
-    typeof value.elementMap === 'string' && value.elementMap.length <= 8000
-      ? value.elementMap
-      : undefined
-
-  return { dataUrl, elementMap, height, mediaType, width }
 }

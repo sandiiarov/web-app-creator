@@ -10,10 +10,10 @@ import { createReadTool } from './read.ts'
 import { createScrapeTool } from './scrape.ts'
 import {
   createScreenshotTool,
-  type RequestBrowserScreenshot,
+  type RequestProjectScreenshot,
 } from './screenshot.ts'
 
-export type { RequestBrowserScreenshot } from './screenshot.ts'
+export type { RequestProjectScreenshot } from './screenshot.ts'
 
 type LandingTool =
   | ReturnType<typeof createEditTool>
@@ -25,10 +25,10 @@ type LandingTool =
 
 interface LandingToolContext {
   baseUrl: string
+  captureProjectSelector?: RequestProjectScreenshot
   fs: Filesystem
   imageModel?: string
   projectId?: string
-  requestScreenshot?: RequestBrowserScreenshot
   snapshots: SnapshotStore
   store: HtmlStore
   turnId?: string
@@ -80,9 +80,9 @@ const LANDING_TOOL_DEFINITIONS = [
   ),
   tool(
     'screenshot',
-    'Use `screenshot` after substantial edits or when visual feedback is needed. It asks the browser to render the current project HTML at `viewportSize` (`mobile`, `tablet`, or `desktop`), captures the element matching `selector` with 8px padding around it, and returns OCR plus visual QA notes for layout, text, spacing, contrast, clipping, and responsive issues. The tool accepts only `selector` and `viewportSize`, and creates no files.',
-    ({ requestScreenshot, visionModel }) =>
-      createScreenshotTool(requestScreenshot, visionModel),
+    'Use `screenshot` after substantial edits or when visual feedback is needed. It renders the current project HTML at three viewport sizes (mobile, tablet, desktop) in one isolated browser session, captures the element matching `selector` with 8px padding around it, and returns OCR plus visual QA notes for layout, text, spacing, contrast, clipping, and responsive issues across all three viewports. The tool accepts only `selector`, and creates no files.',
+    ({ captureProjectSelector, visionModel }) =>
+      createScreenshotTool(captureProjectSelector, visionModel),
   ),
   tool(
     'generate_image',
@@ -94,7 +94,7 @@ const LANDING_TOOL_DEFINITIONS = [
 export function createLandingTools(
   store: HtmlStore,
   baseUrl: string,
-  requestScreenshot?: RequestBrowserScreenshot,
+  captureProjectSelector?: RequestProjectScreenshot,
   options: {
     imageModel?: string
     projectId?: string
@@ -109,10 +109,10 @@ export function createLandingTools(
       id,
       create({
         baseUrl,
+        captureProjectSelector,
         fs,
         imageModel: options.imageModel,
         projectId: options.projectId,
-        requestScreenshot,
         snapshots,
         store,
         turnId: options.turnId,

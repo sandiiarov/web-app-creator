@@ -8,7 +8,7 @@ import { createHtmlStore, type HtmlStore } from '../lib/html-store.ts'
 import { openrouterModel } from '../lib/openrouter-model.ts'
 import {
   createLandingTools,
-  type RequestBrowserScreenshot,
+  type RequestProjectScreenshot,
 } from '../tools/landing-tools.ts'
 
 /**
@@ -41,7 +41,7 @@ export function createLandingPageAgent(
   mastra: Mastra,
   baseUrl: string,
   textModel: string = config.openrouter.defaultChatModel,
-  requestScreenshot?: RequestBrowserScreenshot,
+  captureProjectSelector?: RequestProjectScreenshot,
   options: {
     imageModel?: string
     projectId?: string
@@ -56,7 +56,7 @@ export function createLandingPageAgent(
     model: openrouterModel(textModel),
     name: 'Landing Page Agent',
     skills: [design],
-    tools: createLandingTools(store, baseUrl, requestScreenshot, options),
+    tools: createLandingTools(store, baseUrl, captureProjectSelector, options),
   })
 }
 
@@ -68,7 +68,7 @@ function createLandingPageAgentConfig(
   store: HtmlStore,
   baseUrl: string,
   textModel: string = config.openrouter.defaultChatModel,
-  requestScreenshot?: RequestBrowserScreenshot,
+  captureProjectSelector?: RequestProjectScreenshot,
   options: {
     imageModel?: string
     projectId?: string
@@ -82,7 +82,7 @@ function createLandingPageAgentConfig(
     model: openrouterModel(textModel),
     name: 'Landing Page Agent',
     skills: [design],
-    tools: createLandingTools(store, baseUrl, requestScreenshot, options),
+    tools: createLandingTools(store, baseUrl, captureProjectSelector, options),
   }
 }
 

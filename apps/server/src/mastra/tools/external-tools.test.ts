@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { grepHtml } from '../lib/grep-search.ts'
 import { createHtmlStore } from '../lib/html-store.ts'
 import { getImage, saveImage } from '../lib/image-store.ts'
+import type { ProjectScreenshotViewport } from '../lib/project-screenshot.ts'
 import { createGrepTool } from './grep.ts'
 import { createScreenshotTool } from './screenshot.ts'
 
@@ -518,22 +519,20 @@ describe('createScrapeTool', () => {
 })
 
 describe('createScreenshotTool', () => {
-  it('reports unavailable and failed browser capture paths', async () => {
+  it('reports unavailable and failed capture paths', async () => {
     const unavailable = createScreenshotTool()
     await expect(
       unavailable.execute?.(
         {
           action: 'Check desktop hero layout',
           selector: '#hero',
-          viewportSize: 'desktop',
         },
         undefined as never,
       ),
     ).resolves.toMatchObject({
-      height: null,
+      captures: [],
       ok: false,
-      reason: 'Browser screenshot capture is unavailable in this runtime.',
-      width: null,
+      reason: 'Screenshot capture is unavailable in this runtime.',
     })
 
     const failing = createScreenshotTool(async () => {
@@ -544,21 +543,20 @@ describe('createScreenshotTool', () => {
         {
           action: 'Check mobile hero layout',
           selector: '#hero',
-          viewportSize: 'mobile',
         },
         undefined as never,
       ),
     ).resolves.toMatchObject({
-      imageOcr: { reason: 'browser closed' },
+      captures: [],
       ok: false,
       reason: 'browser closed',
     })
   })
 
-  it('requests a screenshot and OCRs the returned image', async () => {
+  it('captures three viewports and OCRs all images in one call', async () => {
     vi.resetModules()
     const ocrImageInputs = vi.fn<
-      () => Promise<{
+      (inputs: unknown[]) => Promise<{
         cost: number
         imagesAnalyzed: number
         ok: boolean
@@ -567,63 +565,91 @@ describe('createScreenshotTool', () => {
       }>
     >(async () => ({
       cost: 0.004,
-      imagesAnalyzed: 1,
+      imagesAnalyzed: 3,
       ok: true,
-      text: 'Image 1\nHero headline visible',
+      text: 'Hero headline visible across viewports',
       usage: null,
     }))
     vi.doMock('../lib/image-ocr.ts', () => ({ ocrImageInputs }))
     const { createScreenshotTool: loadTool } = await import('./screenshot.ts')
-    const requestScreenshot = vi.fn<
-      () => Promise<{
+    const captureProjectSelector = vi.fn<
+      (selector: string) => Promise<{
+        captures: {
+          dataUrl: string
+          elementMap: string
+          height: number
+          imageUrl: string
+          mediaType: 'image/jpeg'
+          viewport: ProjectScreenshotViewport
+          width: number
+        }[]
+        selector: string
+      }>
+    >(async (selector) => ({
+      captures: [
+        {
+          dataUrl: 'data:image/jpeg;base64,/9j/AAA=',
+          elementMap: '',
+          height: 422,
+          imageUrl: '/api/projects/p/screenshots/001-mobile.jpg',
+          mediaType: 'image/jpeg',
+          viewport: 'mobile',
+          width: 195,
+        },
+        {
+          dataUrl: 'data:image/jpeg;base64,/9j/BBB=',
+          elementMap: '',
+          height: 512,
+          imageUrl: '/api/projects/p/screenshots/002-tablet.jpg',
+          mediaType: 'image/jpeg',
+          viewport: 'tablet',
+          width: 384,
+        },
+        {
+          dataUrl: 'data:image/jpeg;base64,/9j/CCC=',
+          elementMap: '',
+          height: 450,
+          imageUrl: '/api/projects/p/screenshots/003-desktop.jpg',
+          mediaType: 'image/jpeg',
+          viewport: 'desktop',
+          width: 720,
+        },
+      ] as {
         dataUrl: string
+        elementMap: string
         height: number
         imageUrl: string
-        mediaType: 'image/png'
+        mediaType: 'image/jpeg'
+        viewport: ProjectScreenshotViewport
         width: number
-      }>
-    >(async () => ({
-      dataUrl: 'data:image/png;base64,iVBORw0KGgo=',
-      height: 600,
-      imageUrl: '/api/projects/project-1/screenshots/shot.png',
-      mediaType: 'image/png' as const,
-      width: 800,
+      }[],
+      selector,
     }))
 
-    const tool = loadTool(requestScreenshot)
+    const tool = loadTool(captureProjectSelector)
     const result = await tool.execute?.(
       {
         action: 'Check hero spacing and CTA contrast',
         selector: '#hero',
-        viewportSize: 'tablet',
       },
       undefined as never,
     )
 
-    expect(requestScreenshot).toHaveBeenCalledWith({
-      selector: '#hero',
-      timeoutMs: 25_000,
-      viewportSize: 'tablet',
-    })
-    expect(ocrImageInputs).toHaveBeenCalledWith(
-      [
-        {
-          dataUrl: 'data:image/png;base64,iVBORw0KGgo=',
-          sourceLabel: 'browser screenshot 800×600 of #hero at tablet viewport',
-        },
-      ],
-      expect.stringContaining('Target selector: #hero'),
-      'bytedance-seed/seed-2.0-mini',
-    )
+    expect(captureProjectSelector).toHaveBeenCalledWith('#hero')
+    expect(ocrImageInputs).toHaveBeenCalledTimes(1)
+    expect(ocrImageInputs.mock.calls[0]?.[0]).toHaveLength(3)
     expect(result).toMatchObject({
-      height: 600,
-      imageOcr: { cost: 0.004, ok: true },
-      imageUrl: '/api/projects/project-1/screenshots/shot.png',
-      mediaType: 'image/png',
+      captures: expect.arrayContaining([
+        expect.objectContaining({ viewport: 'mobile' }),
+        expect.objectContaining({ viewport: 'tablet' }),
+        expect.objectContaining({ viewport: 'desktop' }),
+      ]),
+      imageOcr: { cost: 0.004, imagesAnalyzed: 3, ok: true },
       ok: true,
-      text: 'Image 1\nHero headline visible',
-      width: 800,
+      selector: '#hero',
+      text: 'Hero headline visible across viewports',
     })
+    expect(JSON.stringify(result)).not.toContain('data:image/jpeg')
   })
 })
 

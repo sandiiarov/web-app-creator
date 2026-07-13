@@ -1490,32 +1490,47 @@ describe('streamLandingAgent history', () => {
 })
 
 describe('streamLandingAgent screenshots', () => {
-  it('emits screenshot_request events with project correlation', async () => {
+  it('captures screenshots through the Cloudflare capture callback', async () => {
     vi.stubEnv('OPENROUTER_API_KEY', 'test-openrouter-key')
 
-    let capturedScreenshot: unknown
-    let capturedScreenshotRequest: unknown
+    let capturedSelector = ''
+    let capturedResult: unknown
     vi.doMock('./index.ts', () => ({ mastra: {} }))
-    vi.doMock('./lib/browser-screenshot.ts', () => ({
-      createPendingBrowserScreenshot: vi.fn<
-        () => {
-          promise: Promise<{
-            dataUrl: string
-            height: number
-            mediaType: 'image/jpeg'
-            width: number
-          }>
-          requestId: string
-        }
-      >(() => ({
-        promise: Promise.resolve({
-          dataUrl: 'data:image/jpeg;base64,/9j/4AAQSkZJRg==',
-          height: 600,
-          mediaType: 'image/jpeg',
-          width: 800,
-        }),
-        requestId: '00000000-0000-0000-0000-000000000001',
-      })),
+    vi.doMock('./lib/project-screenshot.ts', () => ({
+      captureProjectSelectors: vi.fn<() => Promise<unknown[]>>(async () => [
+        {
+          captures: [
+            {
+              dataUrl: 'data:image/jpeg;base64,/9j/AAA=',
+              elementMap: '',
+              height: 422,
+              imageUrl: '/api/projects/p/screenshots/001-mobile.jpg',
+              mediaType: 'image/jpeg',
+              viewport: 'mobile',
+              width: 195,
+            },
+            {
+              dataUrl: 'data:image/jpeg;base64,/9j/BBB=',
+              elementMap: '',
+              height: 512,
+              imageUrl: '/api/projects/p/screenshots/002-tablet.jpg',
+              mediaType: 'image/jpeg',
+              viewport: 'tablet',
+              width: 384,
+            },
+            {
+              dataUrl: 'data:image/jpeg;base64,/9j/CCC=',
+              elementMap: '',
+              height: 450,
+              imageUrl: '/api/projects/p/screenshots/003-desktop.jpg',
+              mediaType: 'image/jpeg',
+              viewport: 'desktop',
+              width: 720,
+            },
+          ],
+          selector: '#hero .cta',
+        },
+      ]),
     }))
     vi.doMock('./agents/landing-page-agent.ts', () => ({
       createLandingPageAgent: (
@@ -1523,20 +1538,11 @@ describe('streamLandingAgent screenshots', () => {
         _mastra: unknown,
         _baseUrl: string,
         _textModel: string,
-        requestScreenshot: (input: {
-          selector: string
-          timeoutMs: number
-          viewportSize: 'desktop' | 'mobile' | 'tablet'
-        }) => Promise<unknown>,
+        captureProjectSelector: (selector: string) => Promise<unknown>,
       ) => ({
         stream: async () => {
-          const input = {
-            selector: '#hero .cta',
-            timeoutMs: 25_000,
-            viewportSize: 'mobile' as const,
-          }
-          capturedScreenshotRequest = input
-          capturedScreenshot = await requestScreenshot(input)
+          capturedSelector = '#hero .cta'
+          capturedResult = await captureProjectSelector('#hero .cta')
           return fakeAgentStream()
         },
       }),
@@ -1556,23 +1562,21 @@ describe('streamLandingAgent screenshots', () => {
       textModel: 'z-ai/glm-5.2',
     })
 
-    expect(capturedScreenshotRequest).toMatchObject({
-      selector: '#hero .cta',
-      viewportSize: 'mobile',
-    })
-    expect(capturedScreenshot).toMatchObject({ height: 600, width: 800 })
-    expect(parseSseEvents(response.body)).toEqual(
-      expect.arrayContaining([
+    expect(capturedSelector).toBe('#hero .cta')
+    expect(capturedResult).toMatchObject({
+      captures: expect.arrayContaining([
         expect.objectContaining({
-          data: {
-            projectId: project.id,
-            requestId: '00000000-0000-0000-0000-000000000001',
-            selector: '#hero .cta',
-            viewportSize: 'mobile',
-          },
-          event: 'screenshot_request',
+          imageUrl: expect.stringMatching(/\/api\/projects\/.*\/screenshots\//),
+          viewport: 'mobile',
         }),
+        expect.objectContaining({ viewport: 'tablet' }),
+        expect.objectContaining({ viewport: 'desktop' }),
       ]),
+      selector: '#hero .cta',
+    })
+    // No screenshot_request SSE event is emitted anymore.
+    expect(parseSseEvents(response.body)).not.toContainEqual(
+      expect.objectContaining({ event: 'screenshot_request' }),
     )
   })
 
@@ -1605,15 +1609,18 @@ describe('streamLandingAgent screenshots', () => {
       expect.arrayContaining([
         expect.objectContaining({
           data: expect.objectContaining({
-            images: [
-              {
-                alt: 'Screenshot of #hero at tablet viewport',
-                url: expect.stringMatching(
-                  /\/api\/projects\/project-test\/screenshots\/shot\.jpg$/,
-                ),
-              },
-            ],
-            result: 'Captured 800×600 screenshot\nOCR 1 image',
+            images: expect.arrayContaining([
+              expect.objectContaining({
+                alt: expect.stringContaining('mobile'),
+              }),
+              expect.objectContaining({
+                alt: expect.stringContaining('tablet'),
+              }),
+              expect.objectContaining({
+                alt: expect.stringContaining('desktop'),
+              }),
+            ]),
+            result: 'Captured 3 viewports\nOCR 3 images',
             state: 'done',
             tool: 'screenshot',
           }),
@@ -1623,7 +1630,7 @@ describe('streamLandingAgent screenshots', () => {
           data: expect.objectContaining({
             cost: 0.006,
             costBreakdown: expect.objectContaining({
-              vision: { calls: 1, cost: 0.006, images: 1 },
+              vision: { calls: 1, cost: 0.006, images: 3 },
             }),
           }),
           event: 'stats',
@@ -1635,13 +1642,13 @@ describe('streamLandingAgent screenshots', () => {
         expect.objectContaining({
           parts: expect.arrayContaining([
             expect.objectContaining({
-              images: [
+              images: expect.arrayContaining([
                 expect.objectContaining({
                   url: expect.stringMatching(
-                    /\/api\/projects\/project-test\/screenshots\/shot\.jpg$/,
+                    /\/api\/projects\/project-test\/screenshots\//,
                   ),
                 }),
-              ],
+              ]),
               tool: 'screenshot',
             }),
           ]),
@@ -1747,31 +1754,18 @@ describe('streamLandingAgent message persistence', () => {
   })
 })
 
-describe('streamLandingAgent screenshot availability', () => {
-  it('fails subsequent screenshots fast after a timeout with no browser client', async () => {
+describe('streamLandingAgent screenshot capture errors', () => {
+  it('propagates a Cloudflare capture failure to the tool result', async () => {
     vi.stubEnv('OPENROUTER_API_KEY', 'test-openrouter-key')
 
-    const createPending = vi.fn<
-      () => {
-        promise: Promise<{
-          dataUrl: string
-          height: number
-          mediaType: 'image/jpeg'
-          width: number
-        }>
-        requestId: string
-      }
-    >(() => ({
-      promise: Promise.reject(
-        new Error('Browser screenshot response timed out.'),
-      ),
-      requestId: '00000000-0000-0000-0000-000000000002',
-    }))
-    const screenshotResults: string[] = []
-
+    const captureError =
+      'Cloudflare Browser Run is rate limited. Try again shortly.'
+    let propagatedError = ''
     vi.doMock('./index.ts', () => ({ mastra: {} }))
-    vi.doMock('./lib/browser-screenshot.ts', () => ({
-      createPendingBrowserScreenshot: createPending,
+    vi.doMock('./lib/project-screenshot.ts', () => ({
+      captureProjectSelectors: vi.fn<() => Promise<never>>(async () => {
+        throw new Error(captureError)
+      }),
     }))
     vi.doMock('./agents/landing-page-agent.ts', () => ({
       createLandingPageAgent: (
@@ -1779,26 +1773,14 @@ describe('streamLandingAgent screenshot availability', () => {
         _mastra: unknown,
         _baseUrl: string,
         _textModel: string,
-        requestScreenshot: (input: {
-          selector: string
-          timeoutMs: number
-          viewportSize: 'desktop' | 'mobile' | 'tablet'
-        }) => Promise<unknown>,
+        captureProjectSelector: (selector: string) => Promise<unknown>,
       ) => ({
         stream: async () => {
-          for (const selector of ['#a', '#b']) {
-            try {
-              await requestScreenshot({
-                selector,
-                timeoutMs: 25_000,
-                viewportSize: 'desktop',
-              })
-              screenshotResults.push('ok')
-            } catch (error) {
-              screenshotResults.push(
-                error instanceof Error ? error.message : String(error),
-              )
-            }
+          try {
+            await captureProjectSelector('#hero')
+          } catch (error) {
+            propagatedError =
+              error instanceof Error ? error.message : String(error)
           }
           return fakeAgentStream()
         },
@@ -1819,13 +1801,10 @@ describe('streamLandingAgent screenshot availability', () => {
       textModel: 'z-ai/glm-5.2',
     })
 
-    // The first screenshot creates a pending request and times out; the second
-    // is rejected fast (no new pending request) with an actionable reason.
-    expect(createPending).toHaveBeenCalledTimes(1)
-    expect(screenshotResults[0]).toBe('Browser screenshot response timed out.')
-    expect(screenshotResults[1]).toMatch(
-      /No browser client captured the previous screenshot/i,
-    )
+    // The capture error propagated to the tool caller.
+    expect(propagatedError).toBe(captureError)
+    // The run completes normally — the capture error is caught by the tool.
+    expect(response.body).toContain('event: done')
   })
 })
 
@@ -2049,7 +2028,7 @@ describe('streamLandingAgent stream errors + cleanup', () => {
     expect(request.listenerCount('close')).toBe(0)
   })
 
-  it('emits "stopped" and removes the close listener when the client disconnects mid-run', async () => {
+  it('continues the run after the client disconnects mid-run', async () => {
     vi.stubEnv('OPENROUTER_API_KEY', 'test-openrouter-key')
     let resolveHang!: () => void
     const hang = new Promise<void>((resolve) => {
@@ -2058,18 +2037,19 @@ describe('streamLandingAgent stream errors + cleanup', () => {
     async function* hangingStream() {
       yield { payload: { text: 'working' }, type: 'text-delta' }
       await hang
-      throw new Error('aborted mid-stream')
+      yield { payload: { text: ' done' }, type: 'text-delta' }
     }
     vi.doMock('./index.ts', () => ({ mastra: {} }))
     vi.doMock('./agents/landing-page-agent.ts', () => ({
       createLandingPageAgent: () => ({
         stream: async () =>
           fakeAgentStream(hangingStream(), undefined, {
-            finishReason: Promise.resolve('tripwire'),
+            finishReason: Promise.resolve('stop'),
           }),
       }),
     }))
-    const { createProject } = await import('./lib/project-store.ts')
+    const { createProject, readClientMessages } =
+      await import('./lib/project-store.ts')
     const project = await createProject()
     createdProjectIds.push(project.id)
     const { streamLandingAgent } = await import('./route.ts')
@@ -2082,30 +2062,21 @@ describe('streamLandingAgent stream errors + cleanup', () => {
       response: response as unknown as ServerResponse,
       textModel: 'z-ai/glm-5.2',
     })
-    // wait until the run has registered its close listener (mid-run)
-    const registered = Date.now() + 2000
-    while (request.listenerCount('close') === 0 && Date.now() < registered) {
-      await new Promise((r) => setImmediate(r))
-    }
-    expect(request.listenerCount('close')).toBe(1)
-    request.emit('close') // simulate client disconnect → controller.abort()
-    resolveHang() // unblock the stream → it throws → catch sees aborted=true
+    // Wait for the stream to start (mid-run), then simulate client disconnect.
+    await new Promise((r) => setImmediate(r))
+    request.emit('close')
+    resolveHang() // unblock the stream — it should still complete normally.
     await run
-    const events = parseSseEvents(response.body)
-    expect(events).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          data: expect.objectContaining({ finishReason: 'stopped' }),
-          event: 'stats',
-        }),
-        expect.objectContaining({
-          data: { message: 'stopped' },
-          event: 'error',
-        }),
-      ]),
+    // The run completed normally (not stopped) — terminal stats are persisted.
+    const messages = await readClientMessages(project.id)
+    expect(messages).toContainEqual(expect.objectContaining({ event: 'done' }))
+    // Disconnect did NOT produce a 'stopped' finishReason.
+    expect(messages).not.toContainEqual(
+      expect.objectContaining({
+        event: 'error',
+        payload: { message: 'stopped' },
+      }),
     )
-    expect(events.at(-1)).toEqual({ data: {}, event: 'done' })
-    expect(request.listenerCount('close')).toBe(0)
   })
 
   it('flushes final cost/stats on a graceful stop (stopLandingAgent)', async () => {
@@ -2129,7 +2100,8 @@ describe('streamLandingAgent stream errors + cleanup', () => {
           }),
       }),
     }))
-    const { createProject } = await import('./lib/project-store.ts')
+    const { createProject, readClientMessages } =
+      await import('./lib/project-store.ts')
     const project = await createProject()
     createdProjectIds.push(project.id)
     const { stopLandingAgent, streamLandingAgent } = await import('./route.ts')
@@ -2142,12 +2114,13 @@ describe('streamLandingAgent stream errors + cleanup', () => {
       response: response as unknown as ServerResponse,
       textModel: 'z-ai/glm-5.2',
     })
-    // wait until the run has registered itself in the active-runs map (mid-run)
+    // Wait for the run to start emitting events (mid-run registration)
     const registered = Date.now() + 2000
-    while (request.listenerCount('close') === 0 && Date.now() < registered) {
+    while (Date.now() < registered) {
+      const messages = await readClientMessages(project.id)
+      if (messages.some((m) => m.dir === 'out')) break
       await new Promise((r) => setImmediate(r))
     }
-    expect(request.listenerCount('close')).toBe(1)
     // Graceful stop: aborts the run's Mastra stream but leaves the SSE response
     // open so terminal cost/stats + done are delivered to the client.
     expect(stopLandingAgent(project.id)).toBe(true)
@@ -2645,9 +2618,7 @@ async function* rawCostStream() {
 }
 
 async function* screenshotToolStream({ failed = false } = {}) {
-  const args = failed
-    ? { selector: 'body', viewportSize: 'desktop' }
-    : { selector: '#hero', viewportSize: 'tablet' }
+  const args = failed ? { selector: 'body' } : { selector: '#hero' }
   yield {
     payload: {
       args,
@@ -2662,7 +2633,7 @@ async function* screenshotToolStream({ failed = false } = {}) {
       isError: false,
       result: failed
         ? {
-            height: null,
+            captures: [],
             imageOcr: {
               imagesAnalyzed: 0,
               ok: false,
@@ -2671,20 +2642,45 @@ async function* screenshotToolStream({ failed = false } = {}) {
               text: '',
               usage: null,
             },
-            mediaType: null,
             ok: false,
             reason:
               'Selected element screenshot is too large (1456×6691). Choose a smaller selector.',
             selector: 'body',
             text: '',
-            viewportSize: 'desktop',
-            width: null,
           }
         : {
-            height: 600,
+            captures: [
+              {
+                elementMap: '',
+                height: 422,
+                imageUrl:
+                  '/api/projects/project-test/screenshots/001-mobile.jpg',
+                mediaType: 'image/jpeg',
+                viewport: 'mobile',
+                width: 195,
+              },
+              {
+                elementMap: '',
+                height: 512,
+                imageUrl:
+                  '/api/projects/project-test/screenshots/002-tablet.jpg',
+                mediaType: 'image/jpeg',
+                viewport: 'tablet',
+                width: 384,
+              },
+              {
+                elementMap: '',
+                height: 450,
+                imageUrl:
+                  '/api/projects/project-test/screenshots/003-desktop.jpg',
+                mediaType: 'image/jpeg',
+                viewport: 'desktop',
+                width: 720,
+              },
+            ],
             imageOcr: {
               cost: 0.006,
-              imagesAnalyzed: 1,
+              imagesAnalyzed: 3,
               ok: true,
               text: 'Image 1\nHero headline visible. CTA is clipped.',
               usage: {
@@ -2693,13 +2689,9 @@ async function* screenshotToolStream({ failed = false } = {}) {
                 totalTokens: 50,
               },
             },
-            imageUrl: '/api/projects/project-test/screenshots/shot.jpg',
-            mediaType: 'image/jpeg',
             ok: true,
             selector: '#hero',
             text: 'Image 1\nHero headline visible. CTA is clipped.',
-            viewportSize: 'tablet',
-            width: 800,
           },
       toolCallId: failed ? 'call-screenshot-failed' : 'call-screenshot-1',
       toolName: 'screenshot',

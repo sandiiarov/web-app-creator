@@ -26,13 +26,6 @@ const ELEMENT_ATTACHMENT = {
   selector: 'button',
 }
 
-const SCREENSHOT = {
-  dataUrl: 'data:image/jpeg;base64,/9j/4AAQSkZJRg==',
-  height: 900,
-  mediaType: 'image/jpeg',
-  width: 1440,
-}
-
 const createdProjectIds: string[] = []
 
 afterEach(async () => {
@@ -153,16 +146,6 @@ describe('server HTTP routes', () => {
         ok: false,
       })
       expect(streamLandingAgent).not.toHaveBeenCalled()
-
-      const screenshotOverflow = await postJson(
-        `${baseUrl}/api/screenshot-responses/00000000-0000-0000-0000-000000000000`,
-        { ...SCREENSHOT, padding: 'x'.repeat(MEDIA_JSON_BODY_LIMIT) },
-      )
-      expect(screenshotOverflow.status).toBe(413)
-      await expect(screenshotOverflow.json()).resolves.toEqual({
-        error: 'Request body exceeds the allowed size.',
-        ok: false,
-      })
     })
   })
 
@@ -567,48 +550,6 @@ describe('server HTTP routes', () => {
         `${baseUrl}/api/projects/${project.id}/images/..%2Fsecret.png`,
       )
       expect(unsafe.status).toBe(404)
-    })
-  })
-
-  it('validates screenshot response payloads', async () => {
-    await withServer(async ({ baseUrl }) => {
-      const invalidType = await postJson(
-        `${baseUrl}/api/screenshot-responses/00000000-0000-0000-0000-000000000000`,
-        { ...SCREENSHOT, mediaType: 'image/gif' },
-      )
-      expect(invalidType.status).toBe(400)
-      await expect(invalidType.json()).resolves.toMatchObject({ ok: false })
-
-      const invalidWidth = await postJson(
-        `${baseUrl}/api/screenshot-responses/00000000-0000-0000-0000-000000000000`,
-        { ...SCREENSHOT, width: 0 },
-      )
-      expect(invalidWidth.status).toBe(400)
-
-      const oversizedBytes = Buffer.alloc(16 * MEBIBYTE + 1)
-      const oversized = await postJson(
-        `${baseUrl}/api/screenshot-responses/00000000-0000-0000-0000-000000000000`,
-        {
-          ...SCREENSHOT,
-          dataUrl: `data:image/jpeg;base64,${oversizedBytes.toString('base64')}`,
-        },
-      )
-      expect(oversized.status).toBe(400)
-      await expect(oversized.json()).resolves.toEqual({
-        error: 'Screenshot must be 16 MiB or smaller.',
-        ok: false,
-      })
-
-      const valid = await postJson(
-        `${baseUrl}/api/screenshot-responses/00000000-0000-0000-0000-000000000000`,
-        SCREENSHOT,
-      )
-      expect(valid.status).toBe(404)
-
-      const nonPost = await fetch(
-        `${baseUrl}/api/screenshot-responses/00000000-0000-0000-0000-000000000000`,
-      )
-      expect(nonPost.status).toBe(404)
     })
   })
 

@@ -7,7 +7,6 @@ import type { MastraDBMessage } from '@mastra/core/agent/message-list'
 import { config } from '../config.ts'
 import { createLandingPageAgent } from './agents/landing-page-agent.ts'
 import { mastra } from './index.ts'
-import { createPendingBrowserScreenshot } from './lib/browser-screenshot.ts'
 import {
   calculateLlmCost,
   firecrawlCost,
@@ -16,6 +15,7 @@ import {
   visionCost,
 } from './lib/cost.ts'
 import { ocrImageInputs, type ImageOcrResult } from './lib/image-ocr.ts'
+import { captureProjectSelectors } from './lib/project-screenshot.ts'
 import {
   appendAgentMessages,
   appendClientMessage,
@@ -48,8 +48,6 @@ const INVALID_EDIT_RESULT_MESSAGE =
   'Edit failed: the diff was missing or malformed. Retry with edit({ action, diff: "[index.html#TAG]\\nSWAP N.=M:\\n+TEXT" }) using the #TAG from your latest read/find.'
 const NO_GENERATED_HTML_MESSAGE =
   'Agent finished without generating project HTML. The draft still has no content because no successful edit changed the page.'
-const SCREENSHOT_UNAVAILABLE_REASON =
-  'No browser client captured the previous screenshot request (timed out). Skip the screenshot tool and review by reading the project HTML instead.'
 
 export type AgentAttachmentInput =
   | AgentElementAttachmentInput
@@ -214,8 +212,6 @@ export async function streamLandingAgent({
   }
   activeRuns.set(projectId, controller)
 
-  const onClose = () => controller.abort()
-  request.on('close', onClose)
   startSse(response)
 
   try {
@@ -234,7 +230,6 @@ export async function streamLandingAgent({
     })
   } finally {
     if (activeRuns.get(projectId) === controller) activeRuns.delete(projectId)
-    request.off('close', onClose)
     try {
       await flushProjectLogs(projectId)
     } finally {
@@ -284,36 +279,22 @@ async function activeStreamLandingAgent({
   let lastHtmlUpdate = store.get()
   let htmlUpdateSequence = 0
   const baseUrl = `http://${request.headers.host ?? `localhost:${config.port}`}`
-  // Memoize screenshot timeouts: once a request times out (no browser client
-  // captured it), fail subsequent screenshot calls fast with an actionable
-  // reason instead of waiting through the full timeout on every retry.
-  let screenshotUnavailable = false
   const agent = createLandingPageAgent(
     store,
     mastra,
     baseUrl,
     textModel,
-    async ({ selector, timeoutMs, viewportSize }) => {
-      if (screenshotUnavailable) {
-        throw new Error(SCREENSHOT_UNAVAILABLE_REASON)
-      }
-      const { promise, requestId } = createPendingBrowserScreenshot({
+    async (selector: string) => {
+      const [result] = await captureProjectSelectors({
+        html: store.get(),
         projectId,
-        timeoutMs,
+        selectors: [selector],
+        signal: controller.signal,
       })
-      emit('screenshot_request', {
-        projectId,
-        requestId,
-        selector,
-        viewportSize,
-      })
-      try {
-        return await promise
-      } catch (error) {
-        const reason = error instanceof Error ? error.message : String(error)
-        if (reason.includes('timed out')) screenshotUnavailable = true
-        throw error
+      if (!result) {
+        throw new Error('No capture returned for selector.')
       }
+      return result
     },
     { imageModel, projectId, turnId: recordedTurn.id, visionModel },
   )
@@ -1183,12 +1164,7 @@ function defaultToolAction(tool: string, args: ToolArgs): string | undefined {
 
   if (tool === 'screenshot') {
     const selector = stringValue(args.selector)
-    const viewportSize = stringValue(args.viewportSize)
-    if (selector && viewportSize) {
-      return `Capture ${selector} at ${viewportSize} viewport`
-    }
     if (selector) return `Capture ${selector}`
-    if (viewportSize) return `Capture screenshot at ${viewportSize} viewport`
     return 'Capture screenshot'
   }
 
@@ -1357,11 +1333,9 @@ const summarizeArgsForTool: Record<string, (args: ToolArgs) => null | string> =
       compactLines([stringValue(args.action), stringValue(args.url)]),
     screenshot: (args) => {
       const selector = stringValue(args.selector)
-      const viewportSize = stringValue(args.viewportSize)
       return compactLines([
         stringValue(args.action),
         selector ? `Selector: ${selector}` : null,
-        viewportSize ? `Viewport: ${viewportSize}` : null,
       ])
     },
     skill: (args) =>
@@ -1485,11 +1459,10 @@ const summarizeResultForTool: Record<
     }
     const imageOcr = asToolArgs(data.imageOcr)
     const ocrImages = numberValue(imageOcr.imagesAnalyzed)
-    const width = numberValue(data.width)
-    const height = numberValue(data.height)
+    const captures = Array.isArray(data.captures) ? data.captures : []
     return compactLines([
-      width && height
-        ? `Captured ${width}×${height} screenshot`
+      captures.length > 0
+        ? `Captured ${captures.length} viewport${captures.length === 1 ? '' : 's'}`
         : 'Captured screenshot',
       ocrImages && ocrImages > 0
         ? `OCR ${ocrImages} image${ocrImages === 1 ? '' : 's'}`
@@ -1521,24 +1494,24 @@ function toolCallImages(tool: string, result: unknown, baseUrl: string) {
   if (tool !== 'screenshot') return []
 
   const data = asToolArgs(result)
-  const imageUrl = stringValue(data.imageUrl)
-  if (!imageUrl) return []
-
-  let url: string
-  try {
-    url = new URL(imageUrl, baseUrl).href
-  } catch {
-    return []
-  }
-
+  const captures = Array.isArray(data.captures) ? data.captures : []
   const selector = stringValue(data.selector) ?? 'selected element'
-  const viewport = stringValue(data.viewportSize)
-  return [
-    {
-      alt: `Screenshot of ${selector}${viewport ? ` at ${viewport} viewport` : ''}`,
-      url,
-    },
-  ]
+
+  return captures
+    .map((capture) => {
+      const imageUrl = stringValue((capture as ToolArgs).imageUrl)
+      const viewport = stringValue((capture as ToolArgs).viewport)
+      if (!imageUrl) return null
+      try {
+        return {
+          alt: `Screenshot of ${selector}${viewport ? ` at ${viewport} viewport` : ''}`,
+          url: new URL(imageUrl, baseUrl).href,
+        }
+      } catch {
+        return null
+      }
+    })
+    .filter((entry): entry is { alt: string; url: string } => entry !== null)
 }
 
 function toolResultIndicatesFailure(tool: string, result: unknown): boolean {
