@@ -696,7 +696,7 @@ const CAPTURE_READY_SCRIPT = String.raw`
   function ready() {
     var fonts = document.fonts;
     var fontReady = fonts && fonts.ready ? fonts.ready : Promise.resolve();
-    return fontReady.then(function () {
+    var imagesReady = fontReady.then(function () {
       return Promise.all(
         Array.from(document.images).map(function (image) {
           if (image.complete) return Promise.resolve();
@@ -707,6 +707,8 @@ const CAPTURE_READY_SCRIPT = String.raw`
         }),
       );
     });
+    var deadline = new Promise(function (resolve) { setTimeout(resolve, 3000); });
+    return Promise.race([imagesReady, deadline]);
   }
   return ready();
 })()
