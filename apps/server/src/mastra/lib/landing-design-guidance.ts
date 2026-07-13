@@ -10,7 +10,8 @@
  * — "The Prompt"). Used near-verbatim; the only edit drops the "Use Motion
  * library for React" clause (our agent emits vanilla-JS single-file HTML, not
  * React). This is the canonical, concise anti-"AI slop" prompt that bastrb,
- * herzigma, and jiji262 all build on.
+ * herzigma, and jiji262 all build on. Extended with the animation recipes from
+ * bastrb/premium-landing-page-prompts (concrete vanilla-JS motion vocabulary).
  */
 export const LANDING_PAGE_DESIGN_GUIDANCE = `<frontend_aesthetics>
 You tend to converge toward generic, "on distribution" outputs. In frontend design, this creates what users call the "AI slop" aesthetic. Avoid this: make creative, distinctive frontends that surprise and delight. Focus on:
@@ -30,4 +31,12 @@ Avoid generic AI-generated aesthetics:
 - Cookie-cutter design that lacks context-specific character
 
 Interpret creatively and make unexpected choices that feel genuinely designed for the context. Vary between light and dark themes, different fonts, different aesthetics. You still tend to converge on common choices (Space Grotesk, for example) across generations. Avoid this: it is critical that you think outside the box!
-</frontend_aesthetics>`
+</frontend_aesthetics>
+
+Animations (vanilla JS; respect prefers-reduced-motion. One well-orchestrated moment beats scattered micro-interactions — pick the set that serves the page's emotion, not all of them):
+- Scroll reveal (the workhorse): .rv elements fade up (opacity 0→1, translateY(40px)→0, 0.8s cubic-bezier(.22,1,.36,1)) as an IntersectionObserver toggles a .show class; stagger with data-d="1"/"2"/"3" delays.
+- Rolling hero text: one keyword in the H1 cycles through 3 words vertically (overflow-hidden container, ~6s loop).
+- Animated counters: data-count elements count up when scrolled into view (~2s, eased, toLocaleString()).
+- 3D card tilt: data-tilt cards rotate with the cursor (perspective(1000px), ±6-8deg; reset on leave; disable on touch).
+- Custom cursor: a lerp-following dot + ring with mix-blend-mode: difference that scales over links/buttons (desktop only).
+- Background glows: 2-3 large blurred radial-gradient blobs drifting slowly for atmosphere.`
