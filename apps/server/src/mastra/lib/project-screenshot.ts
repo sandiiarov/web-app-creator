@@ -15,12 +15,13 @@ import {
   type ProjectScreenshot,
 } from './project-store.ts'
 
-const CDP_KEEP_ALIVE_MS = 60_000
+const CDP_KEEP_ALIVE_MS = 15_000
 const DEFAULT_CAPTURE_TIMEOUT_MS = 25_000
 const JPEG_QUALITY = 90
 const MAX_OUTPUT_DIMENSION = 4096
 const OUTPUT_PADDING_PX = 8
 const RETRY_DELAY_MS = 250
+const RATE_LIMIT_RETRY_DELAY_MS = 2_000
 
 export const PROJECT_SCREENSHOT_VIEWPORTS = [
   { height: 844, name: 'mobile', width: 390 },
@@ -432,12 +433,20 @@ async function connectBrowser({
       return await awaitWithinDeadline(connectPromise, deadline, now, signal)
     } catch (error) {
       void connectPromise.then(closeQuietly, () => undefined)
+      // Daily browser-time limit is a hard stop — never retry.
+      if (isDailyLimitError(error)) throw error
       if (
         attempt === 0 &&
-        isTransientConnectionError(error) &&
+        isRetryableConnectionError(error) &&
         remainingMs(deadline, now) > RETRY_DELAY_MS
       ) {
-        await sleep(RETRY_DELAY_MS, signal)
+        const delay = isRateLimitError(error)
+          ? Math.min(
+              RATE_LIMIT_RETRY_DELAY_MS,
+              remainingMs(deadline, now) - RETRY_DELAY_MS,
+            )
+          : RETRY_DELAY_MS
+        await sleep(delay, signal)
         continue
       }
       throw error
@@ -809,6 +818,15 @@ async function closeQuietly(
   }
 }
 
+/** Extract the Cloudflare-provided detail from a raw connect/CDP error for
+ *  diagnostics. Returns '' when no useful substring is found. Never includes
+ *  credentials or authorization headers (those are not in error messages). */
+function cloudflareErrorDetail(error: unknown): string {
+  const message = error instanceof Error ? error.message : ''
+  const match = message.match(/(?:code|message)[:\s]+([^.\n]+)/i)
+  return match?.[1]?.trim() ?? ''
+}
+
 function defaultConnectOverCDP(
   endpoint: string,
   options: BrowserConnectorOptions,
@@ -816,10 +834,23 @@ function defaultConnectOverCDP(
   return chromium.connectOverCDP(endpoint, options)
 }
 
-function isTransientConnectionError(error: unknown): boolean {
+function isDailyLimitError(error: unknown): boolean {
   const message = error instanceof Error ? error.message.toLowerCase() : ''
-  return /429|rate limit|too many|econn|socket|network|timed out|timeout|closed/.test(
-    message,
+  return /time limit exceeded|daily limit/.test(message)
+}
+
+function isRateLimitError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message.toLowerCase() : ''
+  return /429|rate limit|too many/.test(message)
+}
+
+function isRetryableConnectionError(error: unknown): boolean {
+  return (
+    isRateLimitError(error) ||
+    (() => {
+      const message = error instanceof Error ? error.message.toLowerCase() : ''
+      return /econn|socket|network|timed out|timeout|closed/.test(message)
+    })()
   )
 }
 
@@ -831,12 +862,19 @@ function normalizeCaptureError(
   if (signal?.aborted) {
     return new ProjectScreenshotCaptureError('Screenshot capture was stopped.')
   }
-  const message = error instanceof Error ? error.message.toLowerCase() : ''
-  if (/429|rate limit|too many/.test(message)) {
+  const detail = cloudflareErrorDetail(error)
+  if (isDailyLimitError(error)) {
     return new ProjectScreenshotCaptureError(
-      'Cloudflare Browser Run is rate limited. Try again shortly.',
+      'Cloudflare Browser Run daily browser-time limit reached (Free plan: 10 min/day). If you recently upgraded to Workers Paid, verify the plan is active for this account and token.',
     )
   }
+  if (isRateLimitError(error)) {
+    const suffix = detail ? ` (${detail})` : ''
+    return new ProjectScreenshotCaptureError(
+      `Cloudflare Browser Run is rate limited. Try again shortly${suffix}.`,
+    )
+  }
+  const message = error instanceof Error ? error.message.toLowerCase() : ''
   if (/401|403|unauthori[sz]ed|forbidden/.test(message)) {
     return new ProjectScreenshotCaptureError(
       'Cloudflare Browser Run authentication failed. Check Browser Rendering - Edit credentials.',

@@ -24,7 +24,7 @@ describe('cloudflareBrowserRunEndpoint', () => {
   it('builds the authenticated CDP WebSocket without embedding the token', () => {
     const endpoint = cloudflareBrowserRunEndpoint('account-123')
     expect(endpoint).toBe(
-      'wss://api.cloudflare.com/client/v4/accounts/account-123/browser-rendering/devtools/browser?keep_alive=60000',
+      'wss://api.cloudflare.com/client/v4/accounts/account-123/browser-rendering/devtools/browser?keep_alive=15000',
     )
     expect(endpoint).not.toContain('Bearer')
   })
@@ -257,7 +257,8 @@ describe('captureProjectSelectors end-to-end (mocked browser)', () => {
     const fake = createFakeBrowser({
       connectError: new Error('HTTP 429 Too Many Requests'),
     })
-    const deps = createDeps(fake)
+    const sleep = vi.fn<(ms: number) => Promise<void>>(async () => undefined)
+    const deps = createDeps(fake, { sleep })
 
     await expect(
       captureProjectSelectors(
@@ -265,6 +266,31 @@ describe('captureProjectSelectors end-to-end (mocked browser)', () => {
         deps,
       ),
     ).rejects.toThrow('rate limited')
+
+    // Rate-limit errors use a longer retry delay (not the short transient one).
+    expect(sleep).toHaveBeenCalledTimes(1)
+    expect(sleep.mock.calls[0]![0]).toBeGreaterThanOrEqual(1000)
+  })
+
+  it('does not retry and gives a clear message for the daily browser-time limit', async () => {
+    const fake = createFakeBrowser({
+      connectError: new Error(
+        'Unable to create new browser: code: 429: message: Browser time limit exceeded for today',
+      ),
+    })
+    const sleep = vi.fn<() => Promise<void>>(async () => undefined)
+    const deps = createDeps(fake, { sleep })
+
+    await expect(
+      captureProjectSelectors(
+        { html: '<body></body>', projectId: 'p1', selectors: ['body'] },
+        deps,
+      ),
+    ).rejects.toThrow('daily browser-time limit')
+
+    // Daily limit is a hard stop — no retry.
+    expect(fake.connectCalls).toHaveLength(1)
+    expect(sleep).not.toHaveBeenCalled()
   })
 
   it('normalizes an authentication provider error', async () => {
