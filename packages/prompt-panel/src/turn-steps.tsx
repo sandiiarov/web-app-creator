@@ -286,14 +286,15 @@ function ImageThumbnail({ image }: { image: ToolCallImage }) {
       >
         <DialogHeader className="sr-only">
           <DialogTitle>{image.alt}</DialogTitle>
-          <DialogDescription asChild>
-            <img
-              alt={image.alt}
-              className="max-h-[80vh] w-full object-contain"
-              src={image.url}
-            />
-          </DialogDescription>
         </DialogHeader>
+        <DialogDescription className="sr-only">
+          Full-size screenshot preview
+        </DialogDescription>
+        <img
+          alt={image.alt}
+          className="max-h-[80vh] w-full object-contain"
+          src={image.url}
+        />
       </DialogContent>
     </Dialog>
   )
