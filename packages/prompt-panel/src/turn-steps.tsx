@@ -281,20 +281,19 @@ function ImageThumbnail({ image }: { image: ToolCallImage }) {
         </figcaption>
       </figure>
       <DialogContent
-        className="max-w-[90vw] gap-0 border-border/70 p-1 sm:max-w-200"
+        // className="max-w-[90vw] gap-0 border-border/70 p-1 sm:max-w-200"
         onCloseAutoFocus={(e) => e.preventDefault()}
       >
-        <DialogHeader className="sr-only">
+        <DialogHeader>
           <DialogTitle>{image.alt}</DialogTitle>
         </DialogHeader>
-        <DialogDescription className="sr-only">
-          Full-size screenshot preview
+        <DialogDescription>
+          <img
+            alt={image.alt}
+            className="max-h-[80vh] w-full object-contain"
+            src={image.url}
+          />
         </DialogDescription>
-        <img
-          alt={image.alt}
-          className="max-h-[80vh] w-full object-contain"
-          src={image.url}
-        />
       </DialogContent>
     </Dialog>
   )
