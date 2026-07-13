@@ -230,10 +230,14 @@ function AttachmentChip({
   return (
     <span className="inline-flex max-w-full items-center gap-1 border border-border bg-muted/45 px-1.5 py-0.5 text-[11px] leading-5 text-muted-foreground">
       {attachment.kind === 'element' ? (
-        <span className="shrink-0 text-foreground">HTML</span>
+        <span className="shrink-0 text-foreground">SELECTOR</span>
       ) : null}
       <span className="truncate text-foreground">{attachment.name}</span>
-      <span className="shrink-0">{formatAttachmentSize(attachment.size)}</span>
+      {attachment.kind === 'image' ? (
+        <span className="shrink-0">
+          {formatAttachmentSize(attachment.size)}
+        </span>
+      ) : null}
       <Button
         aria-label={`Remove ${attachment.name}`}
         className="size-5 text-muted-foreground hover:text-foreground"

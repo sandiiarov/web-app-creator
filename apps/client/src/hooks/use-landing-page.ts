@@ -196,7 +196,7 @@ export function useLandingPage({
       void streamSSE(
         LANDING_AGENT_API,
         {
-          attachments,
+          attachments: attachments.map(toWireAttachment),
           imageModel: models.image,
           projectId,
           prompt,
@@ -380,11 +380,21 @@ function restoreProjectTurns(turns: LandingTurn[]): LandingTurn[] {
   })
 }
 
-function stripAttachmentData({
-  dataUrl: _dataUrl,
-  ...metadata
-}: PromptAttachmentInput): PromptAttachmentMeta {
+function stripAttachmentData(
+  attachment: PromptAttachmentInput,
+): PromptAttachmentMeta {
+  if (attachment.kind === 'element') return attachment
+  const { dataUrl: _dataUrl, ...metadata } = attachment
   return metadata
+}
+
+/** Map local UI attachment metadata to the server wire format. Elements send
+ *  only `{ kind, selector }`; uploaded images send their full payload + dataUrl. */
+function toWireAttachment(attachment: PromptAttachmentInput) {
+  if (attachment.kind === 'element') {
+    return { kind: 'element', selector: attachment.selector }
+  }
+  return attachment
 }
 
 function wait(delayMs: number): Promise<void> {
@@ -401,17 +411,30 @@ function withAnalyzeImageArgs(
     !data ||
     typeof data !== 'object' ||
     !('tool' in data) ||
-    data.tool !== 'analyze_image' ||
-    attachments.length === 0
+    data.tool !== 'analyze_image'
   ) {
     return data
   }
 
+  // Only uploaded images carry a dataUrl to enrich the display with.
+  // Element captures produce safe persisted URLs on the server side.
+  const imageAttachments = attachments.filter(
+    (attachment): attachment is PromptAttachmentInput & { dataUrl: string } =>
+      attachment.kind !== 'element' && 'dataUrl' in attachment,
+  )
+  if (imageAttachments.length === 0) return data
+
+  const serverImages =
+    'images' in data && Array.isArray(data.images) ? data.images : []
+
   return {
     ...data,
-    images: attachments.map((attachment) => ({
-      alt: attachment.name,
-      url: attachment.dataUrl,
-    })),
+    images: [
+      ...imageAttachments.map((attachment) => ({
+        alt: attachment.name,
+        url: attachment.dataUrl,
+      })),
+      ...serverImages,
+    ],
   }
 }

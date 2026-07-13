@@ -1,4 +1,3 @@
-import type { ScreenshotMediaType } from '@workspace/prompt-panel'
 import { type CaptureResult, snapdom } from '@zumer/snapdom'
 
 import {
@@ -18,13 +17,13 @@ export const SCREENSHOT_CAPTURE_SCALE = 0.5
 
 export type ElementScreenshotCapture = ScreenshotCapture & { size: number }
 
+export type ScreenshotMediaType = 'image/jpeg' | 'image/png' | 'image/webp'
+
 export const SCREENSHOT_VIEWPORT_SIZES = [
   'mobile',
   'tablet',
   'desktop',
 ] as const
-
-export type { ScreenshotMediaType }
 
 export type ScreenshotCapture = Exclude<
   ScreenshotResponseInput,

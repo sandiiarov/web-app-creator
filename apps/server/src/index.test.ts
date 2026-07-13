@@ -16,13 +16,7 @@ const IMAGE_ATTACHMENT = {
 }
 
 const ELEMENT_ATTACHMENT = {
-  ...IMAGE_ATTACHMENT,
-  html: '<button>Buy</button>',
-  id: 'element-1',
   kind: 'element',
-  name: 'button.png',
-  screenshotHeight: 120,
-  screenshotWidth: 240,
   selector: 'button',
 }
 
@@ -217,11 +211,11 @@ describe('server HTTP routes', () => {
         ],
         [
           {
-            attachments: [{ ...ELEMENT_ATTACHMENT, screenshotWidth: 0 }],
+            attachments: [{ ...ELEMENT_ATTACHMENT, selector: '' }],
             projectId: 'project-1',
             prompt: 'Build',
           },
-          'Invalid attachment 1: expected screenshotWidth between 1 and 4096.',
+          'Invalid attachment 1: expected a non-empty selector (1–300 characters).',
         ],
       ] as const
 
@@ -307,11 +301,7 @@ describe('server HTTP routes', () => {
         attachments: [
           expect.objectContaining({ name: 'hero.png' }),
           expect.objectContaining({
-            html: '<button>Buy</button>',
             kind: 'element',
-            mediaType: 'image/png',
-            screenshotHeight: 120,
-            screenshotWidth: 240,
             selector: 'button',
           }),
         ],

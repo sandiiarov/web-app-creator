@@ -80,21 +80,16 @@ export type CostBreakdown = {
   vision?: VisionCost
 }
 
-export type ElementAttachmentInput = ElementAttachmentMeta & {
-  dataUrl: string
-}
+export type ElementAttachmentInput = ElementAttachmentMeta
 
+// Element attachments carry only a stable CSS selector — the server captures
+// the actual screenshot(s). They never transport a dataUrl.
 export type ElementAttachmentMeta = {
   analysisText?: string
-  html: string
   id: string
   kind: 'element'
-  mediaType: ScreenshotMediaType
   name: string
-  screenshotHeight: number
-  screenshotWidth: number
-  selector?: string
-  size: number
+  selector: string
 }
 
 export type ImageAttachmentInput = ImageAttachmentMeta & {
@@ -166,8 +161,6 @@ export type ScrapeCost = {
   ocrCost?: number
   ocrImages?: number
 }
-
-export type ScreenshotMediaType = 'image/jpeg' | 'image/png' | 'image/webp'
 
 export type StatsPart = {
   cost: number

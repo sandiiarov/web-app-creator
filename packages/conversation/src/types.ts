@@ -19,12 +19,12 @@ export interface ConversationAttachment {
   html?: string
   id: string
   kind?: 'element' | 'image'
-  mediaType: string
+  mediaType?: string
   name: string
   screenshotHeight?: number
   screenshotWidth?: number
   selector?: string
-  size: number
+  size?: number
 }
 
 export type ConversationPart =

@@ -15,7 +15,10 @@ import {
   visionCost,
 } from './lib/cost.ts'
 import { ocrImageInputs, type ImageOcrResult } from './lib/image-ocr.ts'
-import { captureProjectSelectors } from './lib/project-screenshot.ts'
+import {
+  captureProjectSelectors,
+  type CapturedProjectSelector,
+} from './lib/project-screenshot.ts'
 import {
   appendAgentMessages,
   appendClientMessage,
@@ -53,18 +56,18 @@ export type AgentAttachmentInput =
   | AgentElementAttachmentInput
   | AgentImageAttachmentInput
 
-export interface AgentElementAttachmentInput extends ProjectMessageAttachment {
-  dataUrl: string
-  html: string
+export interface AgentElementAttachmentInput {
   kind: 'element'
-  mediaType: 'image/jpeg' | 'image/png' | 'image/webp'
-  screenshotHeight: number
-  screenshotWidth: number
+  selector: string
 }
 
-export interface AgentImageAttachmentInput extends ProjectMessageAttachment {
+export interface AgentImageAttachmentInput {
   dataUrl: string
+  id: string
   kind?: 'image'
+  mediaType: 'image/gif' | 'image/jpeg' | 'image/png' | 'image/webp'
+  name: string
+  size: number
 }
 
 interface ActiveStreamOptions {
@@ -430,6 +433,7 @@ async function activeStreamLandingAgent({
       projectId,
       recordedTurn,
       signal: controller.signal,
+      store,
       visionModel,
     })
     // Surface the final attachment metadata (incl. OCR analysisText) so the
@@ -891,6 +895,7 @@ async function analyzePromptAttachments({
   projectId,
   recordedTurn,
   signal,
+  store,
   visionModel,
 }: {
   attachments: AgentAttachmentInput[]
@@ -899,17 +904,33 @@ async function analyzePromptAttachments({
   projectId: string
   recordedTurn: ProjectMessageTurn
   signal: AbortSignal
+  store: ReturnType<typeof createProjectHtmlStore>
   visionModel: string
 }): Promise<AttachmentAnalysis> {
   if (attachments.length === 0) {
     return { contextBlock: '', cost: 0, images: 0, ok: true }
   }
 
+  const elementSelectors = attachments
+    .filter(
+      (attachment): attachment is AgentElementAttachmentInput =>
+        attachment.kind === 'element',
+    )
+    .map((attachment) => attachment.selector)
+  const imageAttachments = attachments.filter(
+    (attachment): attachment is AgentImageAttachmentInput =>
+      attachment.kind !== 'element',
+  )
+
   const id = `tool-${nextToolSeq()}-analyze_image`
   const action = 'Analyze attached visual reference'
   const detail = compactLines([
     action,
-    ...attachments.map((attachment) => attachment.name),
+    ...attachments.map((attachment) =>
+      attachment.kind === 'element'
+        ? `Element ${attachment.selector}`
+        : attachment.name,
+    ),
   ])
   const runningPayload: RecordedToolPayload = {
     action,
@@ -921,11 +942,35 @@ async function analyzePromptAttachments({
   emit('tool_call', runningPayload)
 
   try {
-    const result = await ocrImageInputs(
-      attachments.map((attachment) => ({
+    // Capture selected-element selectors server-side into safe persisted
+    // screenshots. One Cloudflare acquisition handles all selectors.
+    let elementCaptures: CapturedProjectSelector[] = []
+    if (elementSelectors.length > 0) {
+      elementCaptures = await captureProjectSelectors({
+        html: store.get(),
+        projectId,
+        selectors: elementSelectors,
+        signal,
+      })
+    }
+
+    // Build OCR inputs: uploaded images (with their dataUrls) plus captured
+    // element screenshots (mobile/tablet/desktop per selector).
+    const ocrInputs = [
+      ...imageAttachments.map((attachment) => ({
         dataUrl: attachment.dataUrl,
         sourceLabel: attachment.name,
       })),
+      ...elementCaptures.flatMap((capture) =>
+        capture.captures.map((viewport) => ({
+          dataUrl: viewport.dataUrl,
+          sourceLabel: `Element ${capture.selector} (${viewport.viewport})`,
+        })),
+      ),
+    ]
+
+    const result = await ocrImageInputs(
+      ocrInputs,
       ATTACHMENT_OCR_PROMPT,
       visionModel,
       undefined,
@@ -969,17 +1014,32 @@ async function analyzePromptAttachments({
       }
     }
 
+    // Persist safe screenshot URLs for element captures so the conversation UI
+    // can preview them without data URLs. Uploaded images are enriched
+    // client-side from their dataUrl payload.
+    const safeImages = elementCaptures.flatMap((capture) =>
+      capture.captures.map((viewport) => ({
+        alt: `Element ${capture.selector} (${viewport.viewport})`,
+        url: viewport.imageUrl,
+      })),
+    )
     const donePayload: RecordedToolPayload = {
       action,
       detail,
       id,
+      ...(safeImages.length > 0 ? { images: safeImages } : {}),
       result: `Analyzed ${images} attached image${images === 1 ? '' : 's'}`,
       state: 'done',
       tool: 'analyze_image',
     }
     emit('tool_call', donePayload)
     return {
-      contextBlock: buildAttachmentContext(attachments, result, visionModel),
+      contextBlock: buildAttachmentContext(
+        attachments,
+        elementCaptures,
+        result,
+        visionModel,
+      ),
       cost,
       images,
       ok: true,
@@ -1019,7 +1079,7 @@ function buildAgentMessages(
   rawByTurnId: ReadonlyMap<string, MastraDBMessage[]>,
   currentPrompt: string,
 ): AgentReplayMessage[] {
-  return [
+  const messages: AgentReplayMessage[] = [
     ...history.flatMap((turn) => {
       const messages: AgentReplayMessage[] = []
       const userContent = buildHistoryUserContent(turn)
@@ -1042,21 +1102,28 @@ function buildAgentMessages(
     }),
     { content: currentPrompt, role: 'user' },
   ]
+
+  return messages
 }
 
 function buildAttachmentContext(
   attachments: AgentAttachmentInput[],
+  elementCaptures: CapturedProjectSelector[],
   result: ImageOcrResult,
   visionModel: string,
 ): string {
   const imageList = attachments
     .map((attachment, index) => {
-      const base = `${index + 1}. ${attachment.name} (${attachment.mediaType}, ${attachment.size} bytes)`
-      if (attachment.kind !== 'element') return base
-      return [
-        base,
-        `Selected element HTML:\n${truncateAttachmentHtml(attachment.html)}`,
-      ].join('\n')
+      if (attachment.kind === 'element') {
+        const capture = elementCaptures.find(
+          (capture) => capture.selector === attachment.selector,
+        )
+        const viewports = capture
+          ? capture.captures.map((viewport) => viewport.viewport).join('/')
+          : 'unavailable'
+        return `${index + 1}. Element ${attachment.selector} (captured: ${viewports})`
+      }
+      return `${index + 1}. ${attachment.name} (${attachment.mediaType}, ${attachment.size} bytes)`
     })
     .join('\n')
   return [
@@ -1086,15 +1153,22 @@ function buildHistoryAssistantContent(turn: ProjectMessageTurn): null | string {
 
 function buildHistoryUserContent(turn: ProjectMessageTurn): null | string {
   const attachmentLines = (turn.attachments ?? []).flatMap(
-    (attachment, index) => [
-      `${index + 1}. ${attachment.name} (${attachment.mediaType}, ${attachment.size} bytes)`,
-      attachment.kind === 'element' && attachment.html
-        ? `Selected element HTML:\n${truncateAttachmentHtml(attachment.html)}`
-        : null,
-      attachment.analysisText
-        ? `OCR/visual transcript: ${attachment.analysisText}`
-        : null,
-    ],
+    (attachment, index) => {
+      if (attachment.kind === 'element') {
+        return [
+          `${index + 1}. Element ${attachment.selector ?? attachment.name}`,
+          attachment.analysisText
+            ? `OCR/visual transcript: ${attachment.analysisText}`
+            : null,
+        ]
+      }
+      return [
+        `${index + 1}. ${attachment.name} (${attachment.mediaType ?? 'unknown'}, ${attachment.size ?? 0} bytes)`,
+        attachment.analysisText
+          ? `OCR/visual transcript: ${attachment.analysisText}`
+          : null,
+      ]
+    },
   )
 
   return compactLines([
@@ -1272,10 +1346,18 @@ function stringValue(value: unknown): string | undefined {
     : undefined
 }
 
-function stripAttachmentData({
-  dataUrl: _dataUrl,
-  ...metadata
-}: AgentAttachmentInput): ProjectMessageAttachment {
+function stripAttachmentData(
+  attachment: AgentAttachmentInput,
+): ProjectMessageAttachment {
+  if (attachment.kind === 'element') {
+    return {
+      id: `element-${randomUUID()}`,
+      kind: 'element',
+      name: `Element ${attachment.selector}`,
+      selector: attachment.selector,
+    }
+  }
+  const { dataUrl: _dataUrl, ...metadata } = attachment
   return metadata
 }
 
@@ -1529,10 +1611,4 @@ function toUsageSnapshot(usage: UsageSnapshot): UsageSnapshot {
     reasoningTokens: usage.reasoningTokens,
     totalTokens: usage.totalTokens,
   }
-}
-
-function truncateAttachmentHtml(html: string, maxLength = 20_000) {
-  return html.length > maxLength
-    ? `${html.slice(0, maxLength)}\n<!-- truncated -->`
-    : html
 }

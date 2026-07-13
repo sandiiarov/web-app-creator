@@ -11,6 +11,7 @@ export {
   type ScreenshotViewportSize,
 } from './browser-screenshot'
 export {
+  buildStableSelector,
   LandingPreview,
   type LandingPreviewHandle,
   type LandingPreviewProps,

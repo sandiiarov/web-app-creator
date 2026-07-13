@@ -822,10 +822,7 @@ function PanelResizeHandle({
 }
 
 function promptAttachmentSize(attachment: PromptAttachmentInput) {
-  return (
-    attachment.size +
-    (attachment.kind === 'element' ? new Blob([attachment.html]).size : 0)
-  )
+  return attachment.kind === 'element' ? 0 : attachment.size
 }
 
 function readFileAsDataUrl(file: File): Promise<string> {

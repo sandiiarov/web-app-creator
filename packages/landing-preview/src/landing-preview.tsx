@@ -1,4 +1,4 @@
-import type { ElementAttachmentInput } from '@workspace/prompt-panel'
+import type { ElementAttachmentMeta } from '@workspace/prompt-panel'
 import {
   type Ref,
   useEffect,
@@ -28,7 +28,7 @@ export type LandingPreviewProps = {
   elementSelectionActive?: boolean
   html: string
   iframeClassName?: string
-  onElementSelected?: (attachment: ElementAttachmentInput) => void
+  onElementSelected?: (attachment: ElementAttachmentMeta) => void
   onElementSelectionCancel?: () => void
   onError?: (message: string) => void
   onPreviewDiagnostic?: (diagnostic: PreviewDiagnostic) => void
@@ -103,6 +103,53 @@ type PickerBounds = {
 }
 
 type PickerOverlayState = 'hover' | 'selected'
+
+/**
+ * Build a stable CSS selector that round-trips to exactly this element via
+ * `document.querySelector`. Prefers a unique escaped id; otherwise builds an
+ * escaped `tag:nth-of-type(n)` ancestry path and verifies uniqueness.
+ */
+export function buildStableSelector(doc: Document, element: Element): string {
+  if (
+    element.id &&
+    doc.querySelector(`#${CSS.escape(element.id)}`) === element
+  ) {
+    return `#${CSS.escape(element.id)}`
+  }
+
+  const path: string[] = []
+  let current: Element | null = element
+  while (current && current !== doc.documentElement) {
+    const tag = current.tagName.toLowerCase()
+    const parent: Element | null = current.parentElement
+    if (!parent) {
+      path.unshift(tag)
+      break
+    }
+    const currentTag = current.tagName
+    const siblings = Array.from(parent.children).filter(
+      (sibling: Element) => sibling.tagName === currentTag,
+    )
+    if (siblings.length === 1) {
+      path.unshift(tag)
+    } else {
+      const index = siblings.indexOf(current) + 1
+      path.unshift(`${tag}:nth-of-type(${index})`)
+    }
+    current = parent
+  }
+
+  if (current === doc.documentElement && path[0] !== 'html') {
+    path.unshift('html')
+  }
+
+  const selector = path.join(' > ')
+  // Verify round-trip uniqueness.
+  if (doc.querySelector(selector) === element) return selector
+
+  // Last resort: return the escaped outerHTML tag fallback.
+  return CSS.escape(element.tagName.toLowerCase())
+}
 
 export function LandingPreview({
   elementSelectionActive = false,
@@ -332,23 +379,17 @@ function createAttachmentId() {
     : `element-${Date.now()}-${Math.random().toString(16).slice(2)}`
 }
 
-async function createElementAttachment(
+function createElementAttachment(
+  doc: Document,
   element: Element,
-): Promise<ElementAttachmentInput> {
+): ElementAttachmentMeta {
+  const selector = buildStableSelector(doc, element)
   const label = elementLabel(element)
-  const screenshot = await captureElementScreenshot(element)
-
   return {
-    dataUrl: screenshot.dataUrl,
-    html: element.outerHTML,
     id: createAttachmentId(),
     kind: 'element',
-    mediaType: screenshot.mediaType,
     name: `Element ${label}`,
-    screenshotHeight: screenshot.height,
-    screenshotWidth: screenshot.width,
-    selector: label,
-    size: screenshot.size,
+    selector,
   }
 }
 
@@ -548,7 +589,7 @@ function ensurePickerStyle(doc: Document) {
 
 function installElementPicker(
   doc: Document,
-  onElementSelected: (attachment: ElementAttachmentInput) => void,
+  onElementSelected: (attachment: ElementAttachmentMeta) => void,
   onElementSelectionCancel?: () => void,
   onError?: (message: string) => void,
 ) {
@@ -577,18 +618,17 @@ function installElementPicker(
     hoveredElement = target
     overlay.setTarget(target, 'selected')
 
-    void createElementAttachment(target)
-      .then(onElementSelected)
-      .catch((error: unknown) => {
-        onError?.(
-          error instanceof Error
-            ? error.message
-            : 'Failed to attach selected element.',
-        )
-      })
-      .finally(() => {
-        selecting = false
-      })
+    try {
+      onElementSelected(createElementAttachment(doc, target))
+    } catch (error: unknown) {
+      onError?.(
+        error instanceof Error
+          ? error.message
+          : 'Failed to attach selected element.',
+      )
+    } finally {
+      selecting = false
+    }
   }
 
   const handleClick = (event: MouseEvent) => {

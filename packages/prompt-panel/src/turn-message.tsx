@@ -65,11 +65,13 @@ export function TurnMessage({ turn }: { turn: LandingTurn }) {
 function AttachmentPill({ attachment }: { attachment: PromptAttachmentMeta }) {
   return (
     <span className="inline-flex max-w-full items-center gap-1 border border-current/20 bg-background/15 px-1.5 py-0.5 text-[11px] leading-5">
-      {attachment.kind === 'element' ? <span>HTML</span> : null}
+      {attachment.kind === 'element' ? <span>SELECTOR</span> : null}
       <span className="truncate">{attachment.name}</span>
-      <span className="opacity-75">
-        {formatAttachmentSize(attachment.size)}
-      </span>
+      {attachment.kind === 'image' ? (
+        <span className="opacity-75">
+          {formatAttachmentSize(attachment.size)}
+        </span>
+      ) : null}
     </span>
   )
 }

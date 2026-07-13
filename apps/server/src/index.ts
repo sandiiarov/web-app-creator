@@ -35,16 +35,10 @@ const ACCEPTED_ATTACHMENT_MEDIA_TYPES = new Set([
   'image/webp',
 ])
 const MAX_ATTACHMENT_COUNT = 4
-const MAX_ATTACHMENT_ELEMENT_HTML_SIZE = 256 * 1024
 const MAX_ATTACHMENT_SIZE = 8 * 1024 * 1024
 const MAX_ATTACHMENT_TOTAL_SIZE = 16 * 1024 * 1024
 const MAX_MEDIA_JSON_BODY_SIZE = 24 * 1024 * 1024
 const MAX_PROJECT_JSON_BODY_SIZE = 64 * 1024
-const SCREENSHOT_MEDIA_TYPES = new Set([
-  'image/jpeg',
-  'image/png',
-  'image/webp',
-])
 
 type AgentRequestBody = {
   attachments?: unknown
@@ -96,12 +90,7 @@ if (isMainModule) {
 export { server }
 
 function attachmentSize(attachment: AgentAttachmentInput) {
-  return (
-    attachment.size +
-    (attachment.kind === 'element'
-      ? Buffer.byteLength(attachment.html, 'utf8')
-      : 0)
-  )
+  return attachment.kind === 'element' ? 0 : attachment.size
 }
 
 function decodedDataUrlSize(dataUrl: string) {
@@ -209,15 +198,6 @@ async function handleAgent(request: IncomingMessage, response: ServerResponse) {
       ? resolveModelId(body.visionModel)
       : undefined,
   })
-}
-
-function isPositiveDimension(value: unknown): value is number {
-  return (
-    typeof value === 'number' &&
-    Number.isInteger(value) &&
-    value > 0 &&
-    value <= 4096
-  )
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -596,36 +576,9 @@ function validateAgentAttachments(
 function validateAgentElementAttachment(
   value: Record<string, unknown>,
 ): AgentElementAttachmentInput | string {
-  const base = validateAgentImageAttachment(value, SCREENSHOT_MEDIA_TYPES)
-  if (typeof base === 'string') return base
-
-  const html = typeof value.html === 'string' ? value.html.trim() : ''
   const selector = stringField(value.selector, 300)
-  const screenshotHeight = value.screenshotHeight
-  const screenshotWidth = value.screenshotWidth
-
-  if (!html) return 'expected selected element html'
-  if (Buffer.byteLength(html, 'utf8') > MAX_ATTACHMENT_ELEMENT_HTML_SIZE) {
-    return 'selected element html must be 256 KiB or smaller'
-  }
-  if (!isPositiveDimension(screenshotWidth)) {
-    return 'expected screenshotWidth between 1 and 4096'
-  }
-  if (!isPositiveDimension(screenshotHeight)) {
-    return 'expected screenshotHeight between 1 and 4096'
-  }
-
-  const mediaType = base.mediaType as AgentElementAttachmentInput['mediaType']
-
-  return {
-    ...base,
-    html,
-    kind: 'element',
-    mediaType,
-    ...(selector ? { selector } : {}),
-    screenshotHeight,
-    screenshotWidth,
-  }
+  if (!selector) return 'expected a non-empty selector (1–300 characters)'
+  return { kind: 'element', selector }
 }
 
 function validateAgentImageAttachment(
@@ -661,7 +614,7 @@ function validateAgentImageAttachment(
   return {
     dataUrl,
     id,
-    mediaType,
+    mediaType: mediaType as AgentImageAttachmentInput['mediaType'],
     name,
     size: decodedSize,
   }
