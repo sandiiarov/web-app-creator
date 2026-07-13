@@ -15,6 +15,7 @@ import {
   visionCost,
 } from './lib/cost.ts'
 import { ocrImageInputs, type ImageOcrResult } from './lib/image-ocr.ts'
+import { LANDING_PAGE_DESIGN_GUIDANCE } from './lib/landing-design-guidance.ts'
 import {
   captureProjectSelectors,
   type CapturedProjectSelector,
@@ -1106,6 +1107,19 @@ function buildAgentMessages(
     { content: currentPrompt, role: 'user' },
   ]
 
+  // Attach the landing-page design guidance to the session's FIRST user message
+  // only — not the system prompt, not later messages. Reconstructed on every
+  // turn's replay (the history user message is rebuilt from `turn.prompt`, which
+  // excludes this guidance, so there is no accumulation and it never reaches
+  // the UI-facing prompt). Keeps the design system in context for the whole
+  // session.
+  const firstUser = messages.find(
+    (message): message is { content: string; role: 'user' } =>
+      message.role === 'user',
+  )
+  if (firstUser) {
+    firstUser.content = `${LANDING_PAGE_DESIGN_GUIDANCE}\n\n${firstUser.content}`
+  }
   return messages
 }
 
@@ -1244,6 +1258,10 @@ function defaultToolAction(tool: string, args: ToolArgs): string | undefined {
     if (selector) return `Capture ${selector}`
     return 'Capture screenshot'
   }
+
+  // `plan` renders its actions from the RESULT in the UI (`PlanBlock` in
+  // `turn-steps.tsx`), not from input args; keep its prominent label 'Plan'.
+  if (tool === 'plan') return 'Plan'
 
   // `skill`/`skill_read` schemas have no `action` arg; derive one from their
   // other args so the UI reason column is populated instead of blank.
@@ -1506,6 +1524,14 @@ const summarizeResultForTool: Record<
     ])
   },
   grep: summarizeFindOrGrepResult,
+  // `plan` echoes its step list back in the result; serialize it as plain
+  // newline-joined lines so the UI `PlanBlock` renders each as a numbered row.
+  plan: (data) => {
+    const actions = stringArrayValue(data.actions)
+      .map((step) => step.trim())
+      .filter((step) => step.length > 0)
+    return actions.length > 0 ? actions.join('\n') : null
+  },
   read: (data) => {
     const endLine = numberValue(data.endLine)
     const legacyLines = numberValue(data.lines)

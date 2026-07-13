@@ -7,6 +7,8 @@ import type {
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
+import { LANDING_PAGE_DESIGN_GUIDANCE } from './lib/landing-design-guidance.ts'
+
 const PNG_DATA_URL = 'data:image/png;base64,iVBORw0KGgo='
 
 const createdProjectIds: string[] = []
@@ -1472,7 +1474,7 @@ describe('streamLandingAgent history', () => {
 
     expect(capturedMessages).toEqual([
       {
-        content: 'Create a nice landing page for AI coding agent',
+        content: `${LANDING_PAGE_DESIGN_GUIDANCE}\n\nCreate a nice landing page for AI coding agent`,
         role: 'user',
       },
       {

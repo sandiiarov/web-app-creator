@@ -1,6 +1,5 @@
 import { Agent, type Agent as AgentType } from '@mastra/core/agent'
 import type { Mastra } from '@mastra/core/mastra'
-import { design } from '@workspace/agent-skills'
 
 import { config } from '../../config.ts'
 import { HASHLINE_SYSTEM_GUIDANCE } from '../lib/hashline/edit-prompt.ts'
@@ -12,16 +11,21 @@ import {
 } from '../tools/landing-tools.ts'
 
 /**
- * Concise system prompt: one-sentence role, a hashline quick reference, then
- * working guidelines. Detailed tool schemas still travel via the `tools` param;
- * the quick reference is intentionally repeated here because live traces showed
- * malformed CSS insertion rows and an unbalanced closing-tag edit. The `design`
- * skill remains discovered through Mastra's `SkillsProcessor`.
+ * Concise system prompt: one-sentence role, a hashline quick reference, the
+ * mandatory plan-tool-first rule, then working guidelines. Detailed tool
+ * schemas still travel via the `tools` param; the quick reference is
+ * intentionally repeated here because live traces showed malformed CSS
+ * insertion rows and an unbalanced closing-tag edit. The landing-page design
+ * system guidance is NOT here — it is attached to the session's first user
+ * message by `buildAgentMessages` (`route.ts`) via `LANDING_PAGE_DESIGN_GUIDANCE`.
  */
 const LANDING_AGENT_INSTRUCTIONS = [
   'You are a landing-page design agent. You build and refine a single self-contained project HTML document by scraping reference brands, reading and editing the HTML, generating imagery, and taking screenshots.',
   '',
   HASHLINE_SYSTEM_GUIDANCE,
+  '',
+  'Planning (MANDATORY):',
+  '- For any new page, redesign, or substantial change, you MUST call the `plan` tool FIRST with `actions` (the ordered implementation steps the user sees) and `request` (the expanded brief). Do NOT call `edit` or `generate_image` until `plan` has returned. Only a focused single-line fix or small tweak may skip `plan`.',
   '',
   'Working guidelines:',
   '- Build incrementally: scaffold the shell, add design tokens, then fill one section at a time. A full finished page in one edit is vulnerable to output-cap truncation.',
@@ -55,7 +59,6 @@ export function createLandingPageAgent(
     mastra,
     model: openrouterModel(textModel),
     name: 'Landing Page Agent',
-    skills: [design],
     tools: createLandingTools(store, baseUrl, captureProjectSelector, options),
   })
 }
@@ -81,7 +84,6 @@ function createLandingPageAgentConfig(
     instructions: LANDING_AGENT_INSTRUCTIONS,
     model: openrouterModel(textModel),
     name: 'Landing Page Agent',
-    skills: [design],
     tools: createLandingTools(store, baseUrl, captureProjectSelector, options),
   }
 }

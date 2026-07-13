@@ -20,6 +20,7 @@ import {
   FileText,
   Globe,
   Image,
+  ListChecks,
   LoaderCircle,
   Monitor,
   Pencil,
@@ -38,6 +39,7 @@ const TOOL_ICONS: Record<string, LucideIcon> = {
   find: Search,
   generate_image: Image,
   grep: Search,
+  plan: ListChecks,
   read: FileText,
   scrape: Globe,
   screenshot: Camera,
@@ -52,6 +54,7 @@ const TOOL_LABELS: Record<string, string> = {
   find: 'Find',
   generate_image: 'Generate image',
   grep: 'Grep',
+  plan: 'Plan',
   read: 'Read',
   scrape: 'Scrape',
   screenshot: 'Screenshot',
@@ -79,6 +82,7 @@ export function ToolArgsImages({ images }: { images: ToolCallImage[] }) {
 
 export function TurnToolBlock({ step }: { step: ToolCallPart }) {
   const [open, setOpen] = useState(false)
+  if (step.tool === 'plan') return <PlanBlock step={step} />
   const args = argsFromDetail(step)
   const images = renderableToolImages(step.images)
   const hasArgs = !!args || images.length > 0
@@ -314,6 +318,59 @@ function isRenderableImageSrc(src: string) {
 function normalizeText(text: null | string | undefined) {
   const trimmed = text?.trim()
   return trimmed && trimmed.length > 0 ? trimmed : null
+}
+
+function planActions(result: null | string | undefined): string[] {
+  const text = normalizeText(result)
+  if (!text) return []
+  return text
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+}
+
+function PlanBlock({ step }: { step: ToolCallPart }) {
+  const actions = planActions(step.result)
+  const isActive = isActiveState(step.state)
+  const isError = step.state === 'error'
+  return (
+    <div className={cn(toolShellClassName(step.state), 'px-2.5 py-2')}>
+      <div className="flex items-start gap-2">
+        <ToolIcon Icon={TOOL_ICONS.plan ?? Wrench} state={step.state} />
+        <div className="min-w-0 flex-1">
+          <span
+            className={cn(
+              'block text-xs leading-tight font-semibold text-foreground',
+              isError && 'text-destructive',
+            )}
+          >
+            Plan
+          </span>
+          {actions.length > 0 ? (
+            <ol className="mt-1.5 flex flex-col gap-1.5">
+              {actions.map((action, index) => (
+                <li
+                  className="flex min-w-0 items-start gap-2"
+                  key={`${index}-${action.slice(0, 12)}`}
+                >
+                  <span className="mt-px inline-flex size-4 shrink-0 items-center justify-center rounded-full bg-muted text-[10px] leading-none font-semibold text-muted-foreground">
+                    {index + 1}
+                  </span>
+                  <span className="min-w-0 text-left text-xs leading-snug wrap-break-word text-foreground/85">
+                    {action}
+                  </span>
+                </li>
+              ))}
+            </ol>
+          ) : (
+            <span className="mt-1 block text-xs leading-snug text-muted-foreground">
+              {isActive ? 'Planning…' : isError ? 'Plan failed.' : 'No plan returned.'}
+            </span>
+          )}
+        </div>
+      </div>
+    </div>
+  )
 }
 
 function renderableToolImages(images: ToolCallImage[] | undefined) {
