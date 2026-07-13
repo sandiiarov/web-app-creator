@@ -15,8 +15,11 @@ import {
   Globe,
   Image,
   LoaderCircle,
+  Monitor,
   Pencil,
   Search,
+  Smartphone,
+  Tablet,
   Wrench,
 } from 'lucide-react'
 import { type ReactNode, useState } from 'react'
@@ -417,9 +420,16 @@ function toolShellClassName(state: ToolCallState) {
 function ViewportBadge({ alt }: { alt: string }) {
   const viewport = viewportFromAlt(alt)
   if (!viewport) return null
+  const Icon =
+    viewport === 'mobile'
+      ? Smartphone
+      : viewport === 'tablet'
+        ? Tablet
+        : Monitor
   return (
-    <span className="shrink-0 rounded bg-muted px-1 text-[9px] font-medium text-muted-foreground uppercase">
-      {viewport.slice(0, 3)}
+    <span className="inline-flex shrink-0 items-center gap-0.5 text-[10px] leading-none text-muted-foreground capitalize">
+      <Icon className="size-3" />
+      {viewport}
     </span>
   )
 }
