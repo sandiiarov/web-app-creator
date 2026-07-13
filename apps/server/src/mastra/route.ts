@@ -15,7 +15,7 @@ import {
   visionCost,
 } from './lib/cost.ts'
 import { ocrImageInputs, type ImageOcrResult } from './lib/image-ocr.ts'
-import { LANDING_PAGE_DESIGN_GUIDANCE } from './lib/landing-design-guidance.ts'
+import { runPlanner } from './lib/planner.ts'
 import {
   captureProjectSelectors,
   type CapturedProjectSelector,
@@ -332,6 +332,8 @@ async function activeStreamLandingAgent({
   // Accumulate prompt-attachment/screenshot vision OCR metadata.
   let visionCalls = 0
   let visionCostUsd = 0
+  let plannerCalls = 0
+  let plannerCostUsd = 0
   let visionImages = 0
   // Sum the final provider-reported cost chunk from every LLM step. OpenRouter
   // reports usage/cost once at the end of each SSE generation, while Mastra's
@@ -349,7 +351,8 @@ async function activeStreamLandingAgent({
   const costCapUsd = config.agentMaxCostUsd
   const checkCostCap = (): boolean => {
     if (costCapUsd <= 0) return false
-    const runCostUsd = llmProviderCostUsd + imageCostUsd + visionCostUsd
+    const runCostUsd =
+      llmProviderCostUsd + imageCostUsd + visionCostUsd + plannerCostUsd
     if (runCostUsd < costCapUsd) return false
     fatalRunError = `Run exceeded the $${costCapUsd.toFixed(2)} cost cap.`
     emit('error', { message: fatalRunError })
@@ -374,7 +377,8 @@ async function activeStreamLandingAgent({
       config.firecrawl.creditUsd,
     )
     const scrapeCostUsd = firecrawlCostUsd + scrapeOcrCostUsd
-    const totalCost = llmCost + scrapeCostUsd + imageCostUsd + visionCostUsd
+    const totalCost =
+      llmCost + scrapeCostUsd + imageCostUsd + visionCostUsd + plannerCostUsd
 
     return {
       cost: totalCost,
@@ -384,6 +388,10 @@ async function activeStreamLandingAgent({
           count: imageCount,
         },
         llm: llmCost,
+        planner: {
+          calls: plannerCalls,
+          cost: plannerCostUsd,
+        },
         scrape: {
           calls: scrapeCalls,
           cost: scrapeCostUsd,
@@ -452,9 +460,58 @@ async function activeStreamLandingAgent({
       if (checkCostCap()) controller.signal.throwIfAborted()
     }
 
-    const agentPrompt = attachmentAnalysis.contextBlock
+    const promptWithContext = attachmentAnalysis.contextBlock
       ? `${prompt}\n\n${attachmentAnalysis.contextBlock}`
       : prompt
+
+    // Planner: a dedicated LLM call with the design guidance as its system
+    // prompt. It returns a structured plan; `actions` stream to the UI as a
+    // `plan` tool_call (rendered by PlanBlock), and the full `plan` becomes the
+    // agent's user message. The planner owns design; the agent owns execution.
+    const planToolId = `tool-${++toolCallSeq}-plan`
+    const planRunning: RecordedToolPayload = {
+      action: 'Plan',
+      detail: null,
+      id: planToolId,
+      providerId: `planner-${recordedTurn.id}`,
+      state: 'running',
+      tool: 'plan',
+    }
+    emit('tool_call', planRunning)
+    const planner = await runPlanner({
+      model: textModel,
+      prompt: promptWithContext,
+      signal: controller.signal,
+    })
+    plannerCalls += 1
+    if (planner.cost) plannerCostUsd += planner.cost
+    const planTerminal: RecordedToolPayload =
+      planner.ok && planner.actions.length > 0
+        ? {
+            action: 'Plan',
+            detail: planner.direction || null,
+            id: planToolId,
+            providerId: `planner-${recordedTurn.id}`,
+            result: planner.actions.join('\n'),
+            state: 'done',
+            tool: 'plan',
+          }
+        : {
+            action: 'Plan',
+            detail: null,
+            id: planToolId,
+            providerId: `planner-${recordedTurn.id}`,
+            result: planner.reason ?? 'Planning failed.',
+            state: 'error',
+            tool: 'plan',
+          }
+    emit('tool_call', planTerminal)
+    emitStats()
+    if (checkCostCap()) controller.signal.throwIfAborted()
+    // The agent implements the plan (fall back to the raw prompt + attachments
+    // if planning failed, so a planner outage never blocks the build).
+    const agentPrompt =
+      planner.ok && planner.plan ? planner.plan : promptWithContext
     // Replay the real prior conversation (raw Mastra messages) when available
     // so the model sees previous tool calls and tool results, not a prose
     // paraphrase. The agent log holds per-step Mastra snapshots; take the last
@@ -1107,19 +1164,6 @@ function buildAgentMessages(
     { content: currentPrompt, role: 'user' },
   ]
 
-  // Attach the landing-page design guidance to the session's FIRST user message
-  // only — not the system prompt, not later messages. Reconstructed on every
-  // turn's replay (the history user message is rebuilt from `turn.prompt`, which
-  // excludes this guidance, so there is no accumulation and it never reaches
-  // the UI-facing prompt). Keeps the design system in context for the whole
-  // session.
-  const firstUser = messages.find(
-    (message): message is { content: string; role: 'user' } =>
-      message.role === 'user',
-  )
-  if (firstUser) {
-    firstUser.content = `${LANDING_PAGE_DESIGN_GUIDANCE}\n\n${firstUser.content}`
-  }
   return messages
 }
 
@@ -1258,10 +1302,6 @@ function defaultToolAction(tool: string, args: ToolArgs): string | undefined {
     if (selector) return `Capture ${selector}`
     return 'Capture screenshot'
   }
-
-  // `plan` renders its actions from the RESULT in the UI (`PlanBlock` in
-  // `turn-steps.tsx`), not from input args; keep its prominent label 'Plan'.
-  if (tool === 'plan') return 'Plan'
 
   // `skill`/`skill_read` schemas have no `action` arg; derive one from their
   // other args so the UI reason column is populated instead of blank.
@@ -1524,14 +1564,6 @@ const summarizeResultForTool: Record<
     ])
   },
   grep: summarizeFindOrGrepResult,
-  // `plan` echoes its step list back in the result; serialize it as plain
-  // newline-joined lines so the UI `PlanBlock` renders each as a numbered row.
-  plan: (data) => {
-    const actions = stringArrayValue(data.actions)
-      .map((step) => step.trim())
-      .filter((step) => step.length > 0)
-    return actions.length > 0 ? actions.join('\n') : null
-  },
   read: (data) => {
     const endLine = numberValue(data.endLine)
     const legacyLines = numberValue(data.lines)

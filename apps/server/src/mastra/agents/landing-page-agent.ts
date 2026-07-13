@@ -11,21 +11,19 @@ import {
 } from '../tools/landing-tools.ts'
 
 /**
- * Concise system prompt: one-sentence role, a hashline quick reference, the
- * mandatory plan-tool-first rule, then working guidelines. Detailed tool
- * schemas still travel via the `tools` param; the quick reference is
- * intentionally repeated here because live traces showed malformed CSS
- * insertion rows and an unbalanced closing-tag edit. The landing-page design
- * system guidance is NOT here — it is attached to the session's first user
- * message by `buildAgentMessages` (`route.ts`) via `LANDING_PAGE_DESIGN_GUIDANCE`.
+ * Concise system prompt: one-sentence role, a hashline quick reference, an
+ * execution note, then working guidelines. A separate planner call
+ * (`lib/planner.ts`) runs BEFORE the agent each turn with the design guidance as
+ * its system prompt and returns a structured plan; that plan is the agent's user
+ * message. The agent does no design reasoning — it executes the plan. Detailed
+ * tool schemas still travel via the `tools` param.
  */
 const LANDING_AGENT_INSTRUCTIONS = [
   'You are a landing-page design agent. You build and refine a single self-contained project HTML document by scraping reference brands, reading and editing the HTML, generating imagery, and taking screenshots.',
   '',
   HASHLINE_SYSTEM_GUIDANCE,
   '',
-  'Planning (MANDATORY):',
-  '- For any new page, redesign, or substantial change, you MUST call the `plan` tool FIRST with `actions` (the ordered implementation steps the user sees) and `request` (the expanded brief). Do NOT call `edit` or `generate_image` until `plan` has returned. Only a focused single-line fix or small tweak may skip `plan`.',
+  'Your user message is a design plan produced by the planner — implement it directly via read/find/edit/generate_image. Do not re-plan or second-guess the direction; execute the committed palette, typography, sections, and motion in the plan. Build incrementally (shell → tokens → one section at a time) and verify with screenshot after substantial edits.',
   '',
   'Working guidelines:',
   '- Build incrementally: scaffold the shell, add design tokens, then fill one section at a time. A full finished page in one edit is vulnerable to output-cap truncation.',

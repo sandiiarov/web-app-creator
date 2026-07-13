@@ -7,7 +7,16 @@ import type {
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { LANDING_PAGE_DESIGN_GUIDANCE } from './lib/landing-design-guidance.ts'
+// The planner is a dedicated LLM call; mock it in tests so no real OpenRouter
+// call is made. Default: pass the prompt through as the plan.
+vi.mock('./lib/planner.ts', () => ({
+  runPlanner: async (opts: { prompt: string }) => ({
+    actions: ['Plan step 1', 'Plan step 2'],
+    direction: 'test direction',
+    ok: true,
+    plan: opts.prompt,
+  }),
+}))
 
 const PNG_DATA_URL = 'data:image/png;base64,iVBORw0KGgo='
 
@@ -1474,7 +1483,7 @@ describe('streamLandingAgent history', () => {
 
     expect(capturedMessages).toEqual([
       {
-        content: `${LANDING_PAGE_DESIGN_GUIDANCE}\n\nCreate a nice landing page for AI coding agent`,
+        content: 'Create a nice landing page for AI coding agent',
         role: 'user',
       },
       {

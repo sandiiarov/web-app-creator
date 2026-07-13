@@ -6,7 +6,6 @@ import type { HtmlStore } from '../lib/html-store.ts'
 import { createEditTool } from './edit.ts'
 import { createFindTool } from './find.ts'
 import { createGenerateImageTool } from './generate-image.ts'
-import { createPlanTool } from './plan.ts'
 import { createReadTool } from './read.ts'
 import { createScrapeTool } from './scrape.ts'
 import {
@@ -20,7 +19,6 @@ type LandingTool =
   | ReturnType<typeof createEditTool>
   | ReturnType<typeof createFindTool>
   | ReturnType<typeof createGenerateImageTool>
-  | ReturnType<typeof createPlanTool>
   | ReturnType<typeof createReadTool>
   | ReturnType<typeof createScrapeTool>
   | ReturnType<typeof createScreenshotTool>
@@ -59,11 +57,6 @@ function tool(
  * update from this registry.
  */
 const LANDING_TOOL_DEFINITIONS = [
-  tool(
-    'plan',
-    'Use `plan` FIRST for any new page, redesign, or substantial change. Provide `actions` (the ordered implementation steps the user sees) and `request` (the expanded brief). After it returns, implement with `edit`/`generate_image`. A focused single fix or tweak may skip it.',
-    () => createPlanTool(),
-  ),
   tool(
     'scrape',
     'Use `scrape` when the user gives a reference URL or asks you to match a brand. It returns markdown, links, image URLs, branding, and `imageOcr` — the OCR + visual transcript for all scraped images. Use `imageOcr.text` directly. Prefer relevant URLs from `images` for source-site content such as portraits, logos, screenshots, newsletter art, and video thumbnails; do not hotlink arbitrary image URLs that were not returned by `scrape`. If `images` is empty, say no OCR was possible.',
