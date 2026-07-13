@@ -209,7 +209,7 @@ export async function captureProjectSelectors(
         input.signal,
       )
       await awaitWithinDeadline(
-        page.setContent(preparedHtml, { waitUntil: 'networkidle' }),
+        page.setContent(preparedHtml, { waitUntil: 'domcontentloaded' }),
         deadline,
         now,
         input.signal,
