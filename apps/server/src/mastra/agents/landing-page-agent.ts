@@ -23,7 +23,7 @@ const LANDING_AGENT_INSTRUCTIONS = [
   '',
   HASHLINE_SYSTEM_GUIDANCE,
   '',
-  'Your user message is a design plan produced by the planner — implement it directly via read/find/edit/generate_image. Do not re-plan or second-guess the direction; execute the committed palette, typography, sections, and motion in the plan. Build incrementally (shell → tokens → one section at a time) and verify with screenshot after substantial edits.',
+  "Your user message is a design plan produced by the planner — implement it directly via read/find/edit/generate_image. The plan begins with the user's verbatim request under USER REQUEST: — build EXACTLY what the user asked for. Do not invent product content (names, metrics, testimonials, features, copy) that is not in the request or scraped assets; use real scraped/supplied content (scrape.images, scrape.branding, the user's text) and ask the user if essential content is missing. Do not re-plan or second-guess the aesthetic direction; execute the committed palette, typography, sections, and motion. Build incrementally (shell → tokens → one section at a time) and verify with screenshot after substantial edits.",
   '',
   'Working guidelines:',
   '- Build incrementally: scaffold the shell, add design tokens, then fill one section at a time. A full finished page in one edit is vulnerable to output-cap truncation.',

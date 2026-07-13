@@ -34,15 +34,19 @@ interface ChatCompletionResponse {
 }
 
 const PLANNER_SYSTEM_PROMPT = [
+  "You are the PLANNER for a landing-page build agent. Your ONLY job is to choose an AESTHETIC DIRECTION and a BUILD SEQUENCE for the user's request. You do NOT write code, and you do NOT invent product content.",
+  '',
+  'ABSOLUTE RULES (never violate):',
+  '1. ECHO THE REQUEST VERBATIM: the `plan` field MUST begin with "USER REQUEST:" followed by the user\'s prompt reproduced word-for-word. The build agent ONLY sees your `plan` — if you paraphrase, omit, or alter the request, it cannot build the right page.',
+  '2. DO NOT FABRICATE CONTENT: never invent a product name, company, tagline, feature, headline, body copy, metric, testimonial, award, guarantee, price, or ANY content the user did not supply. If the user gave no content, write "content: defer to build agent (scrape reference or ask user)" — do not make it up.',
+  '3. AESTHETIC ONLY: the "direction" is ONLY visual — palette (hex), typography (font names), layout logic, motion. Derive it from the product\'s actual domain. It must NOT change what the page is about.',
+  '4. STRUCTURE, NOT COPY: the section list names each section and its purpose (e.g. "Hero — product name + promise + primary CTA"), never full written copy.',
+  '',
   LANDING_PAGE_DESIGN_GUIDANCE,
   '',
-  'You are the PLANNER for a landing-page build agent. Given the user request (and any scraped/attachment context), produce a concrete design plan that the build agent will implement verbatim. You do NOT write code — you commit to a design direction and a build sequence.',
-  '',
-  'First run the "Discover a unique direction" process from the guidance above: invent a specific real-world reference, one emotion, a FRESH palette (with exact hex codes), typography (exact Google Font names + weights), and a "never be mistaken for" list — all derived from THIS product, never a preset and never your usual defaults.',
-  '',
-  'Respond as STRICT JSON only — no markdown fences, no prose outside the JSON object — with exactly this shape:',
-  '{"direction":"one sentence naming the invented aesthetic, palette, and fonts","actions":["4-8 ordered, short implementation steps the user will see"],"plan":"the full extended brief the build agent implements: the invented direction; exact palette with hex codes and roles (canvas/surface/text/accent/border); typography (display + body font names, weights, sizes via clamp()); the section list in order with per-section content and the proof object for each; and the motion plan. Be specific and concrete — the agent should need no further design decisions."}',
-  'The "plan" string is the build agent\'s north-star; make it detailed enough to implement. The "actions" array is the scannable step list for the user (4-8 items). Keep "direction" to one sentence.',
+  "Apply the design guidance to pick a fresh, non-generic aesthetic for the user's ACTUAL product. Then respond as STRICT JSON only — no markdown fences, no prose outside the JSON — with exactly this shape:",
+  '{"direction":"one sentence: the aesthetic direction + palette + fonts (visual only; does NOT change the product)","actions":["4-8 ordered, short build steps the user will see"],"plan":"Must start with USER REQUEST: followed by the user\'s prompt VERBATIM. Then DIRECTION: the aesthetic direction, exact palette (hex + roles: canvas/surface/text/accent/border), typography (font names + weights + clamp sizes), motion plan. Then SECTIONS: the section list in order, each as name + purpose only. No fabricated product content, copy, metrics, or proof anywhere."}',
+  "The `plan` is the build agent's north-star. `actions` is the scannable step list (4-8 items). `direction` is one sentence.",
 ].join('\n')
 
 export interface PlannerResult {
@@ -92,7 +96,7 @@ export async function runPlanner(options: {
           { content: options.prompt, role: 'user' },
         ],
         model,
-        temperature: 0.9,
+        temperature: 0.7,
       }),
       headers: {
         Authorization: `Bearer ${config.openrouter.apiKey}`,
