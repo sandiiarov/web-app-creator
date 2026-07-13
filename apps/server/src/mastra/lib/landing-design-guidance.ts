@@ -38,5 +38,4 @@ Animations (vanilla JS; respect prefers-reduced-motion. One well-orchestrated mo
 - Rolling hero text: one keyword in the H1 cycles through 3 words vertically (overflow-hidden container, ~6s loop).
 - Animated counters: data-count elements count up when scrolled into view (~2s, eased, toLocaleString()).
 - 3D card tilt: data-tilt cards rotate with the cursor (perspective(1000px), ±6-8deg; reset on leave; disable on touch).
-- Custom cursor: a lerp-following dot + ring with mix-blend-mode: difference that scales over links/buttons (desktop only).
 - Background glows: 2-3 large blurred radial-gradient blobs drifting slowly for atmosphere.`
