@@ -52,6 +52,10 @@ export function createConfigFromEnv(source: ConfigEnvironment) {
     clientOrigin: parseClientOrigin(
       optionalEnv(source, 'CLIENT_ORIGIN') ?? DEFAULT_CLIENT_ORIGIN,
     ),
+    cloudflare: {
+      accountId: optionalEnv(source, 'CLOUDFLARE_ACCOUNT_ID'),
+      apiToken: optionalEnv(source, 'CLOUDFLARE_API_TOKEN'),
+    },
     firecrawl: {
       apiKey: optionalEnv(source, 'FIRECRAWL_API_KEY'),
       creditUsd: parseNonNegativeNumber(

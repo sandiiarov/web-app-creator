@@ -14,6 +14,7 @@ import {
   createProjectHtmlStore,
   deleteProject,
   getProject,
+  inlineProjectImagesForCapture,
   listProjects,
   persistGeneratedImage,
   readAgentMessages,
@@ -429,6 +430,38 @@ describe('project message storage', () => {
     await expect(
       readProjectImage(project.id, 'missing.webp'),
     ).resolves.toBeNull()
+  })
+
+  it('inlines only owned project images for remote capture', async () => {
+    const project = await createProject()
+    const otherProject = await createProject()
+    createdProjectIds.push(project.id, otherProject.id)
+    const imageDir = join(PROJECTS_DIR, project.id, 'images')
+    await mkdir(imageDir, { recursive: true })
+    await writeFile(join(imageDir, 'img-1.png'), 'png-bytes')
+
+    const html = `<main><img src="/api/projects/${project.id}/images/img-1.png"><img src="https://example.test/api/projects/${otherProject.id}/images/other.png"><img src="https://cdn.example.test/logo.png"></main>`
+    const prepared = await inlineProjectImagesForCapture(project.id, html)
+
+    expect(prepared).toContain(
+      `data:image/png;base64,${Buffer.from('png-bytes').toString('base64')}`,
+    )
+    expect(prepared).toContain(
+      `https://example.test/api/projects/${otherProject.id}/images/other.png`,
+    )
+    expect(prepared).toContain('https://cdn.example.test/logo.png')
+  })
+
+  it('rejects missing same-project image files before remote capture', async () => {
+    const project = await createProject()
+    createdProjectIds.push(project.id)
+
+    await expect(
+      inlineProjectImagesForCapture(
+        project.id,
+        `<img src="/api/projects/${project.id}/images/missing.png">`,
+      ),
+    ).rejects.toThrow('Project image "missing.png" is missing.')
   })
 
   it('resets project stores with custom and placeholder documents', async () => {

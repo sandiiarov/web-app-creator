@@ -310,6 +310,8 @@ export async function readProjectImage(
 /** Match project-image refs (`/api/projects/<id>/images/<file>`) and capture the file. */
 const PROJECT_IMAGE_REF_RE =
   /\/api\/projects\/[a-f0-9-]+\/images\/([^"')\]]+)/gi
+const PROJECT_IMAGE_CAPTURE_REF_RE =
+  /(?:https?:\/\/[^"'\s)\]]+)?\/api\/projects\/([a-f0-9-]+)\/images\/([^"'?\s)\]#]+)(?:[?#][^"')\]]*)?/gi
 
 /**
  * Rendered project HTML with project images inlined as base64 `data:` URLs, so
@@ -325,6 +327,49 @@ export async function getProjectHtmlInlined(
   if (!document) return null
   const html = await inlineProjectImages(id, renderHtmlDocument(document))
   return { filename: `${slugifyTitle(meta.title ?? '')}.html`, html }
+}
+
+/**
+ * Inline image references owned by one project before its HTML is sent to an
+ * isolated remote browser. A missing same-project file is an actionable error:
+ * it must not turn into a remote fetch. References belonging to other projects
+ * and arbitrary external URLs are deliberately left untouched; the capture
+ * context blocks their requests.
+ */
+export async function inlineProjectImagesForCapture(
+  projectId: string,
+  html: string,
+): Promise<string> {
+  const refs = [...html.matchAll(PROJECT_IMAGE_CAPTURE_REF_RE)]
+  if (refs.length === 0) return html
+
+  const dataUrlByReference = new Map<string, string>()
+  for (const match of refs) {
+    const [reference, referencedProjectId, rawFile] = match
+    if (!reference || referencedProjectId !== projectId || !rawFile) continue
+
+    let file: string
+    try {
+      file = decodeURIComponent(rawFile)
+    } catch {
+      throw new Error(
+        'Project HTML contains an invalid project image reference.',
+      )
+    }
+    const image = await readProjectImage(projectId, file)
+    if (!image) {
+      throw new Error(`Project image "${file}" is missing.`)
+    }
+    dataUrlByReference.set(
+      reference,
+      `data:${image.mediaType};base64,${image.buffer.toString('base64')}`,
+    )
+  }
+
+  return html.replace(
+    PROJECT_IMAGE_CAPTURE_REF_RE,
+    (reference) => dataUrlByReference.get(reference) ?? reference,
+  )
 }
 
 /**
@@ -384,6 +429,8 @@ export async function saveProjectMessageTurn(
   return next
 }
 
+// ── agent-facing project HTML store (sync, write-through) ─────────
+
 /**
  * Upsert raw Mastra messages for a turn by `turnId`. Called once at run
  * completion with the captured response messages (`MastraDBMessage[]`) so the
@@ -410,8 +457,6 @@ export async function saveProjectRawMessages(
   )
   return next
 }
-
-// ── agent-facing project HTML store (sync, write-through) ─────────
 
 /** Inline every `/api/projects/<id>/images/<file>` ref as a base64 `data:` URL. */
 async function inlineProjectImages(

@@ -26,6 +26,7 @@
     "diff": "catalog:",
     "firecrawl": "catalog:",
     "lru-cache": "catalog:",
+    "playwright-core": "catalog:",
     "xxhash-wasm": "catalog:",
     "zod": "catalog:"
   },

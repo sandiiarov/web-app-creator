@@ -20,6 +20,41 @@ describe('createConfigFromEnv', () => {
     })
   })
 
+  it('leaves Cloudflare capture credentials unset when env is absent', () => {
+    expect(createConfigFromEnv(createEnv()).cloudflare).toEqual({
+      accountId: undefined,
+      apiToken: undefined,
+    })
+  })
+
+  it('parses non-empty Cloudflare Browser Run credentials', () => {
+    expect(
+      createConfigFromEnv(
+        createEnv({
+          CLOUDFLARE_ACCOUNT_ID: 'account-id',
+          CLOUDFLARE_API_TOKEN: 'browser-rendering-token',
+        }),
+      ).cloudflare,
+    ).toEqual({
+      accountId: 'account-id',
+      apiToken: 'browser-rendering-token',
+    })
+  })
+
+  it('treats whitespace-only Cloudflare credentials as absent', () => {
+    expect(
+      createConfigFromEnv(
+        createEnv({
+          CLOUDFLARE_ACCOUNT_ID: '  ',
+          CLOUDFLARE_API_TOKEN: '\t',
+        }),
+      ).cloudflare,
+    ).toEqual({
+      accountId: undefined,
+      apiToken: undefined,
+    })
+  })
+
   it('applies server binding and Firecrawl cost defaults', () => {
     const config = createConfigFromEnv(createEnv())
 
