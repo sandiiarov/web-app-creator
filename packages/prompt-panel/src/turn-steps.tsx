@@ -3,7 +3,13 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@workspace/ui/components/collapsible'
-import { Dialog, DialogContent } from '@workspace/ui/components/dialog'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@workspace/ui/components/dialog'
 import { MarkerIcon } from '@workspace/ui/components/marker'
 import { Separator } from '@workspace/ui/components/separator'
 import { cn } from '@workspace/ui/lib/utils'
@@ -292,14 +298,17 @@ function ImageThumbnail({ image }: { image: ToolCallImage }) {
         className="max-w-[90vw] gap-0 border-border/70 p-1 sm:max-w-200"
         onCloseAutoFocus={(e) => e.preventDefault()}
       >
+        <DialogHeader className="sr-only">
+          <DialogTitle>{captionText(image.alt)}</DialogTitle>
+          <DialogDescription>
+            Screenshot preview — {image.alt}
+          </DialogDescription>
+        </DialogHeader>
         <img
           alt={image.alt}
           className="max-h-[80vh] w-full object-contain"
           src={image.url}
         />
-        <p className="px-2 py-1.5 text-center text-xs text-muted-foreground">
-          {image.alt}
-        </p>
       </DialogContent>
     </Dialog>
   )
