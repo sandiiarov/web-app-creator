@@ -153,9 +153,7 @@ export async function captureProjectSelectors(
 
   const inlineImages =
     dependencies.inlineProjectImages ?? inlineProjectImagesForCapture
-  const preparedHtml = sanitizeProjectHtmlForCapture(
-    await inlineImages(input.projectId, input.html),
-  )
+  const preparedHtml = await inlineImages(input.projectId, input.html)
   const now = dependencies.now ?? Date.now
   const deadline = now() + timeoutMs
   const connector = dependencies.connectOverCDP ?? defaultConnectOverCDP
@@ -177,14 +175,12 @@ export async function captureProjectSelectors(
     })
     context = await awaitWithinDeadline(
       browser.newContext({
-        javaScriptEnabled: false,
-        serviceWorkers: 'block',
+        javaScriptEnabled: true,
       }),
       deadline,
       now,
       input.signal,
     )
-    await installNetworkIsolation(context, deadline, now, input.signal)
     const page = await awaitWithinDeadline(
       context.newPage(),
       deadline,
@@ -213,7 +209,7 @@ export async function captureProjectSelectors(
         input.signal,
       )
       await awaitWithinDeadline(
-        page.setContent(preparedHtml, { waitUntil: 'domcontentloaded' }),
+        page.setContent(preparedHtml, { waitUntil: 'networkidle' }),
         deadline,
         now,
         input.signal,
@@ -248,18 +244,6 @@ export async function captureProjectSelectors(
 /** Build the authenticated remote CDP endpoint without placing the token in it. */
 export function cloudflareBrowserRunEndpoint(accountId: string): string {
   return `wss://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(accountId)}/browser-rendering/devtools/browser?keep_alive=${CDP_KEEP_ALIVE_MS}`
-}
-
-/**
- * Remove executable markup as defense in depth. JavaScript is also disabled at
- * the browser-context level, and every external request is aborted.
- */
-export function sanitizeProjectHtmlForCapture(html: string): string {
-  return html
-    .replace(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, '')
-    .replace(/<script\b[^>]*\/?\s*>/gi, '')
-    .replace(/<base\b[^>]*>/gi, '')
-    .replace(/\son[a-z]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, '')
 }
 
 /** Output dimensions after a fractional CDP clip capture. */
@@ -472,33 +456,6 @@ async function evaluateCaptureCommand<T>(
   )
 }
 
-async function installNetworkIsolation(
-  context: BrowserContext,
-  deadline: number,
-  now: () => number,
-  signal?: AbortSignal,
-): Promise<void> {
-  await awaitWithinDeadline(
-    context.route('**/*', (route) => {
-      const protocol = safeProtocol(route.request().url())
-      return protocol === 'about:' ||
-        protocol === 'blob:' ||
-        protocol === 'data:'
-        ? route.continue()
-        : route.abort('blockedbyclient')
-    }),
-    deadline,
-    now,
-    signal,
-  )
-  await awaitWithinDeadline(
-    context.routeWebSocket('**/*', (websocket) => websocket.close()),
-    deadline,
-    now,
-    signal,
-  )
-}
-
 async function waitForRenderedDocument(
   page: Page,
   deadline: number,
@@ -511,6 +468,8 @@ async function waitForRenderedDocument(
     now,
     signal,
   )
+  // Let CSS/JS init animations (fade-in, slide-up, etc.) settle.
+  await awaitWithinDeadline(page.waitForTimeout(500), deadline, now, signal)
 }
 
 /**
@@ -919,14 +878,6 @@ function remainingMs(deadline: number, now: () => number): number {
     )
   }
   return remaining
-}
-
-function safeProtocol(value: string): string {
-  try {
-    return new URL(value).protocol
-  } catch {
-    return ''
-  }
 }
 
 function screenshotData(value: unknown): string {

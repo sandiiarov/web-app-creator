@@ -7,7 +7,6 @@ import {
   ProjectScreenshotCaptureError,
   captureProjectSelectors,
   cloudflareBrowserRunEndpoint,
-  sanitizeProjectHtmlForCapture,
   screenshotOutputDimensions,
   screenshotScale,
   type ProjectScreenshotDependencies,
@@ -59,19 +58,6 @@ describe('screenshotOutputDimensions', () => {
     const dims = screenshotOutputDimensions(320, 180, scale)
     // (320 + 32) * 0.5 = 176, (180 + 32) * 0.5 = 106
     expect(dims).toEqual({ height: 106, width: 176 })
-  })
-})
-
-describe('sanitizeProjectHtmlForCapture', () => {
-  it('strips script blocks, self-closing scripts, base tags, and inline handlers', () => {
-    const dirty = `<base href="http://evil.test"><div onclick="alert(1)"><script>alert(2)</script><script src="x.js"/><button onmouseover="m()">Go</button></div>`
-    const clean = sanitizeProjectHtmlForCapture(dirty)
-    expect(clean).not.toContain('<script')
-    expect(clean).not.toContain('<base')
-    expect(clean).not.toContain('onclick')
-    expect(clean).not.toContain('onmouseover')
-    expect(clean).toContain('<button>Go</button>')
-    expect(clean).toContain('<div>')
   })
 })
 
@@ -143,14 +129,9 @@ describe('captureProjectSelectors end-to-end (mocked browser)', () => {
     expect(fake.page.setContentCalls).toHaveLength(3)
     expect(fake.cdp.screenshotCalls).toBe(3)
 
-    // Network isolation was installed once.
-    expect(fake.context.routeCalls).toBeGreaterThanOrEqual(1)
-    expect(fake.context.routeWebSocketCalls).toBe(1)
-
-    // Context had JavaScript and service workers disabled.
+    // Context had JavaScript enabled for init animations.
     expect(fake.context.options).toMatchObject({
-      javaScriptEnabled: false,
-      serviceWorkers: 'block',
+      javaScriptEnabled: true,
     })
 
     // All captures are persisted with safe URLs.
@@ -201,7 +182,7 @@ describe('captureProjectSelectors end-to-end (mocked browser)', () => {
     expect(inlineProjectImages).toHaveBeenCalledWith('p1', '<body></body>')
   })
 
-  it('sanitizes script tags from the HTML before setContent', async () => {
+  it('passes HTML verbatim to setContent (JS is enabled)', async () => {
     const fake = createFakeBrowser()
     const deps = createDeps(fake)
 
@@ -214,7 +195,7 @@ describe('captureProjectSelectors end-to-end (mocked browser)', () => {
       deps,
     )
 
-    expect(fake.page.setContentCalls[0]).not.toContain('<script')
+    expect(fake.page.setContentCalls[0]).toContain('<script')
   })
 
   it('aborts capture when the signal is already aborted', async () => {
@@ -436,6 +417,7 @@ function createFakeBrowser(options: FakeBrowserOptions = {}) {
             }) => {
               state.page.setViewportSizeCalls.push(size)
             },
+            waitForTimeout: async () => undefined,
           }),
           route: async () => {
             state.context.routeCalls += 1
