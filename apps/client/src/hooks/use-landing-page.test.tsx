@@ -10,9 +10,7 @@ import type { StreamSSEOptions } from '../lib/sse-client'
 import { useLandingPage, type UseLandingPage } from './use-landing-page'
 
 const mocks = vi.hoisted(() => ({
-  captureProjectScreenshot: vi.fn<() => Promise<never>>(),
   getProject: vi.fn<(id: string) => Promise<Project>>(),
-  postScreenshotResponse: vi.fn<() => Promise<void>>(),
   stopProjectAgent: vi.fn<(id: string) => Promise<boolean>>(),
   streamSSE:
     vi.fn<
@@ -21,15 +19,9 @@ const mocks = vi.hoisted(() => ({
   updateProjectModels: vi.fn<() => Promise<ProjectMeta>>(),
 }))
 
-vi.mock('@workspace/landing-preview', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@workspace/landing-preview')>()),
-  captureProjectScreenshot: mocks.captureProjectScreenshot,
-}))
-
 vi.mock('../lib/projects-api', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../lib/projects-api')>()),
   getProject: mocks.getProject,
-  postScreenshotResponse: mocks.postScreenshotResponse,
   stopProjectAgent: mocks.stopProjectAgent,
   updateProjectModels: mocks.updateProjectModels,
 }))

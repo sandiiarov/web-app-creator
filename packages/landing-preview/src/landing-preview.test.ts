@@ -1,12 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
 import {
-  ELEMENT_CAPTURE_PADDING_PX,
-  getPaddedScreenshotSize,
-  getScreenshotViewportDimensions,
-  SCREENSHOT_VIEWPORT_SIZES,
-} from './browser-screenshot'
-import {
   getScriptSignature,
   preparePreviewMorphHtml,
   shouldRerunScriptsAfterMorph,
@@ -84,40 +78,5 @@ describe('preview morph helpers', () => {
     expect(getScriptSignature(before)).toContain('window.count = 1')
     expect(shouldRerunScriptsAfterMorph(before, afterMarkupOnly)).toBe(false)
     expect(shouldRerunScriptsAfterMorph(before, afterScript)).toBe(true)
-  })
-})
-
-describe('screenshot helpers', () => {
-  it('exposes the supported viewport sizes', () => {
-    expect(SCREENSHOT_VIEWPORT_SIZES).toEqual(['mobile', 'tablet', 'desktop'])
-  })
-
-  it('returns fixed dimensions for each screenshot viewport', () => {
-    expect(getScreenshotViewportDimensions('mobile')).toEqual({
-      height: 844,
-      width: 390,
-    })
-    expect(getScreenshotViewportDimensions('tablet')).toEqual({
-      height: 1024,
-      width: 768,
-    })
-    expect(getScreenshotViewportDimensions('desktop')).toEqual({
-      height: 900,
-      width: 1440,
-    })
-  })
-
-  it('pads element screenshot sizes by the capture padding on all sides', () => {
-    expect(getPaddedScreenshotSize({ height: 100, width: 50 })).toEqual({
-      height: 100 + ELEMENT_CAPTURE_PADDING_PX * 2,
-      width: 50 + ELEMENT_CAPTURE_PADDING_PX * 2,
-    })
-  })
-
-  it('supports a custom padding override', () => {
-    expect(getPaddedScreenshotSize({ height: 10, width: 10 }, 4)).toEqual({
-      height: 18,
-      width: 18,
-    })
   })
 })

@@ -1,5 +1,4 @@
 import { applyEventToTurn, terminalizeTools } from '@workspace/conversation'
-import { captureProjectScreenshot } from '@workspace/landing-preview'
 import {
   DEFAULT_LANDING_MODELS,
   type LandingAgentSendInput,
@@ -16,13 +15,11 @@ import {
   LANDING_AGENT_API,
   type HtmlUpdateEvent,
   type RetryEvent,
-  type ScreenshotRequestEvent,
 } from '../lib/landing-agent'
 import {
   ProjectNotFoundError,
   expandProjectImageUrls,
   getProject,
-  postScreenshotResponse,
   stopProjectAgent,
   updateProjectModels,
   type Project,
@@ -145,32 +142,6 @@ export function useLandingPage({
     [onError, projectId],
   )
 
-  const respondToScreenshotRequest = useCallback(
-    async (event: ScreenshotRequestEvent) => {
-      try {
-        if (event.projectId !== projectId) {
-          throw new Error('Screenshot request targeted a different project.')
-        }
-        const project = await getProject(event.projectId)
-        const screenshot = await captureProjectScreenshot({
-          html: expandProjectImageUrls(project.indexHtml),
-          selector: event.selector,
-          viewportSize: event.viewportSize,
-        })
-        await postScreenshotResponse(event.requestId, screenshot)
-      } catch (error) {
-        const message =
-          error instanceof Error
-            ? error.message
-            : 'Browser screenshot capture failed.'
-        await postScreenshotResponse(event.requestId, { error: message }).catch(
-          () => undefined,
-        )
-      }
-    },
-    [projectId],
-  )
-
   const send = useCallback(
     ({ attachments = [], prompt }: LandingAgentSendInput) => {
       if (isStreaming || controllerRef.current !== null) return
@@ -215,10 +186,6 @@ export function useLandingPage({
               if (update.projectId === projectId) {
                 setHtml(expandProjectImageUrls(update.html))
               }
-              return
-            }
-            if (event === 'screenshot_request') {
-              void respondToScreenshotRequest(data as ScreenshotRequestEvent)
               return
             }
             if (event === 'retry') {
@@ -288,14 +255,7 @@ export function useLandingPage({
           controllerRef.current = null
         })
     },
-    [
-      appendPart,
-      isStreaming,
-      models,
-      patchTurn,
-      projectId,
-      respondToScreenshotRequest,
-    ],
+    [appendPart, isStreaming, models, patchTurn, projectId],
   )
 
   const stop = useCallback(() => {

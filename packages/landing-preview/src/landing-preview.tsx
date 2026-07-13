@@ -1,28 +1,11 @@
 import type { ElementAttachmentMeta } from '@workspace/prompt-panel'
-import {
-  type Ref,
-  useEffect,
-  useImperativeHandle,
-  useRef,
-  useState,
-} from 'react'
+import { useEffect, useRef, useState } from 'react'
 
-import {
-  captureElementScreenshot,
-  type ElementScreenshotCapture,
-} from './browser-screenshot'
 import {
   morphPreviewDocument,
   preparePreviewMorphHtml,
   shouldRerunScriptsAfterMorph,
 } from './preview-morph'
-
-export interface LandingPreviewHandle {
-  captureScreenshot(
-    input: LandingPreviewScreenshotInput,
-  ): Promise<ElementScreenshotCapture>
-  isReady(): boolean
-}
 
 export type LandingPreviewProps = {
   elementSelectionActive?: boolean
@@ -32,11 +15,6 @@ export type LandingPreviewProps = {
   onElementSelectionCancel?: () => void
   onError?: (message: string) => void
   onPreviewDiagnostic?: (diagnostic: PreviewDiagnostic) => void
-  ref?: Ref<LandingPreviewHandle>
-}
-
-export interface LandingPreviewScreenshotInput {
-  selector?: string
 }
 
 export interface PreviewConsoleDiagnostic {
@@ -159,35 +137,11 @@ export function LandingPreview({
   onElementSelectionCancel,
   onError,
   onPreviewDiagnostic,
-  ref,
 }: LandingPreviewProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null)
   const lastAppliedHtmlRef = useRef('')
   const [srcDoc, setSrcDoc] = useState('')
   const [reloadKey, setReloadKey] = useState(0)
-
-  const handle: LandingPreviewHandle = {
-    captureScreenshot: async ({ selector }: LandingPreviewScreenshotInput) => {
-      const doc = iframeRef.current?.contentDocument
-      if (!doc?.documentElement) {
-        throw new Error('Landing preview is not ready for capture.')
-      }
-      const target = selector
-        ? (doc.querySelector(selector) ?? null)
-        : (doc.body ?? doc.documentElement)
-      if (!target) {
-        throw new Error(
-          selector
-            ? `Screenshot selector did not match an element: ${selector}`
-            : 'Screenshot target has no document body.',
-        )
-      }
-      return captureElementScreenshot(target)
-    },
-    isReady: () => Boolean(iframeRef.current?.contentDocument?.documentElement),
-  }
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- handle methods read iframeRef lazily; deps intentionally empty.
-  useImperativeHandle(ref, () => handle, [])
 
   useEffect(() => {
     if (!html.trim()) {

@@ -1,5 +1,3 @@
-import type { ScreenshotViewportSize } from '@workspace/landing-preview'
-
 export const SERVER_URL =
   import.meta.env.VITE_SERVER_URL ?? 'http://localhost:3001'
 
@@ -26,12 +24,3 @@ export type RetryEvent = {
   maxAttempts: number
   reason: string
 }
-
-export type ScreenshotRequestEvent = {
-  projectId: string
-  requestId: string
-  selector: string
-  viewportSize: ScreenshotViewportSize
-}
-
-export type { ScreenshotResponseInput } from '@workspace/landing-preview'
