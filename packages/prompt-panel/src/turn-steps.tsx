@@ -182,19 +182,6 @@ function argsFromDetail(step: ToolCallPart) {
   return remainingLines.join('\n') || null
 }
 
-function captionText(alt: string) {
-  const viewport = viewportFromAlt(alt)
-  if (!viewport) return alt
-  // Remove the viewport parenthetical or suffix to avoid duplication.
-  return alt
-    .replace(
-      /\s*\(\s*mobile\s*\)|\s*\(\s*tablet\s*\)|\s*\(\s*desktop\s*\)/gi,
-      '',
-    )
-    .replace(/\s+at\s+(mobile|tablet|desktop)\s+viewport$/i, '')
-    .trim()
-}
-
 function detailValue(detail: null | string | undefined, label: string) {
   const prefix = `${label}:`
   return (
@@ -289,9 +276,8 @@ function ImageThumbnail({ image }: { image: ToolCallImage }) {
             src={image.url}
           />
         </button>
-        <figcaption className="mt-1 flex items-center gap-1 text-[10px] leading-tight text-muted-foreground/75">
+        <figcaption className="mt-1 flex items-center justify-center gap-1 text-[10px] leading-tight text-muted-foreground/75">
           <ViewportBadge alt={image.alt} />
-          <span className="truncate">{captionText(image.alt)}</span>
         </figcaption>
       </figure>
       <DialogContent
@@ -299,16 +285,15 @@ function ImageThumbnail({ image }: { image: ToolCallImage }) {
         onCloseAutoFocus={(e) => e.preventDefault()}
       >
         <DialogHeader className="sr-only">
-          <DialogTitle>{captionText(image.alt)}</DialogTitle>
-          <DialogDescription>
-            Screenshot preview — {image.alt}
+          <DialogTitle>{image.alt}</DialogTitle>
+          <DialogDescription asChild>
+            <img
+              alt={image.alt}
+              className="max-h-[80vh] w-full object-contain"
+              src={image.url}
+            />
           </DialogDescription>
         </DialogHeader>
-        <img
-          alt={image.alt}
-          className="max-h-[80vh] w-full object-contain"
-          src={image.url}
-        />
       </DialogContent>
     </Dialog>
   )
