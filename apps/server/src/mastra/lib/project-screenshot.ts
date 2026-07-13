@@ -707,7 +707,7 @@ const CAPTURE_READY_SCRIPT = String.raw`
         }),
       );
     });
-    var deadline = new Promise(function (resolve) { setTimeout(resolve, 3000); });
+    var deadline = new Promise(function (resolve) { setTimeout(resolve, 1500); });
     return Promise.race([imagesReady, deadline]);
   }
   return ready();
