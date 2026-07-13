@@ -364,7 +364,11 @@ function PlanBlock({ step }: { step: ToolCallPart }) {
             </ol>
           ) : (
             <span className="mt-1 block text-xs leading-snug text-muted-foreground">
-              {isActive ? 'Planning…' : isError ? 'Plan failed.' : 'No plan returned.'}
+              {isActive
+                ? 'Planning…'
+                : isError
+                  ? 'Plan failed.'
+                  : 'No plan returned.'}
             </span>
           )}
         </div>
