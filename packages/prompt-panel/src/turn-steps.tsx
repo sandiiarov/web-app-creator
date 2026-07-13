@@ -3,6 +3,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@workspace/ui/components/collapsible'
+import { Dialog, DialogContent } from '@workspace/ui/components/dialog'
 import { MarkerIcon } from '@workspace/ui/components/marker'
 import { Separator } from '@workspace/ui/components/separator'
 import { cn } from '@workspace/ui/lib/utils'
@@ -61,19 +62,7 @@ export function ToolArgsImages({ images }: { images: ToolCallImage[] }) {
       )}
     >
       {images.map((image, index) => (
-        <figure className="min-w-0" key={`${image.url}-${index}`}>
-          <img
-            alt={image.alt}
-            className="max-h-40 w-full border border-border/70 bg-muted/20 object-contain"
-            loading="lazy"
-            src={image.url}
-          />
-          {images.length > 1 ? (
-            <figcaption className="mt-1 truncate text-[10px] leading-tight text-muted-foreground/75">
-              {image.alt}
-            </figcaption>
-          ) : null}
-        </figure>
+        <ImageThumbnail image={image} key={`${image.url}-${index}`} />
       ))}
     </div>
   )
@@ -184,6 +173,19 @@ function argsFromDetail(step: ToolCallPart) {
   return remainingLines.join('\n') || null
 }
 
+function captionText(alt: string) {
+  const viewport = viewportFromAlt(alt)
+  if (!viewport) return alt
+  // Remove the viewport parenthetical or suffix to avoid duplication.
+  return alt
+    .replace(
+      /\s*\(\s*mobile\s*\)|\s*\(\s*tablet\s*\)|\s*\(\s*desktop\s*\)/gi,
+      '',
+    )
+    .replace(/\s+at\s+(mobile|tablet|desktop)\s+viewport$/i, '')
+    .trim()
+}
+
 function detailValue(detail: null | string | undefined, label: string) {
   const prefix = `${label}:`
   return (
@@ -259,6 +261,45 @@ function humanizeToolName(tool: string) {
     .filter(Boolean)
     .map((word) => `${word.slice(0, 1).toUpperCase()}${word.slice(1)}`)
     .join(' ')
+}
+
+function ImageThumbnail({ image }: { image: ToolCallImage }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <Dialog onOpenChange={setOpen} open={open}>
+      <figure className="group/thumb min-w-0">
+        <button
+          className="block w-full cursor-zoom-in"
+          onClick={() => setOpen(true)}
+          type="button"
+        >
+          <img
+            alt={image.alt}
+            className="max-h-40 w-full border border-border/70 bg-muted/20 object-contain transition-opacity hover:opacity-90"
+            loading="lazy"
+            src={image.url}
+          />
+        </button>
+        <figcaption className="mt-1 flex items-center gap-1 text-[10px] leading-tight text-muted-foreground/75">
+          <ViewportBadge alt={image.alt} />
+          <span className="truncate">{captionText(image.alt)}</span>
+        </figcaption>
+      </figure>
+      <DialogContent
+        className="max-w-[90vw] gap-0 border-border/70 p-1 sm:max-w-200"
+        onCloseAutoFocus={(e) => e.preventDefault()}
+      >
+        <img
+          alt={image.alt}
+          className="max-h-[80vh] w-full object-contain"
+          src={image.url}
+        />
+        <p className="px-2 py-1.5 text-center text-xs text-muted-foreground">
+          {image.alt}
+        </p>
+      </DialogContent>
+    </Dialog>
+  )
 }
 
 function isActiveState(state: ToolCallState) {
@@ -371,6 +412,23 @@ function toolShellClassName(state: ToolCallState) {
           ? 'border-border/70 bg-muted/10'
           : 'border-border/60',
   )
+}
+
+function ViewportBadge({ alt }: { alt: string }) {
+  const viewport = viewportFromAlt(alt)
+  if (!viewport) return null
+  return (
+    <span className="shrink-0 rounded bg-muted px-1 text-[9px] font-medium text-muted-foreground uppercase">
+      {viewport.slice(0, 3)}
+    </span>
+  )
+}
+
+/** Extract a short viewport label (mobile/tablet/desktop) from an alt string
+ *  like "Screenshot of body at mobile viewport" or "Element #hero (tablet)". */
+function viewportFromAlt(alt: string): null | string {
+  const match = alt.match(/\b(mobile|tablet|desktop)\b/i)
+  return match?.[1]?.toLowerCase() ?? null
 }
 
 const toolTriggerClassName = cn(

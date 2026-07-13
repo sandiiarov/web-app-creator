@@ -428,6 +428,7 @@ async function activeStreamLandingAgent({
     // and any later checkpoints recoverable on disk.
     const attachmentAnalysis = await analyzePromptAttachments({
       attachments,
+      baseUrl,
       emit,
       nextToolSeq: () => ++toolCallSeq,
       projectId,
@@ -890,6 +891,7 @@ function addUsageSnapshots(
 
 async function analyzePromptAttachments({
   attachments,
+  baseUrl,
   emit,
   nextToolSeq,
   projectId,
@@ -899,6 +901,7 @@ async function analyzePromptAttachments({
   visionModel,
 }: {
   attachments: AgentAttachmentInput[]
+  baseUrl: string
   emit: (event: string, payload: unknown) => void
   nextToolSeq: () => number
   projectId: string
@@ -1020,7 +1023,7 @@ async function analyzePromptAttachments({
     const safeImages = elementCaptures.flatMap((capture) =>
       capture.captures.map((viewport) => ({
         alt: `Element ${capture.selector} (${viewport.viewport})`,
-        url: viewport.imageUrl,
+        url: expandScreenshotUrl(viewport.imageUrl, baseUrl),
       })),
     )
     const donePayload: RecordedToolPayload = {
@@ -1542,10 +1545,15 @@ const summarizeResultForTool: Record<
     const imageOcr = asToolArgs(data.imageOcr)
     const ocrImages = numberValue(imageOcr.imagesAnalyzed)
     const captures = Array.isArray(data.captures) ? data.captures : []
+    const viewportNames = captures
+      .map((capture) => stringValue((capture as ToolArgs).viewport))
+      .filter((v): v is string => Boolean(v))
     return compactLines([
-      captures.length > 0
-        ? `Captured ${captures.length} viewport${captures.length === 1 ? '' : 's'}`
-        : 'Captured screenshot',
+      viewportNames.length > 0
+        ? `Captured ${viewportNames.join(', ')}`
+        : captures.length > 0
+          ? `Captured ${captures.length} viewport${captures.length === 1 ? '' : 's'}`
+          : 'Captured screenshot',
       ocrImages && ocrImages > 0
         ? `OCR ${ocrImages} image${ocrImages === 1 ? '' : 's'}`
         : null,
@@ -1554,6 +1562,16 @@ const summarizeResultForTool: Record<
   skill: () => 'Loaded skill instructions',
   skill_read: () => 'Loaded reference content',
   skill_search: () => 'Search complete',
+}
+
+/** Expand a root-relative screenshot URL to an absolute one using the
+ *  request baseUrl, mirroring toolCallImages for the screenshot tool. */
+function expandScreenshotUrl(imageUrl: string, baseUrl: string): string {
+  try {
+    return new URL(imageUrl, baseUrl).href
+  } catch {
+    return imageUrl
+  }
 }
 
 function summarizeToolResult(

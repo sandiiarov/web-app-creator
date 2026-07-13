@@ -1620,7 +1620,7 @@ describe('streamLandingAgent screenshots', () => {
                 alt: expect.stringContaining('desktop'),
               }),
             ]),
-            result: 'Captured 3 viewports\nOCR 3 images',
+            result: 'Captured mobile, tablet, desktop\nOCR 3 images',
             state: 'done',
             tool: 'screenshot',
           }),
