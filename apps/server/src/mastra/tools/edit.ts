@@ -80,7 +80,7 @@ export function createEditTool(
         .string()
         .min(1)
         .describe(
-          'Hashline DSL: `[index.html#TAG]` header (TAG from latest read) then ops — `SWAP N.=M:`/`DEL N.=M`/`INS.PRE|POST|HEAD|TAIL N:` with `+TEXT` body rows.',
+          'Hashline DSL: `[index.html#TAG]` header (TAG from latest read) then ops — `SWAP N.=M:`/`DEL N.=M`/`INS.PRE|POST|HEAD|TAIL N:` with `+TEXT` body rows. One edit may carry many ops (and several TAG sections): batch a whole section or a complete fix into one edit rather than many small calls.',
         ),
     }),
     outputSchema: z.object({

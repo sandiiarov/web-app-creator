@@ -17,6 +17,7 @@ Edit operations:
 - \`DEL N.=M\` deletes original lines N through M and has no body.
 - \`INS.PRE N:\` and \`INS.POST N:\` insert around original line N; \`INS.HEAD:\` and \`INS.TAIL:\` insert at document boundaries.
 - Every inserted body row starts with the DSL marker \`+\`; the marker is removed before writing. \`+\` by itself inserts a blank line.
+- One \`edit\` call may carry MANY ops (and several \`[index.html#TAG]\` sections) for a single logical change. Batch a whole section, a block of related edits, or an entire fix into one \`edit\` — medium-sized, rational hunks — instead of firing many tiny one-line edits in a row.
 
 Example:
 \`\`\`text
@@ -31,7 +32,7 @@ INS.PRE 24:
 
 CSS custom properties still use the insertion marker: \`+  --color-canvas: ...\`. A literal line beginning with \`-\` is encoded as \`+-...\`; bare \`-\` rows are not deletion syntax because deletion uses \`DEL\`.
 
-Line numbers refer to the original displayed snapshot and remain fixed between hunks. SWAP ranges cover only replaced lines; pure additions fit INS. Opening and closing HTML tags remain balanced, especially when editing near \`</main>\`, \`</body>\`, or \`</html>\`.
+Line numbers refer to the original displayed snapshot and remain fixed between hunks, so a single \`edit\` can apply many SWAP/DEL/INS ops at once — batch a whole logical change into one call. SWAP ranges cover only replaced lines; pure additions fit INS. Opening and closing HTML tags remain balanced, especially when editing near \`</main>\`, \`</body>\`, or \`</html>\`.
 
 A successful edit returns a fresh \`[index.html#TAG]\` for the next edit. A stale-tag result points to a fresh read/find. Malformed-diff and balance errors describe the correction; resending an identical rejected diff produces the same failure.`
 
@@ -43,4 +44,4 @@ export const HASHLINE_EDIT_GUIDANCE = `Edit the project HTML with hashline DSL t
 - \`SWAP N.=M:\` then \`+TEXT\` body rows — replace original lines N..M (inclusive).
 - \`DEL N.=M\` — delete lines N..M (no body).
 - \`INS.PRE N:\` / \`INS.POST N:\` — insert body rows before/after line N; \`INS.HEAD:\` / \`INS.TAIL:\` at the doc start/end.
-Each body row is \`+TEXT\` (verbatim; leading whitespace kept; \`+\` alone = blank line). Numbers refer to the ORIGINAL file from your latest read and never shift as hunks apply. Touch only lines your read displayed. Ranges cover ONLY lines whose content changes — never widen over unchanged lines; pure additions use INS, never a widened SWAP. Every successful edit mints a fresh #TAG — anchor the next edit on the edit response or a fresh read. On stale-tag rejection, STOP and re-read before retrying. Pass a top-level \`action\` (one short imperative label for this edit, shown to the user).`
+Each body row is \`+TEXT\` (verbatim; leading whitespace kept; \`+\` alone = blank line). Numbers refer to the ORIGINAL file from your latest read and never shift as hunks apply, so ONE \`edit\` may apply many ops at once. BATCH a complete logical change — a whole section, a group of related edits, or an entire fix/refinement — into a SINGLE \`edit\` whose \`diff\` carries every needed SWAP/DEL/INS op (and may repeat the \`[index.html#TAG]\` header for multiple sections). Prefer one medium-sized edit over a chain of tiny one-line edits; two consecutive one-line tweaks should almost always have been one edit. Keep each individual op tight: touch only lines your read displayed, and ranges cover ONLY lines whose content changes — pure additions use INS, never a widened SWAP over unchanged lines. Every successful edit mints a fresh #TAG — anchor the next edit on the edit response or a fresh read. On stale-tag rejection, STOP and re-read before retrying. Pass a top-level \`action\` (one short imperative label for this edit, shown to the user).`
