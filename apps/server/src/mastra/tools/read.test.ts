@@ -68,4 +68,16 @@ describe('createReadTool', () => {
     expect(res.text).toContain('3:c')
     expect(res.text).toContain('offset=4')
   })
+
+  it('tagOnly emits a [#TAG] header with no path (single-file mode)', async () => {
+    const { fs, snapshots } = makeTools('<p>hi</p>')
+    const tool = createReadTool(fs, snapshots, { tagOnly: true })
+    const res = (await tool.execute?.(
+      { action: 'read all' },
+      undefined as never,
+    )) as ReadResult
+    expect(res.text.startsWith('[#')).toBe(true)
+    expect(res.text).not.toContain('index.html')
+    expect(res.tag).toMatch(/^[0-9A-F]{4}$/)
+  })
 })

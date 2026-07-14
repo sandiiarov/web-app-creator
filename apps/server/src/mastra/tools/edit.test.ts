@@ -127,4 +127,37 @@ describe('createEditTool', () => {
       ),
     ).rejects.toThrow(/no \[index\.html#TAG\] header/i)
   })
+
+  it('tagOnly: accepts a [#TAG] diff and returns a [#TAG] header', async () => {
+    const store = createHtmlStore(DOC)
+    const fs = new HtmlStoreFilesystem(store)
+    const snapshots = createSnapshotStore()
+    const read = createReadTool(fs, snapshots, { tagOnly: true })
+    const edit = createEditTool(fs, snapshots, { tagOnly: true })
+    const tag = await freshTag(read)
+    const res = (await edit.execute?.(
+      {
+        action: 'swap headline',
+        diff: `[#${tag}]\nSWAP 4.=4:\n    <h1>New</h1>`,
+      },
+      undefined as never,
+    )) as { header: string; ok: true; tag: string }
+    expect(res.ok).toBe(true)
+    expect(res.header).toBe(`[#${res.tag}]`)
+    expect(store.get()).toContain('<h1>New</h1>')
+  })
+
+  it('tagOnly: still accepts a full-form [index.html#TAG] header', async () => {
+    const store = createHtmlStore(DOC)
+    const fs = new HtmlStoreFilesystem(store)
+    const snapshots = createSnapshotStore()
+    const read = createReadTool(fs, snapshots, { tagOnly: true })
+    const edit = createEditTool(fs, snapshots, { tagOnly: true })
+    const tag = await freshTag(read)
+    await edit.execute?.(
+      { action: 'del h1', diff: `[index.html#${tag}]\nDEL 4.=4` },
+      undefined as never,
+    )
+    expect(store.get()).not.toContain('<h1>Old</h1>')
+  })
 })

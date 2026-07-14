@@ -49,12 +49,17 @@ export const HL_FILE_HASH_LENGTH = 4
 
 // ── Format helpers ─────────────────────────────────────────────────────────
 
-/** Format a hashline section header for a file path and snapshot tag. */
+/**
+ * Format a hashline section header. Pass a `filePath` for the full
+ * `[path#TAG]` form, or `undefined`/empty for the tag-only `[#TAG]` form used
+ * by single-file projects (the path is implicit, carried by the tool config).
+ */
 export function formatHashlineHeader(
-  filePath: string,
+  filePath: string | undefined,
   fileHash: string,
 ): string {
-  return `${HL_FILE_PREFIX}${filePath}${HL_FILE_HASH_SEP}${fileHash}${HL_FILE_SUFFIX}`
+  const pathPart = filePath && filePath.length > 0 ? filePath : ''
+  return `${HL_FILE_PREFIX}${pathPart}${HL_FILE_HASH_SEP}${fileHash}${HL_FILE_SUFFIX}`
 }
 
 /** Formats a single numbered line as `LINE:TEXT`. */

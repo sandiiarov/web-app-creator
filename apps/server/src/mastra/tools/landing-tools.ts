@@ -65,18 +65,18 @@ const LANDING_TOOL_DEFINITIONS = [
   ),
   tool(
     'read',
-    'Use `read` to inspect the current project HTML as a hashline section: a `[index.html#TAG]` header (copy the TAG into your next edit) followed by `N:TEXT` rows. Reference those line numbers in edit SWAP/DEL/INS ops.',
-    ({ fs, snapshots }) => createReadTool(fs, snapshots),
+    'Use `read` to inspect the current project HTML as a hashline section: a `[#TAG]` header (copy the TAG into your next edit) followed by `N:TEXT` rows. Reference those line numbers in edit SWAP/DEL/INS ops.',
+    ({ fs, snapshots }) => createReadTool(fs, snapshots, { tagOnly: true }),
   ),
   tool(
     'find',
-    'Use `find` to locate text in the project HTML before editing. Literal search is the default; set `regex=true` only when needed. Returns a hashline section (`[index.html#TAG]` + `N:TEXT` rows) for matches with optional context; copy the TAG into your next edit.',
-    ({ fs, snapshots }) => createFindTool(fs, snapshots),
+    'Use `find` to locate text in the project HTML before editing. Literal search is the default; set `regex=true` only when needed. Returns a hashline section (`[#TAG]` + `N:TEXT` rows) for matches with optional context; copy the TAG into your next edit.',
+    ({ fs, snapshots }) => createFindTool(fs, snapshots, { tagOnly: true }),
   ),
   tool(
     'edit',
-    'Use `edit` to change the project HTML with `{ action, diff }`. `diff` is hashline DSL: a `[index.html#TAG]` header (TAG from your latest read/find) then `SWAP N.=M:`/`DEL N.=M`/`INS.PRE|POST|HEAD|TAIL N:` ops with `+TEXT` body rows. Line numbers come from read/find and refer to the original file. Touch only lines your read displayed; ranges cover only changed lines (pure additions use INS, never a widened SWAP). For a new draft: `edit({ action: "Create initial page", diff: "[index.html#TAG]\\nINS.HEAD:\\n+<!doctype html>..." })` using a fresh read tag, or scaffold then build up with section edits. Batch a complete logical change — a whole section, a related block of edits, or an entire fix — into ONE `edit` call (one `diff` may carry many SWAP/DEL/INS ops); prefer one medium-sized edit over a chain of tiny one-line edits. On stale-tag rejection, re-read before retrying. The preview updates automatically after a successful edit; the result is concise metadata plus the fresh TAG for your next edit.',
-    ({ fs, snapshots }) => createEditTool(fs, snapshots),
+    'Use `edit` to change the project HTML with `{ action, diff }`. `diff` is hashline DSL: a `[#TAG]` header (TAG from your latest read/find) then `SWAP N.=M:`/`DEL N.=M`/`INS.PRE|POST|HEAD|TAIL N:` ops with `+TEXT` body rows. Line numbers come from read/find and refer to the original file. Touch only lines your read displayed; ranges cover only changed lines (pure additions use INS, never a widened SWAP). For a new draft: `edit({ action: "Create initial page", diff: "[#TAG]\\nINS.HEAD:\\n+<!doctype html>..." })` using a fresh read tag, or scaffold then build up with section edits. Batch a complete logical change — a whole section, a related block of edits, or an entire fix — into ONE `edit` call (one `diff` may carry many SWAP/DEL/INS ops); prefer one medium-sized edit over a chain of tiny one-line edits. On stale-tag rejection, re-read before retrying. The preview updates automatically after a successful edit; the result is concise metadata plus the fresh TAG for your next edit.',
+    ({ fs, snapshots }) => createEditTool(fs, snapshots, { tagOnly: true }),
   ),
   tool(
     'screenshot',

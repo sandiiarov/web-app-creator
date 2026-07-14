@@ -73,4 +73,19 @@ describe('createFindTool', () => {
     expect(res.text).toContain('Hello')
     expect(res.text).toContain('World')
   })
+
+  it('tagOnly emits a [#TAG] header with no path', async () => {
+    const store = createHtmlStore('<main>\n  <h1>Hello</h1>\n</main>')
+    const find = createFindTool(
+      new HtmlStoreFilesystem(store),
+      createSnapshotStore(),
+      { tagOnly: true },
+    )
+    const res = (await find.execute?.(
+      { action: 'find', text: 'Hello' },
+      undefined as never,
+    )) as FindResult
+    expect(res.text.startsWith('[#')).toBe(true)
+    expect(res.text).not.toContain('index.html')
+  })
 })

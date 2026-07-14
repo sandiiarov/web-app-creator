@@ -11,7 +11,7 @@ import { splitLines } from '../lib/hashline/shared.ts'
 import type { SnapshotStore } from '../lib/hashline/snapshots.ts'
 
 /**
- * Read the project HTML as a hashline section: a `[index.html#TAG]` snapshot
+ * Read the project HTML as a hashline section: a `[#TAG]` snapshot
  * header followed by `N:TEXT` rows. Records a content-hash snapshot so the
  * next `edit` can verify the tag (rejecting stale references). `offset`/`limit`
  * page through large documents.
@@ -19,8 +19,14 @@ import type { SnapshotStore } from '../lib/hashline/snapshots.ts'
 export function createReadTool(
   fs: Filesystem,
   snapshots: SnapshotStore,
-  path: string = HASHLINE_PATH,
+  options: {
+    /** Snapshot/filesystem key. Also the header path when `tagOnly` is false. */
+    path?: string
+    /** Emit `[#TAG]` headers (single-file) instead of `[path#TAG]`. */
+    tagOnly?: boolean
+  } = {},
 ) {
+  const path = options.path ?? HASHLINE_PATH
   return createTool({
     description: HASHLINE_READ_GUIDANCE,
     execute: async ({ limit, offset }) => {
@@ -34,7 +40,10 @@ export function createReadTool(
       const seenLines: number[] = []
       for (let n = startLine; n <= endLine; n += 1) seenLines.push(n)
       const tag = await snapshots.record(path, html, seenLines)
-      const header = formatHashlineHeader(path, tag)
+      const header = formatHashlineHeader(
+        options.tagOnly ? undefined : path,
+        tag,
+      )
       const body = visible
         .map((text, index) => `${startLine + index}:${text}`)
         .join('\n')

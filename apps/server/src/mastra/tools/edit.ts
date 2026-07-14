@@ -1,6 +1,7 @@
 import { createTool } from '@mastra/core/tools'
 import { z } from 'zod'
 
+import { autofixHtmlBalance } from '../lib/hashline/autofix.ts'
 import {
   HASHLINE_EDIT_GUIDANCE,
   HASHLINE_PATH,
@@ -14,24 +15,31 @@ import type { SnapshotStore } from '../lib/hashline/snapshots.ts'
 
 /**
  * Apply a hashline-DSL edit to the project HTML. The `diff` must start with the
- * `[index.html#TAG]` header from the latest read/find; the engine verifies the
+ * `[#TAG]` header from the latest read/find; the engine verifies the
  * snapshot tag (rejecting stale/drifted references with a re-read instruction),
- * applies the `SWAP`/`DEL`/`INS` ops, runs an HTML-tag-balance guard, then
- * persists through the store. Throws on stale tag, malformed diff, or
- * balance failure so the agent re-reads and retries.
+ * applies the `SWAP`/`DEL`/`INS` ops, runs an HTML-tag-balance guard, applies
+ * a conservative adjacent-duplicate autofix when the guard fails, then
+ * persists through the store. Throws on stale tag, malformed diff, or an
+ * unrepairable balance failure so the agent re-reads and retries.
  */
 export function createEditTool(
   fs: Filesystem,
   snapshots: SnapshotStore,
-  path: string = HASHLINE_PATH,
+  options: {
+    /** Snapshot/filesystem key. Also the header path when `tagOnly` is false. */
+    path?: string
+    /** Accept/emit `[#TAG]` headers (single-file) instead of `[path#TAG]`. */
+    tagOnly?: boolean
+  } = {},
 ) {
+  const path = options.path ?? HASHLINE_PATH
   return createTool({
     description: HASHLINE_EDIT_GUIDANCE,
     execute: async ({ diff }) => {
-      const { sections } = splitPatchInput(diff)
+      const { sections } = splitPatchInput(diff, { defaultPath: path })
       if (sections.length === 0) {
         throw new Error(
-          `Edit failed: no [${path}#TAG] header found in diff. Start the diff with the header copied verbatim from your latest read, then SWAP/DEL/INS ops with +TEXT body rows.`,
+          `Edit failed: no ${formatHashlineHeader(options.tagOnly ? undefined : path, 'TAG')} header found in diff. Start the diff with the header copied verbatim from your latest read, then SWAP/DEL/INS ops with +TEXT body rows.`,
         )
       }
       const patcher = new Patcher({ fs, snapshots })
@@ -43,21 +51,38 @@ export function createEditTool(
       for (const section of sections) {
         // prepare() validates the snapshot tag — throws MismatchError on stale.
         const prepared = await patcher.prepare(section)
-        const nextHtml = prepared.applyResult.text
+        let nextHtml = prepared.applyResult.text
+        let balanceWarnings: string[] = []
         const balance = checkHtmlBalance(nextHtml)
         if (!balance.ok) {
-          throw new Error(
-            `Edit rejected: it would produce unbalanced HTML (${balance.issues.join('; ')}). Re-read the file and narrow the SWAP range to only the lines whose content changes.`,
-          )
+          // Conservative auto-repair before rejecting: collapse adjacent
+          // duplicate tags that survived applyEdits' line-level self-heal.
+          // Only unambiguous fixes are applied (never synthesized tags); a
+          // missing-closer case (e.g. eaten </style>) still rejects so the
+          // agent re-reads and narrows its SWAP range.
+          const fix = autofixHtmlBalance(nextHtml)
+          if (fix.fixed && fix.html !== nextHtml) {
+            // commit/hash/snapshot all derive from applyResult.text, so point
+            // the prepared result at the repaired text before writing.
+            prepared.applyResult.text = fix.html
+            nextHtml = fix.html
+            balanceWarnings = fix.applied.map((d) => `html autofix: ${d}`)
+          } else {
+            throw new Error(
+              `Edit rejected: it would produce unbalanced HTML (${balance.issues.join('; ')}). Re-read the file and narrow the SWAP range to only the lines whose content changes.`,
+            )
+          }
         }
         const result = await patcher.commit(prepared)
         firstChangedLine = result.firstChangedLine ?? 0
-        warnings = result.warnings
+        warnings = [...result.warnings, ...balanceWarnings]
         tag = result.fileHash
         before = result.before
         after = result.after
       }
-      const header = tag ? formatHashlineHeader(path, tag) : ''
+      const header = tag
+        ? formatHashlineHeader(options.tagOnly ? undefined : path, tag)
+        : ''
       return {
         bytes: Buffer.byteLength(after, 'utf8'),
         diffPreview: buildPreview(before, after),
@@ -80,7 +105,7 @@ export function createEditTool(
         .string()
         .min(1)
         .describe(
-          'Hashline DSL: `[index.html#TAG]` header (TAG from latest read) then ops — `SWAP N.=M:`/`DEL N.=M`/`INS.PRE|POST|HEAD|TAIL N:` with `+TEXT` body rows. One edit may carry many ops (and several TAG sections): batch a whole section or a complete fix into one edit rather than many small calls.',
+          'Hashline DSL: `[#TAG]` header (TAG from latest read) then ops — `SWAP N.=M:`/`DEL N.=M`/`INS.PRE|POST|HEAD|TAIL N:` with `+TEXT` body rows. One edit may carry many ops (and several TAG sections): batch a whole section or a complete fix into one edit rather than many small calls.',
         ),
     }),
     outputSchema: z.object({

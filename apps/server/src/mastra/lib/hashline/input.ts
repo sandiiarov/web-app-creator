@@ -49,7 +49,11 @@ export function splitPatchInput(
     const line = lines[i]!
 
     // Try to parse as header
-    const rawHeader = tryParseRecoveryHeader(line, options?.cwd)
+    const rawHeader = tryParseRecoveryHeader(
+      line,
+      options?.cwd,
+      options?.defaultPath,
+    )
     if (rawHeader) {
       if (currentSection) {
         sections.push({
@@ -94,7 +98,11 @@ function stripApplyPatchPathNoise(pathText: string): string {
   return pathText.replace(APPLY_PATCH_PATH_NOISE_RE, '')
 }
 
-function tryParseRecoveryHeader(line: string, cwd?: string): null | RawSection {
+function tryParseRecoveryHeader(
+  line: string,
+  cwd?: string,
+  defaultPath?: string,
+): null | RawSection {
   if (!line.startsWith(HL_FILE_PREFIX) || !line.endsWith(HL_FILE_SUFFIX))
     return null
   const body = stripApplyPatchPathNoise(
@@ -119,8 +127,12 @@ function tryParseRecoveryHeader(line: string, cwd?: string): null | RawSection {
   if (pathText.includes('#')) return null
   pathText = unquoteHashlinePath(pathText)
 
+  // Tag-only header (`[#TAG]`) has no path text: fall back to the caller's
+  // implicit default path so snapshot lookup and storage stay keyed
+  // consistently. rawPath stays empty so the emitted header stays tag-only.
+  const effectivePath = pathText.length > 0 ? pathText : (defaultPath ?? '')
   // Keep the model-facing path text (rawPath) separate from the canonical,
   // resolved absolute path used for filesystem access.
-  const cleanPath = cwd ? path.resolve(cwd, pathText) : pathText
+  const cleanPath = cwd ? path.resolve(cwd, effectivePath) : effectivePath
   return { fileHash, path: cleanPath, rawPath: pathText }
 }

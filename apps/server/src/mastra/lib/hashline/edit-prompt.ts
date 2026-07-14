@@ -8,7 +8,7 @@
 export const HASHLINE_PATH = 'index.html'
 
 export const HASHLINE_SYSTEM_GUIDANCE = `Hashline HTML tool reference:
-- \`read({ action?, offset?, limit? })\` returns a \`[index.html#TAG]\` snapshot header followed by \`N:TEXT\` rows. Paging uses 1-based \`offset\` and an optional line \`limit\`.
+- \`read({ action?, offset?, limit? })\` returns a \`[#TAG]\` snapshot header followed by \`N:TEXT\` rows. Paging uses 1-based \`offset\` and an optional line \`limit\`.
 - \`find({ action?, text, regex?, ignoreCase?, context?, limit? })\` locates a literal string by default and returns the same snapshot-header and numbered-row format around matches.
 - \`edit({ action, diff })\` applies a hashline diff anchored to the TAG and line numbers from a recent read/find. The action is a short user-facing label.
 
@@ -17,11 +17,11 @@ Edit operations:
 - \`DEL N.=M\` deletes original lines N through M and has no body.
 - \`INS.PRE N:\` and \`INS.POST N:\` insert around original line N; \`INS.HEAD:\` and \`INS.TAIL:\` insert at document boundaries.
 - Every inserted body row starts with the DSL marker \`+\`; the marker is removed before writing. \`+\` by itself inserts a blank line.
-- One \`edit\` call may carry MANY ops (and several \`[index.html#TAG]\` sections) for a single logical change. Batch a whole section, a block of related edits, or an entire fix into one \`edit\` — medium-sized, rational hunks — instead of firing many tiny one-line edits in a row.
+- One \`edit\` call may carry MANY ops (and several \`[#TAG]\` sections) for a single logical change. Batch a whole section, a block of related edits, or an entire fix into one \`edit\` — medium-sized, rational hunks — instead of firing many tiny one-line edits in a row.
 
 Example:
 \`\`\`text
-[index.html#A1B2]
+[#A1B2]
 SWAP 10.=11:
 +  <section class="proof">
 +    <h2>Evidence, clearly framed.</h2>
@@ -34,14 +34,14 @@ CSS custom properties still use the insertion marker: \`+  --color-canvas: ...\`
 
 Line numbers refer to the original displayed snapshot and remain fixed between hunks, so a single \`edit\` can apply many SWAP/DEL/INS ops at once — batch a whole logical change into one call. SWAP ranges cover only replaced lines; pure additions fit INS. Opening and closing HTML tags remain balanced, especially when editing near \`</main>\`, \`</body>\`, or \`</html>\`.
 
-A successful edit returns a fresh \`[index.html#TAG]\` for the next edit. A stale-tag result points to a fresh read/find. Malformed-diff and balance errors describe the correction; resending an identical rejected diff produces the same failure.`
+A successful edit returns a fresh \`[#TAG]\` for the next edit. A stale-tag result points to a fresh read/find. Malformed-diff and balance errors describe the correction; resending an identical rejected diff produces the same failure.`
 
-export const HASHLINE_READ_GUIDANCE = `Read the project HTML as a hashline section: a \`[index.html#TAG]\` header (copy the TAG verbatim into your next edit) followed by \`N:TEXT\` rows. Line numbers N come from this output — reference them in edit's SWAP/DEL/INS ops. Use offset/limit to page through large documents.`
+export const HASHLINE_READ_GUIDANCE = `Read the project HTML as a hashline section: a \`[#TAG]\` header (copy the TAG verbatim into your next edit) followed by \`N:TEXT\` rows. Line numbers N come from this output — reference them in edit's SWAP/DEL/INS ops. Use offset/limit to page through large documents.`
 
-export const HASHLINE_FIND_GUIDANCE = `Find text in the project HTML. Returns a hashline section (\`[index.html#TAG]\` header + \`N:TEXT\` rows) for the matching lines and optional context. Copy the TAG into your next edit.`
+export const HASHLINE_FIND_GUIDANCE = `Find text in the project HTML. Returns a hashline section (\`[#TAG]\` header + \`N:TEXT\` rows) for the matching lines and optional context. Copy the TAG into your next edit.`
 
-export const HASHLINE_EDIT_GUIDANCE = `Edit the project HTML with hashline DSL text. The \`diff\` MUST start with the \`[index.html#TAG]\` header copied verbatim from your latest read/find, then ops:
+export const HASHLINE_EDIT_GUIDANCE = `Edit the project HTML with hashline DSL text. The \`diff\` MUST start with the \`[#TAG]\` header copied verbatim from your latest read/find, then ops:
 - \`SWAP N.=M:\` then \`+TEXT\` body rows — replace original lines N..M (inclusive).
 - \`DEL N.=M\` — delete lines N..M (no body).
 - \`INS.PRE N:\` / \`INS.POST N:\` — insert body rows before/after line N; \`INS.HEAD:\` / \`INS.TAIL:\` at the doc start/end.
-Each body row is \`+TEXT\` (verbatim; leading whitespace kept; \`+\` alone = blank line). Numbers refer to the ORIGINAL file from your latest read and never shift as hunks apply, so ONE \`edit\` may apply many ops at once. BATCH a complete logical change — a whole section, a group of related edits, or an entire fix/refinement — into a SINGLE \`edit\` whose \`diff\` carries every needed SWAP/DEL/INS op (and may repeat the \`[index.html#TAG]\` header for multiple sections). Prefer one medium-sized edit over a chain of tiny one-line edits; two consecutive one-line tweaks should almost always have been one edit. Keep each individual op tight: touch only lines your read displayed, and ranges cover ONLY lines whose content changes — pure additions use INS, never a widened SWAP over unchanged lines. Every successful edit mints a fresh #TAG — anchor the next edit on the edit response or a fresh read. On stale-tag rejection, STOP and re-read before retrying. Pass a top-level \`action\` (one short imperative label for this edit, shown to the user).`
+Each body row is \`+TEXT\` (verbatim; leading whitespace kept; \`+\` alone = blank line). Numbers refer to the ORIGINAL file from your latest read and never shift as hunks apply, so ONE \`edit\` may apply many ops at once. BATCH a complete logical change — a whole section, a group of related edits, or an entire fix/refinement — into a SINGLE \`edit\` whose \`diff\` carries every needed SWAP/DEL/INS op (and may repeat the \`[#TAG]\` header for multiple sections). Prefer one medium-sized edit over a chain of tiny one-line edits; two consecutive one-line tweaks should almost always have been one edit. Keep each individual op tight: touch only lines your read displayed, and ranges cover ONLY lines whose content changes — pure additions use INS, never a widened SWAP over unchanged lines. Every successful edit mints a fresh #TAG — anchor the next edit on the edit response or a fresh read. On stale-tag rejection, STOP and re-read before retrying. Pass a top-level \`action\` (one short imperative label for this edit, shown to the user).`

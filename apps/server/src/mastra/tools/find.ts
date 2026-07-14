@@ -12,15 +12,21 @@ import type { SnapshotStore } from '../lib/hashline/snapshots.ts'
 
 /**
  * Find text in the project HTML and return a hashline section
- * (`[index.html#TAG]` + `N:TEXT` rows) for the matches with optional context.
+ * (`[#TAG]` + `N:TEXT` rows) for the matches with optional context.
  * Records a snapshot covering the displayed lines so the next edit can verify
  * the tag.
  */
 export function createFindTool(
   fs: Filesystem,
   snapshots: SnapshotStore,
-  path: string = HASHLINE_PATH,
+  options: {
+    /** Snapshot/filesystem key. Also the header path when `tagOnly` is false. */
+    path?: string
+    /** Emit `[#TAG]` headers (single-file) instead of `[path#TAG]`. */
+    tagOnly?: boolean
+  } = {},
 ) {
+  const path = options.path ?? HASHLINE_PATH
   return createTool({
     description: HASHLINE_FIND_GUIDANCE,
     execute: async ({ context, ignoreCase, limit, regex, text: query }) => {
@@ -45,7 +51,10 @@ export function createFindTool(
       }
       const sortedDisplay = [...display].sort((a, b) => a - b)
       const tag = await snapshots.record(path, html, sortedDisplay)
-      const header = formatHashlineHeader(path, tag)
+      const header = formatHashlineHeader(
+        options.tagOnly ? undefined : path,
+        tag,
+      )
       const body =
         matchLines.length === 0
           ? `[no matches for "${query}"]`

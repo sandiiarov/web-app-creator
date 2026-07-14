@@ -76,6 +76,16 @@ export interface ParsedRange {
 }
 
 export interface SplitOptions {
+  /**
+   * Working directory for resolving relative header paths. Unused by the
+   * single-file landing tools (their filesystem ignores the path).
+   */
   cwd?: string
-  path?: string
+  /**
+   * Implicit path for tag-only headers (`[#TAG]`, no path). Single-file
+   * callers pass this so a tag-only header resolves to the same canonical
+   * path used for snapshot lookup and storage. Full-path `[path#TAG]`
+   * headers carry their own path and ignore this.
+   */
+  defaultPath?: string
 }
