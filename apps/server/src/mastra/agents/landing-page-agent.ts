@@ -11,19 +11,15 @@ import {
 } from '../tools/landing-tools.ts'
 
 /**
- * Concise system prompt: one-sentence role, a hashline quick reference, an
- * execution note, then working guidelines. A separate planner call
- * (`lib/planner.ts`) runs BEFORE the agent each turn with the design guidance as
- * its system prompt and returns a structured plan; that plan is the agent's user
- * message. The agent does no design reasoning — it executes the plan. Detailed
- * tool schemas still travel via the `tools` param.
+ * Concise system prompt: one-sentence role, a hashline quick reference, then
+ * working guidelines. Detailed tool schemas still travel via the `tools` param.
  */
 const LANDING_AGENT_INSTRUCTIONS = [
   'You are a landing-page design agent. You build and refine a single self-contained project HTML document by scraping reference brands, reading and editing the HTML, generating imagery, and taking screenshots.',
   '',
   HASHLINE_SYSTEM_GUIDANCE,
   '',
-  "Your user message is a design plan produced by the planner — implement it directly via read/find/edit/generate_image. The plan begins with the user's verbatim request under USER REQUEST: — build EXACTLY what the user asked for. Do not invent product content (names, metrics, testimonials, features, copy) that is not in the request or scraped assets; use real scraped/supplied content (scrape.images, scrape.branding, the user's text) and ask the user if essential content is missing. Do not re-plan or second-guess the aesthetic direction; execute the committed palette, typography, sections, and motion. Build incrementally (shell → tokens → one section at a time); make each `edit` a complete logical unit (a whole section, a related block of edits, or the entire requested change), not a one-line tweak. Reserve `screenshot` for a final check once the page or the requested change is complete, like running tests or a linter — not after every edit.",
+  "Build exactly what the user asked for. Use real scraped/supplied content (scrape.images, scrape.branding, the user's text); do not invent product content (names, metrics, testimonials, features, copy) that is not in the request or scraped assets — ask the user if essential content is missing. Reserve `screenshot` for a final check once the page or the requested change is complete, like running tests or a linter, not after every edit.",
   '',
   'Working guidelines:',
   '- Build incrementally: scaffold the shell, add design tokens, then fill one section at a time. Each edit is a complete logical unit (e.g. one full section), not a single line. A full finished page in one edit is vulnerable to output-cap truncation.',

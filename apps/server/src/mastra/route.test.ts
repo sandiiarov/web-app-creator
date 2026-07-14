@@ -7,17 +7,6 @@ import type {
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-// The planner is a dedicated LLM call; mock it in tests so no real OpenRouter
-// call is made. Default: pass the prompt through as the plan.
-vi.mock('./lib/planner.ts', () => ({
-  runPlanner: async (opts: { prompt: string }) => ({
-    actions: ['Plan step 1', 'Plan step 2'],
-    direction: 'test direction',
-    ok: true,
-    plan: opts.prompt,
-  }),
-}))
-
 const PNG_DATA_URL = 'data:image/png;base64,iVBORw0KGgo='
 
 const createdProjectIds: string[] = []

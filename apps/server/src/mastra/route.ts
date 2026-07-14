@@ -15,7 +15,6 @@ import {
   visionCost,
 } from './lib/cost.ts'
 import { ocrImageInputs, type ImageOcrResult } from './lib/image-ocr.ts'
-import { runPlanner } from './lib/planner.ts'
 import {
   captureProjectSelectors,
   type CapturedProjectSelector,
@@ -332,8 +331,6 @@ async function activeStreamLandingAgent({
   // Accumulate prompt-attachment/screenshot vision OCR metadata.
   let visionCalls = 0
   let visionCostUsd = 0
-  let plannerCalls = 0
-  let plannerCostUsd = 0
   let visionImages = 0
   // Sum the final provider-reported cost chunk from every LLM step. OpenRouter
   // reports usage/cost once at the end of each SSE generation, while Mastra's
@@ -351,8 +348,7 @@ async function activeStreamLandingAgent({
   const costCapUsd = config.agentMaxCostUsd
   const checkCostCap = (): boolean => {
     if (costCapUsd <= 0) return false
-    const runCostUsd =
-      llmProviderCostUsd + imageCostUsd + visionCostUsd + plannerCostUsd
+    const runCostUsd = llmProviderCostUsd + imageCostUsd + visionCostUsd
     if (runCostUsd < costCapUsd) return false
     fatalRunError = `Run exceeded the $${costCapUsd.toFixed(2)} cost cap.`
     emit('error', { message: fatalRunError })
@@ -377,8 +373,7 @@ async function activeStreamLandingAgent({
       config.firecrawl.creditUsd,
     )
     const scrapeCostUsd = firecrawlCostUsd + scrapeOcrCostUsd
-    const totalCost =
-      llmCost + scrapeCostUsd + imageCostUsd + visionCostUsd + plannerCostUsd
+    const totalCost = llmCost + scrapeCostUsd + imageCostUsd + visionCostUsd
 
     return {
       cost: totalCost,
@@ -388,10 +383,6 @@ async function activeStreamLandingAgent({
           count: imageCount,
         },
         llm: llmCost,
-        planner: {
-          calls: plannerCalls,
-          cost: plannerCostUsd,
-        },
         scrape: {
           calls: scrapeCalls,
           cost: scrapeCostUsd,
@@ -460,58 +451,9 @@ async function activeStreamLandingAgent({
       if (checkCostCap()) controller.signal.throwIfAborted()
     }
 
-    const promptWithContext = attachmentAnalysis.contextBlock
+    const agentPrompt = attachmentAnalysis.contextBlock
       ? `${prompt}\n\n${attachmentAnalysis.contextBlock}`
       : prompt
-
-    // Planner: a dedicated LLM call with the design guidance as its system
-    // prompt. It returns a structured plan; `actions` stream to the UI as a
-    // `plan` tool_call (rendered by PlanBlock), and the full `plan` becomes the
-    // agent's user message. The planner owns design; the agent owns execution.
-    const planToolId = `tool-${++toolCallSeq}-plan`
-    const planRunning: RecordedToolPayload = {
-      action: 'Plan',
-      detail: null,
-      id: planToolId,
-      providerId: `planner-${recordedTurn.id}`,
-      state: 'running',
-      tool: 'plan',
-    }
-    emit('tool_call', planRunning)
-    const planner = await runPlanner({
-      model: textModel,
-      prompt: promptWithContext,
-      signal: controller.signal,
-    })
-    plannerCalls += 1
-    if (planner.cost) plannerCostUsd += planner.cost
-    const planTerminal: RecordedToolPayload =
-      planner.ok && planner.actions.length > 0
-        ? {
-            action: 'Plan',
-            detail: planner.direction || null,
-            id: planToolId,
-            providerId: `planner-${recordedTurn.id}`,
-            result: planner.actions.join('\n'),
-            state: 'done',
-            tool: 'plan',
-          }
-        : {
-            action: 'Plan',
-            detail: null,
-            id: planToolId,
-            providerId: `planner-${recordedTurn.id}`,
-            result: planner.reason ?? 'Planning failed.',
-            state: 'error',
-            tool: 'plan',
-          }
-    emit('tool_call', planTerminal)
-    emitStats()
-    if (checkCostCap()) controller.signal.throwIfAborted()
-    // The agent implements the plan (fall back to the raw prompt + attachments
-    // if planning failed, so a planner outage never blocks the build).
-    const agentPrompt =
-      planner.ok && planner.plan ? planner.plan : promptWithContext
     // Replay the real prior conversation (raw Mastra messages) when available
     // so the model sees previous tool calls and tool results, not a prose
     // paraphrase. The agent log holds per-step Mastra snapshots; take the last
