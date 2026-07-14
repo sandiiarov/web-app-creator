@@ -2,39 +2,39 @@
 
 ## Purpose
 
-- Workspace package (`@workspace/agent-skills`) holding Mastra agent skills as on-disk markdown and exporting them as inline skills.
+- Workspace pkg (`@workspace/agent-skills`) holds Mastra agent skills as on-disk md, exports as `InlineSkill`.
 
 ## Ownership
 
-- `src/index.ts`: package entry; re-exports each skill bundle.
-- `src/skills/design/`: landing-page `design` skill forked from the pi design skill.
-  - `SKILL.md`: concise advisory control plane. Owns single-document scope, scenario guidance, the `skill ref | when to use` index, conversation-scoped read reuse, broad versus narrow behavior, achievable verification, and truthful completion.
-  - `references/*.md`: 16 landing-page references split into 7 operation modes (`create`, `finish`, `redesign`, `refine`, `relayout`, `review`, `smell`) and 9 design foundations (`voice`, `layout`, `color`, `typeset`, `writing`, `responsive`, `interaction`, `surface`, `motion`). `review` covers quick and thorough diagnostics; `smell` covers generated-pattern diagnosis and treatment; `interaction` owns CTA behavior; `surface` owns borders, radius, and depth.
-  - `skill.ts`: reads `SKILL.md` plus every `references/*.md` from disk via `import.meta.url`, parses frontmatter, and builds the Mastra `InlineSkill` through `createSkill`.
-  - `skill.test.ts`: verifies executable loader contracts only: parsed metadata/instructions, exact reference inventory, inline-skill shape, source presence, and byte parity with disk. Prompt prose and Markdown wording are verified by review and live traces rather than regex assertions.
-- `package.json`, `tsconfig.json`, `oxfmt.config.ts`, `oxlint.config.ts`, `vitest.config.ts`: package scripts/config following workspace conventions.
+- `src/index.ts`: pkg entry; re-xports each skill bundle.
+- `src/skills/design/`: landing-page `design` skill forked frm pi design skill.
+  - `SKILL.md`: concise advisory ctrl plane. Owns single-doc scope, scenario guidance, `skill ref | when to use` idx, convo-scoped read reuse, broad vs narrow behavior, achievable verification, truthful completion.
+  - `references/*.md`: 16 landing-page refs split into 7 modes (`create`, `finish`, `redesign`, `refine`, `relayout`, `review`, `smell`) + 9 foundations (`voice`, `layout`, `color`, `typeset`, `writing`, `responsive`, `interaction`, `surface`, `motion`). `review` covers quick+thorough diagnostics; `smell` covers generated-pattern dx+treatment; `interaction` owns CTA behavior; `surface` owns borders/radius/depth.
+  - `skill.ts`: reads `SKILL.md` + every `references/*.md` from disk via `import.meta.url`, parses frontmatter, builds Mastra `InlineSkill` thru `createSkill`.
+  - `skill.test.ts`: verifies executable loader contracts only: parsed metadata/instructions, exact ref inventory, inline-skill shape, source presence, byte parity w/ disk. Prompt prose + md wording verified by review + live traces, not regex assertions.
+- `package.json`, `tsconfig.json`, `oxfmt.config.ts`, `oxlint.config.ts`, `vitest.config.ts`: pkg scripts/config following workspace conventions.
 
 ## Local Contracts
 
-- Skill content lives in markdown on disk; never inline instructions or references as TypeScript strings.
-- The package is source-consumed through `exports: { ".": "./src/index.ts" }`. Node type-strips source at runtime, so markdown remains available without a `dist` asset-copy step.
-- Public surface: `import { design } from '@workspace/agent-skills'`. `design` is the Mastra `InlineSkill` and attaches directly through `skills: [design]`.
-- Inline reference-content keys are `create.md`, `iterate.md`, and `review.md`; agent `skill_read` calls use their root-relative `references/<file>.md` paths.
-- `SKILL.md` is a compact lifecycle router. `create.md` consolidates the full-page foundations, `iterate.md` covers focused edits through redesign, and `review.md` covers diagnosis, finishing, and generated-pattern cleanup.
-- User intent selects one starting reference: creation loads `create.md`, follow-up changes load `iterate.md`, and review or finishing loads `review.md`. The agent does not preload all three.
-- Successful full reads remain useful throughout the same project conversation. Later turns reuse available lifecycle context and read only a newly needed reference; a broad redesign without creation context may use both `iterate.md` and `create.md`.
-- The only writable design surface is the single project HTML document. The skill creates no reports, briefs, mockups, alternate HTML files, or design documentation.
-- Verification is limited to source inspection and the consumer's named mobile/tablet/desktop screenshot profiles. The skill must not claim unavailable interaction, assistive-technology, simulation, profiling, exact-width, or prolonged-usage checks.
-- The skill complements rather than duplicates consumer instructions/tool guidance. Hashline DSL, incremental edit mechanics, tool schemas, and UI transcript behavior remain owned by `LANDING_AGENT_INSTRUCTIONS` and landing tools.
+- Skill content lives in md on disk; never inline instructions/refs as TS strings.
+- Pkg source-consumed thru `exports: { ".": "./src/index.ts" }`. Node type-strips src @ runtime, so md stays available w/o `dist` asset-copy step.
+- Public surface: `import { design } from '@workspace/agent-skills'`. `design` is Mastra `InlineSkill`, attaches directly via `skills: [design]`.
+- Inline ref-content keys: `create.md`, `iterate.md`, `review.md`; agent `skill_read` calls use root-relative `references/<file>.md` paths.
+- `SKILL.md`: compact lifecycle router. `create.md` consolidates full-page foundations, `iterate.md` covers focused edits thru redesign, `review.md` covers dx/finishing/generated-pattern cleanup.
+- User intent selects 1 starting ref: creation loads `create.md`, follow-up changes load `iterate.md`, review/finishing loads `review.md`. Agent does not preload all 3.
+- Successful full reads stay useful thru same project convo. Later turns reuse available lifecycle ctx, read only newly needed ref; broad redesign w/o creation ctx may use both `iterate.md` + `create.md`.
+- Only writable design surface = single project HTML doc. Skill creates no reports/briefs/mockups/alt HTML files/design docs.
+- Verification limited to source inspection + consumer's named mobile/tablet/desktop screenshot profiles. Skill must not claim unavailable interaction/AT/simulation/profiling/exact-width/prolonged-usage checks.
+- Skill complements vs duplicates consumer instructions/tool guidance. Hashline DSL, incremental edit mechanics, tool schemas, UI transcript behavior stay owned by `LANDING_AGENT_INSTRUCTIONS` + landing tools.
 
 ## Work Guidance
 
-- Maintain this as a landing-page fork; do not re-copy the pi source or reintroduce app-wide/file/report/CLI machinery. Keep generic application state systems, destructive workflows, component-library abstraction, and unrelated code-organization guidance out of its references.
-- Keep `skill.ts` a thin loader and keep advisory routing behavior in `SKILL.md`.
-- Keep the control plane concise. Detailed design methodology belongs in one owning reference, not repeated across the root and many references.
-- When adding, removing, or renaming a reference, update the lifecycle router, loader inventory test, and this DOX together; verify routing behavior with a live trace.
-- Keep tests off prompt prose and Markdown wording. Test executable parsing, loading, inventory, and tool behavior instead.
-- Keep lifecycle references distinct: creation owns page foundations, iteration owns requested changes, and review owns diagnosis and final treatment. Supporting context never determines mutation breadth.
+- Maintain as landing-page fork; don't re-copy pi src or reintroduce app-wide/file/report/CLI machinery. Keep generic app state systems, destructive workflows, component-lib abstraction, unrelated code-org guidance out of refs.
+- Keep `skill.ts` thin loader, keep advisory routing in `SKILL.md`.
+- Keep ctrl plane concise. Detailed design methodology belongs in 1 owning ref, not repeated across root + many refs.
+- When adding/removing/renaming ref, update lifecycle router, loader inventory test, this DOX together; verify routing w/ live trace.
+- Keep tests off prompt prose + md wording. Test executable parsing/loading/inventory/tool behavior instead.
+- Keep lifecycle refs distinct: creation owns page foundations, iteration owns requested changes, review owns dx + final treatment. Supporting ctx never determines mutation breadth.
 
 ## Verification
 

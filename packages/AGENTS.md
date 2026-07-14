@@ -2,15 +2,15 @@
 
 ## Purpose
 
-- Owns internal workspace packages shared by apps.
+- Owns shared internal workspace pkgs used by apps.
 
 ## Ownership
 
-- `ui/`: shared shadcn/Tailwind React component package.
-- `prompt-panel/`: landing-page prompt panel UI + conversation domain model, source-consumed by the client.
-- `conversation/`: canonical conversation model + the shared event→turn reducer (`applyEventToTurn`/`replayClientEvents`/`terminalizeTools`) consumed by both the server (hydration) and the client (live SSE stream); rolling `stats` events upsert one latest snapshot per turn, terminal outcomes include durable stopped state separate from errors, and tool-call parts may carry `{ alt, url }` image arguments for diagnostic previews.
-- `landing-preview/`: shared landing-page preview iframe runtime, DOM morphing, and browser screenshot capture, source-consumed by the client through a dedicated React Fast Refresh export. The iframe carries `key={reloadKey}` and `reloadPreview()` bumps that key — do NOT remove it: browsers don't re-load an `<iframe srcDoc>` when React updates the attribute after an empty initial mount, so without the remount the preview renders blank on project open and on the first live `html_update`.
-- `agent-skills/`: Mastra agent skills stored as on-disk markdown and exported as inline skills; its landing-page `design` fork uses a concise control plane plus in-memory mode/foundation references.
+- `ui/`: shared shadcn/Tailwind React component pkg.
+- `prompt-panel/`: landing-page prompt panel UI + conversation domain model; source-consumed by client.
+- `conversation/`: canonical conversation model + shared event→turn reducer (`applyEventToTurn`/`replayClientEvents`/`terminalizeTools`) used by server (hydration) and client (live SSE stream); rolling `stats` upsert one latest snapshot per turn; terminal outcomes include durable stopped state separate from errors; tool-call parts may carry `{ alt, url }` image args for diagnostic previews.
+- `landing-preview/`: shared landing-page preview iframe runtime, DOM morphing, browser screenshot capture; source-consumed by client via dedicated React Fast Refresh export. Iframe carries `key={reloadKey}`; `reloadPreview()` bumps that key — do NOT remove: browsers don't re-load `<iframe srcDoc>` when React updates the attr after an empty initial mount; without remount preview renders blank on project open + first live `html_update`.
+- `agent-skills/`: Mastra agent skills on disk as markdown, exported as inline skills; landing-page `design` fork uses concise control plane + in-memory mode/foundation refs.
 - `typescript-config/`: shared strict TypeScript 7 (tsc) configs.
 - `vite-config/`: shared Vite React config factory.
 - `vitest-preset/`: shared Vitest config factory.
@@ -19,25 +19,25 @@
 
 ## Local Contracts
 
-- Packages expose public entry points through `package.json` `exports`; consumers must import through package exports.
-- Keep package scripts package-local; root orchestration belongs to Turborepo.
-- Workspace dependencies use `workspace:*`; shared third-party versions belong in the root `pnpm-workspace.yaml` catalog when reused.
-- Config packages must stay generic and avoid app-specific runtime assumptions.
-- Shared UI belongs in `packages/ui`; application state and product-specific composition stay in apps.
+- Pkgs expose public entries via `package.json` `exports`; consumers must import via pkg exports.
+- Keep pkg scripts pkg-local; root orchestration → Turborepo.
+- Workspace deps use `workspace:*`; shared 3rd-party versions → root `pnpm-workspace.yaml` catalog when reused.
+- Config pkgs must stay generic; avoid app-specific runtime assumptions.
+- Shared UI → `packages/ui`; app state + product-specific composition stay in apps.
 
 ## Work Guidance
 
 - Prefer small typed factories/config exports over copied config files.
-- When creating a new package, add it under `packages/*`, give it package-local scripts, and ensure Turborepo can run the standard tasks.
+- New pkg: add under `packages/*`, give pkg-local scripts, ensure Turborepo runs standard tasks.
 
 ## Verification
 
-- Focused: `pnpm --filter <package-name> typecheck`, `lint`, `format:check`, and `test` when the package declares it.
-- All packages: `pnpm --filter './packages/*' typecheck`, `lint`, and `format:check`.
+- Focused: `pnpm --filter <package-name> typecheck`, `lint`, `format:check`, `test` when pkg declares it.
+- All pkgs: `pnpm --filter './packages/*' typecheck`, `lint`, `format:check`.
 
 ## Child DOX Index
 
-- `ui/AGENTS.md` — shared shadcn/Tailwind component system and globals.
+- `ui/AGENTS.md` — shared shadcn/Tailwind component system + globals.
 - `prompt-panel/AGENTS.md` — extracted prompt panel UI + landing conversation domain model.
-- `landing-preview/AGENTS.md` — extracted landing-page preview iframe runtime and screenshot capture.
-- `agent-skills/AGENTS.md` — Mastra agent skills package and landing-page `design` skill contracts.
+- `landing-preview/AGENTS.md` — extracted landing-page preview iframe runtime + screenshot capture.
+- `agent-skills/AGENTS.md` — Mastra agent skills pkg + landing-page `design` skill contracts.
