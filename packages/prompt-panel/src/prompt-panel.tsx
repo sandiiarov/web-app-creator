@@ -192,7 +192,12 @@ export function PromptPanel({
         pointerY: event.clientY,
         rafId: null,
       }
-      ;(event.target as HTMLElement).setPointerCapture?.(event.pointerId)
+      // Capture on the stable handler element (currentTarget), not the volatile
+      // event.target child: a mid-drag re-render can unmount the captured child,
+      // which silently releases capture and strands the drag. The same element
+      // owns onPointerMove/Up/LostPointerCapture below, so it keeps receiving
+      // events (including pointerup) even with the cursor outside the window.
+      event.currentTarget.setPointerCapture?.(event.pointerId)
     },
     [position.x, position.y],
   )
@@ -340,7 +345,8 @@ export function PromptPanel({
     (event: ReactPointerEvent<HTMLDivElement>) => {
       event.stopPropagation()
       const state = resizeState.current
-      if (state?.rafId != null) {
+      if (!state) return
+      if (state.rafId != null) {
         window.cancelAnimationFrame(state.rafId)
       }
 
@@ -813,6 +819,8 @@ function PanelResizeHandle({
         'absolute inset-y-0 z-40 w-1.5 cursor-col-resize touch-none hover:bg-accent/40',
         side === 'left' ? 'left-0' : 'right-0',
       )}
+      onLostPointerCapture={onResizeEnd}
+      onPointerCancel={onResizeEnd}
       onPointerDown={(event) => onResizeStart(event, side)}
       onPointerMove={onResizeMove}
       onPointerUp={onResizeEnd}

@@ -74,6 +74,8 @@ export function PanelHeader({
         'shrink-0 border-b border-border/70',
         dragging ? 'cursor-grabbing' : 'cursor-grab',
       )}
+      onLostPointerCapture={onDragEnd}
+      onPointerCancel={onDragEnd}
       onPointerDown={onDragStart}
       onPointerMove={onDragMove}
       onPointerUp={onDragEnd}
