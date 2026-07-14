@@ -15,6 +15,12 @@ export type LandingPreviewProps = {
   onElementSelectionCancel?: () => void
   onError?: (message: string) => void
   onPreviewDiagnostic?: (diagnostic: PreviewDiagnostic) => void
+  /**
+   * Controlled reload signal: bump to a new value to force a full preview
+   * reload from the current `html` (rebuild `srcDoc` and remount the iframe).
+   * Opt-in; omitted means the consumer cannot trigger a manual reload.
+   */
+  reloadToken?: number
 }
 
 export interface PreviewConsoleDiagnostic {
@@ -137,9 +143,11 @@ export function LandingPreview({
   onElementSelectionCancel,
   onError,
   onPreviewDiagnostic,
+  reloadToken,
 }: LandingPreviewProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null)
   const lastAppliedHtmlRef = useRef('')
+  const lastReloadTokenRef = useRef<number | undefined>(reloadToken)
   const [srcDoc, setSrcDoc] = useState('')
   const [reloadKey, setReloadKey] = useState(0)
 
@@ -206,6 +214,19 @@ export function LandingPreview({
       iframe.removeEventListener('load', tryMorphAfterReady)
     }
   }, [html])
+
+  // Consumer-triggered full reload (e.g. a header Refresh button). Rebuilds
+  // srcDoc from the current html and remounts the iframe via reloadKey. Skips
+  // the initial mount and any render where the token has not changed.
+  useEffect(() => {
+    if (reloadToken === undefined) return
+    if (reloadToken === lastReloadTokenRef.current) return
+    lastReloadTokenRef.current = reloadToken
+    if (!html.trim()) return
+    lastAppliedHtmlRef.current = html
+    setSrcDoc(preparePreviewMorphHtml(html))
+    setReloadKey((key) => key + 1)
+  }, [reloadToken, html])
 
   useEffect(() => {
     if (!elementSelectionActive || !onElementSelected) return

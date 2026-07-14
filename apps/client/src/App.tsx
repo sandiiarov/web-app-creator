@@ -61,6 +61,7 @@ function useEditorPageRender({ projectId }: EditorPageProps) {
   )
   const [selectedElementAttachment, setSelectedElementAttachment] =
     useState<ElementAttachmentInput | null>(null)
+  const [reloadToken, setReloadToken] = useState(0)
 
   const setErrorMessage = useCallback((message: null | string) => {
     setError(message)
@@ -68,6 +69,11 @@ function useEditorPageRender({ projectId }: EditorPageProps) {
 
   const handlePanelLayoutChange = useCallback(
     (layout: PanelLayout) => setPanelLayout(layout),
+    [],
+  )
+
+  const handleReloadPreview = useCallback(
+    () => setReloadToken((token) => token + 1),
     [],
   )
 
@@ -147,6 +153,7 @@ function useEditorPageRender({ projectId }: EditorPageProps) {
           onElementSelected={handleElementSelected}
           onElementSelectionCancel={handleElementSelectionCancel}
           onError={setErrorMessage}
+          reloadToken={reloadToken}
         />
       </div>
       <PromptPanel
@@ -159,6 +166,7 @@ function useEditorPageRender({ projectId }: EditorPageProps) {
         onElementSelectionToggle={handleElementSelectionToggle}
         onLayoutChange={handlePanelLayoutChange}
         onModelsChange={landing.setModels}
+        onReloadPreview={handleReloadPreview}
         onSelectedElementAttachmentConsumed={() =>
           setSelectedElementAttachment(null)
         }

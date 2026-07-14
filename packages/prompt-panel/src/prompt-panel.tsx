@@ -69,6 +69,7 @@ export type PromptPanelProps = {
   onElementSelectionToggle: () => void
   onLayoutChange?: (layout: PanelLayout) => void
   onModelsChange: (models: LandingModels) => void
+  onReloadPreview?: () => void
   onSelectedElementAttachmentConsumed: () => void
   onSend: (input: LandingAgentSendInput) => void
   onStop: () => void
@@ -108,6 +109,7 @@ export function PromptPanel({
   onElementSelectionToggle,
   onLayoutChange,
   onModelsChange,
+  onReloadPreview,
   onSelectedElementAttachmentConsumed,
   onSend,
   onStop,
@@ -538,6 +540,7 @@ export function PromptPanel({
           onDragStart={handleDragStart}
           onLayoutChange={handleLayoutChange}
           onPanelMenuOpenChange={setPanelMenuOpen}
+          onReloadPreview={onReloadPreview}
           onToggleCollapsed={() => setCollapsed(false)}
           onToggleTheme={onToggleTheme}
           onViewportChange={onViewportChange}
@@ -560,6 +563,7 @@ export function PromptPanel({
             onDragStart={handleDragStart}
             onLayoutChange={handleLayoutChange}
             onPanelMenuOpenChange={setPanelMenuOpen}
+            onReloadPreview={onReloadPreview}
             onToggleCollapsed={() => setCollapsed(true)}
             onToggleTheme={onToggleTheme}
             onViewportChange={onViewportChange}

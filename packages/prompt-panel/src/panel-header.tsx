@@ -11,6 +11,7 @@ import {
   GripVertical,
   Maximize2,
   Minimize2,
+  RefreshCw,
 } from 'lucide-react'
 import { type PointerEvent as ReactPointerEvent } from 'react'
 
@@ -41,6 +42,7 @@ export function PanelHeader({
   onDragStart,
   onLayoutChange,
   onPanelMenuOpenChange,
+  onReloadPreview,
   onToggleCollapsed,
   onToggleTheme,
   onViewportChange,
@@ -60,6 +62,7 @@ export function PanelHeader({
   onDragStart: (event: ReactPointerEvent<HTMLDivElement>) => void
   onLayoutChange: (layout: PanelLayout) => void
   onPanelMenuOpenChange: (open: boolean) => void
+  onReloadPreview?: () => void
   onToggleCollapsed: () => void
   onToggleTheme: () => void
   onViewportChange: (viewport: PreviewViewport) => void
@@ -114,6 +117,23 @@ export function PanelHeader({
             onViewportChange={onViewportChange}
             viewport={viewport}
           />
+          {onReloadPreview ? (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  aria-label="Refresh preview"
+                  disabled={!canDownload}
+                  onClick={onReloadPreview}
+                  size="icon-sm"
+                  type="button"
+                  variant="ghost"
+                >
+                  <RefreshCw />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">Refresh preview</TooltipContent>
+            </Tooltip>
+          ) : null}
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
