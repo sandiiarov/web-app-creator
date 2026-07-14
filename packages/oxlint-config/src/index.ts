@@ -39,6 +39,26 @@ const tailwindPlugin = {
 }
 
 const baseRules = {
+  // Apps are leaves: nothing may import the app packages; shared code lives in
+  // packages/*. Enforced repo-wide — this factory feeds every workspace's
+  // oxlint.config.ts, so the rule needs no per-package setup.
+  'no-restricted-imports': [
+    'error',
+    {
+      patterns: [
+        {
+          group: [
+            '@workspace/client',
+            '@workspace/client/*',
+            '@workspace/server',
+            '@workspace/server/*',
+          ],
+          message:
+            'apps are leaves — nothing may import @workspace/client or @workspace/server; shared code belongs in packages/*',
+        },
+      ],
+    },
+  ],
   'no-unused-vars': [
     'error',
     {
