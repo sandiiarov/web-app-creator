@@ -343,16 +343,27 @@ function mergeConsecutiveOps(ops: AtomicOp[]): AtomicOp[] {
 // ── Main apply function ────────────────────────────────────────────────────
 
 /**
- * Self-heal replacement boundaries. A common model mistake is to restate the
- * unchanged structural closer that sits immediately AFTER a replaced range as
- * the last body row of a `SWAP N.=M:`. Keeping it would duplicate that closer.
- * When the last payload line exactly equals the line just past the range AND
- * that line is a structural closer, drop the duplicate and warn.
+ * Self-heal replacement boundaries. Catches two common model mistakes
+ * where a `SWAP N.=M:` body restates a closer the unchanged file already
+ * provides:
  *
- * Conservative by design: it only fires on an exact (whitespace-sensitive)
- * match with a structural closer, so intentionally repeated statements and
- * differently-indented nested closers are left intact.
+ * 1. The last body row exactly duplicates the structural closer on the line
+ *    immediately AFTER the range — keeping it would duplicate that closer.
+ * 2. The body re-wraps a raw-text block (`<style>…</style>`, `<script>…</script>`,
+ *    `<textarea>…</textarea>`, `<title>…</title>`) it did not need to re-emit:
+ *    it opens AND closes the same tag while the file still has an unmatched
+ *    `</tag>` after the range. Drop the trailing wrapper closer so the block
+ *    extends to the original close.
+ *
+ * Conservative by design: case 1 fires only on an exact (whitespace-
+ * sensitive) match with a structural closer; case 2 fires only for raw-text
+ * elements (whose content cannot be sibling HTML) and only when a dangling
+ * original closer proves the wrapper was restated. The post-apply balance
+ * guard is the backstop, so a wrong guess here can never corrupt — only fail
+ * to fire.
  */
+const RAW_TEXT_OPEN_RE = /^<(style|script|textarea|title)\b[^>]*>$/
+
 function repairReplacementBoundaries(
   ops: AtomicOp[],
   fileLines: readonly string[],
@@ -366,17 +377,60 @@ function repairReplacementBoundaries(
     )
       return op
     const afterIdx = op.anchorLine - 1 + op.deleteCount // 0-indexed line immediately after the range
+    const lastPayload = op.payload[op.payload.length - 1]!
+
+    // Case 1: last body row duplicates the unchanged closer just past the range.
     const afterLine = fileLines[afterIdx]
-    if (afterLine === undefined) return op
-    const lastPayload = op.payload[op.payload.length - 1]
-    if (lastPayload !== afterLine) return op
-    if (!STRUCTURAL_CLOSER_RE.test(afterLine.trim())) return op
-    warnings.push(
-      `SWAP ${op.anchorLine}.=${op.anchorLine + op.deleteCount - 1}: dropped a trailing body row that duplicated the unchanged closing line ${op.anchorLine + op.deleteCount} ("${afterLine.trim()}"). Keep only the lines that change; the range already excludes the line after it.`,
-    )
-    return { ...op, payload: op.payload.slice(0, -1) }
+    if (
+      afterLine !== undefined &&
+      lastPayload === afterLine &&
+      STRUCTURAL_CLOSER_RE.test(afterLine.trim())
+    ) {
+      warnings.push(
+        `SWAP ${op.anchorLine}.=${op.anchorLine + op.deleteCount - 1}: dropped a trailing body row that duplicated the unchanged closing line ${op.anchorLine + op.deleteCount} ("${afterLine.trim()}"). Keep only the lines that change; the range already excludes the line after it.`,
+      )
+      return { ...op, payload: op.payload.slice(0, -1) }
+    }
+
+    // Case 2: body re-wraps a raw-text block whose original close still dangles
+    // after the range. Drop the restated wrapper closer.
+    if (op.payload.length >= 2) {
+      const openMatch = RAW_TEXT_OPEN_RE.exec(op.payload[0]!.trim())
+      if (openMatch) {
+        const tag = openMatch[1]!
+        if (
+          lastPayload.trim() === `</${tag}>` &&
+          suffixHasUnmatchedCloser(fileLines, afterIdx, tag)
+        ) {
+          warnings.push(
+            `SWAP ${op.anchorLine}.=${op.anchorLine + op.deleteCount - 1}: dropped a re-emitted </${tag}> wrapper row; the <${tag}> block already closes later on its own. Keep wrapper tags out of the SWAP body — replace only the lines that change.`,
+          )
+          return { ...op, payload: op.payload.slice(0, -1) }
+        }
+      }
+    }
+
+    return op
   })
   return { ops: repaired, warnings }
+}
+
+/** True when `fileLines` from `fromIdx` has more `</tag>` closers than `<tag>` opens. */
+function suffixHasUnmatchedCloser(
+  fileLines: readonly string[],
+  fromIdx: number,
+  tag: string,
+): boolean {
+  let opens = 0
+  let closes = 0
+  const openRe = new RegExp(`<${tag}(?=\\s|>|\\/>)`, 'gi')
+  const closeRe = new RegExp(`<\\/${tag}(?=\\s|>)`, 'gi')
+  for (let i = fromIdx; i < fileLines.length; i += 1) {
+    const line = fileLines[i]!
+    opens += (line.match(openRe) || []).length
+    closes += (line.match(closeRe) || []).length
+  }
+  return closes > opens
 }
 
 function trailingPhantomLine(fileLines: readonly string[]): number {

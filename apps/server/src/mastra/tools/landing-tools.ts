@@ -65,7 +65,7 @@ const LANDING_TOOL_DEFINITIONS = [
   ),
   tool(
     'read',
-    'Use `read` to inspect the current project HTML as a hashline section: a `[#TAG]` header (copy the TAG into your next edit) followed by `N:TEXT` rows. Reference those line numbers in edit SWAP/DEL/INS ops.',
+    'Use `read` to inspect the current project HTML as a hashline section: a `[#TAG]` header (copy the TAG into your next edit) followed by `N:TEXT` rows. Reference those line numbers in edit SWAP/DEL/INS ops. Before an edit that touches several regions (e.g. CSS in <style> and HTML in <body>), pass `ranges: [{ offset, limit? }, ...]` to read them all under one fresh tag so every anchor is covered.',
     ({ fs, snapshots }) => createReadTool(fs, snapshots, { tagOnly: true }),
   ),
   tool(

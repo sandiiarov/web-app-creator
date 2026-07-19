@@ -6,9 +6,12 @@ import { createSnapshotStore } from '../lib/hashline/snapshot-store.ts'
 import { createHtmlStore } from '../lib/html-store.ts'
 import { createReadTool } from './read.ts'
 
+type ReadRange = { endLine: number; startLine: number; truncated: boolean }
 type ReadResult = {
   endLine: number
+  lines: number
   ok: true
+  ranges: ReadRange[]
   startLine: number
   tag: string
   text: string
@@ -26,15 +29,15 @@ function makeTools(seed?: string) {
 }
 
 describe('createReadTool', () => {
-  it('emits a JSON schema with offset/limit and no required fields', () => {
+  it('emits a JSON schema with offset/limit/ranges and no required top-level fields', () => {
     const { fs, snapshots } = makeTools()
     const tool = createReadTool(fs, snapshots)
-    const schemaText = JSON.stringify(
-      z.toJSONSchema(tool.inputSchema as z.ZodType),
-    )
+    const schema = z.toJSONSchema(tool.inputSchema as z.ZodType)
+    const schemaText = JSON.stringify(schema)
     expect(schemaText).toContain('"offset"')
     expect(schemaText).toContain('"limit"')
-    expect(schemaText).not.toContain('"required"')
+    expect(schemaText).toContain('"ranges"')
+    expect((schema as { required?: string[] }).required).toBeUndefined()
   })
 
   it('returns a [index.html#TAG] header + N:TEXT rows + records a snapshot tag', async () => {
@@ -79,5 +82,32 @@ describe('createReadTool', () => {
     expect(res.text.startsWith('[#')).toBe(true)
     expect(res.text).not.toContain('index.html')
     expect(res.tag).toMatch(/^[0-9A-F]{4}$/)
+  })
+
+  it('ranges reads several disjoint regions under one tag and marks all seen', async () => {
+    const { fs, snapshots } = makeTools('a\nb\nc\nd\ne\nf\ng\nh')
+    const tool = createReadTool(fs, snapshots)
+    const res = (await tool.execute?.(
+      {
+        action: 'multi-region',
+        ranges: [
+          { limit: 1, offset: 2 },
+          { limit: 5, offset: 6 },
+        ],
+      },
+      undefined as never,
+    )) as ReadResult
+    expect(res.tag).toMatch(/^[0-9A-F]{4}$/)
+    expect(res.lines).toBe(4) // line 2 + lines 6-8
+    expect(res.ranges).toEqual([
+      { endLine: 2, startLine: 2, truncated: true },
+      { endLine: 8, startLine: 6, truncated: false },
+    ])
+    expect(res.text).toContain('2:b')
+    expect(res.text).toContain('6:f')
+    expect(res.text).toContain('8:h')
+    expect(res.text).not.toContain('3:c')
+    // targeted multi-range read emits no paging notices
+    expect(res.text).not.toContain('call read with offset')
   })
 })

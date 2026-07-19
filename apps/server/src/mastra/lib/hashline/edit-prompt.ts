@@ -36,7 +36,7 @@ Line numbers refer to the original displayed snapshot and remain fixed between h
 
 A successful edit returns a fresh \`[#TAG]\` for the next edit. A stale-tag result points to a fresh read/find. Malformed-diff and balance errors describe the correction; resending an identical rejected diff produces the same failure.`
 
-export const HASHLINE_READ_GUIDANCE = `Read the project HTML as a hashline section: a \`[#TAG]\` header (copy the TAG verbatim into your next edit) followed by \`N:TEXT\` rows. Line numbers N come from this output — reference them in edit's SWAP/DEL/INS ops. Use offset/limit to page through large documents.`
+export const HASHLINE_READ_GUIDANCE = `Read the project HTML as a hashline section: a \`[#TAG]\` header (copy the TAG verbatim into your next edit) followed by \`N:TEXT\` rows. Line numbers N come from this output — reference them in edit's SWAP/DEL/INS ops. Use offset/limit to page through large documents. Pass \`ranges: [{ offset, limit? }, ...]\` to read several disjoint regions (e.g. a <style> block and a <body> block) in ONE call under a single fresh tag — do this before an edit whose SWAP/DEL/INS anchors span multiple regions, so one tag covers every anchor.`
 
 export const HASHLINE_FIND_GUIDANCE = `Find text in the project HTML. Returns a hashline section (\`[#TAG]\` header + \`N:TEXT\` rows) for the matching lines and optional context. Copy the TAG into your next edit.`
 

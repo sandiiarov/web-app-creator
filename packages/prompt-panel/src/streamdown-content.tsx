@@ -8,6 +8,17 @@ const streamdownCodeThemes: ['catppuccin-latte', 'catppuccin-mocha'] = [
 ]
 const streamdownCode = createCodePlugin({ themes: streamdownCodeThemes })
 
+// Streamdown panel styling. All colors/borders resolve to the shadcn CSS variables in
+// `packages/ui/src/styles/globals.css`; rules attach via `data-streamdown` attribute selectors
+// (Streamdown's documented "Global CSS Targeting" approach). Opacity modifiers follow a fixed
+// tier scale — keep new rules on the same tiers so the panel reads as one system:
+//   borders  — outer/container: /70 · internal dividers: /60 · table row separators: /45
+//   surfaces — header band: /55 · chip: /45 · code header: /35 · wells: /25 · subtle: /20
+//   type     — body 12; headings descend 14 / 12·12 / 11·11 / 10; code & tables 11; inline
+//              code 0.9em. Thinking variant shifts body→11 + h1→12 + h2·h3→11 (kept ≤ h2).
+// Corners: every block is square (rounded-none) to match the rest of the app (Bubble, Message,
+// all UI components are rounded-none); Streamdown's default rounded-xl/lg on code/mermaid/table
+// wrappers + rounded-md on their children are all nuked below.
 const baseClasses = [
   'streamdown-panel-content max-w-none min-w-0 text-xs leading-relaxed wrap-break-word',
   'text-muted-foreground',
@@ -50,23 +61,23 @@ const codeClasses = [
   '[&_[data-streamdown=code-block]_pre]:m-0 [&_[data-streamdown=code-block]_pre]:max-h-96 [&_[data-streamdown=code-block]_pre]:overflow-visible [&_[data-streamdown=code-block]_pre]:bg-transparent [&_[data-streamdown=code-block]_pre]:p-0',
   '[&_[data-streamdown=code-block]_code]:border-0 [&_[data-streamdown=code-block]_code]:bg-transparent [&_[data-streamdown=code-block]_code]:p-0 [&_[data-streamdown=code-block]_code]:font-mono [&_[data-streamdown=code-block]_code]:text-[11px] [&_[data-streamdown=code-block]_code]:leading-5',
   '[&_[data-streamdown=code-block]_code>span]:block',
-  '[&_[data-streamdown=code-block]_[class*=rounded]]:rounded-none',
-  '[&_[data-streamdown=mermaid-block]]:my-2 [&_[data-streamdown=mermaid-block]]:border [&_[data-streamdown=mermaid-block]]:border-border/70 [&_[data-streamdown=mermaid-block]]:bg-muted/20 [&_[data-streamdown=mermaid-block]]:p-2',
+  '[&_[data-streamdown=code-block]_[class*=rounded]]:rounded-none [&_[data-streamdown=mermaid-block]_[class*=rounded]]:rounded-none [&_[data-streamdown=table-wrapper]_[class*=rounded]]:rounded-none',
+  '[&_[data-streamdown=mermaid-block]]:my-2 [&_[data-streamdown=mermaid-block]]:rounded-none [&_[data-streamdown=mermaid-block]]:border [&_[data-streamdown=mermaid-block]]:border-border/70 [&_[data-streamdown=mermaid-block]]:bg-muted/20 [&_[data-streamdown=mermaid-block]]:p-2',
 ]
 
 const tableClasses = [
-  '[&_[data-streamdown=table-wrapper]]:my-2 [&_[data-streamdown=table-wrapper]]:max-w-full [&_[data-streamdown=table-wrapper]]:overflow-x-auto [&_[data-streamdown=table-wrapper]]:border [&_[data-streamdown=table-wrapper]]:border-border/70 [&_[data-streamdown=table-wrapper]]:bg-background/70',
-  '[&_[data-streamdown=table]]:w-full [&_[data-streamdown=table]]:min-w-max [&_[data-streamdown=table]]:border-collapse [&_[data-streamdown=table]]:text-[11px]',
+  '[&_[data-streamdown=table-wrapper]]:my-2 [&_[data-streamdown=table-wrapper]]:max-w-full [&_[data-streamdown=table-wrapper]]:overflow-x-auto [&_[data-streamdown=table-wrapper]]:rounded-none [&_[data-streamdown=table-wrapper]]:border [&_[data-streamdown=table-wrapper]]:border-border/70 [&_[data-streamdown=table-wrapper]]:bg-background/70',
+  '[&_[data-streamdown=table]]:w-full [&_[data-streamdown=table]]:min-w-max [&_[data-streamdown=table]]:border-collapse',
   '[&_[data-streamdown=table-header]]:bg-muted/55 [&_[data-streamdown=table-header]]:text-foreground',
-  '[&_[data-streamdown=table-header-cell]]:border-b [&_[data-streamdown=table-header-cell]]:border-border/70 [&_[data-streamdown=table-header-cell]]:px-2 [&_[data-streamdown=table-header-cell]]:py-1.5 [&_[data-streamdown=table-header-cell]]:text-left [&_[data-streamdown=table-header-cell]]:font-semibold',
-  '[&_[data-streamdown=table-cell]]:border-t [&_[data-streamdown=table-cell]]:border-border/45 [&_[data-streamdown=table-cell]]:px-2 [&_[data-streamdown=table-cell]]:py-1.5 [&_[data-streamdown=table-cell]]:align-top',
+  '[&_[data-streamdown=table-header-cell]]:border-b [&_[data-streamdown=table-header-cell]]:border-border/60 [&_[data-streamdown=table-header-cell]]:px-2 [&_[data-streamdown=table-header-cell]]:py-1.5 [&_[data-streamdown=table-header-cell]]:text-left [&_[data-streamdown=table-header-cell]]:align-top [&_[data-streamdown=table-header-cell]]:text-[11px] [&_[data-streamdown=table-header-cell]]:font-semibold',
+  '[&_[data-streamdown=table-cell]]:border-t [&_[data-streamdown=table-cell]]:border-border/45 [&_[data-streamdown=table-cell]]:px-2 [&_[data-streamdown=table-cell]]:py-1.5 [&_[data-streamdown=table-cell]]:align-top [&_[data-streamdown=table-cell]]:text-[11px]',
   '[&_[data-streamdown=table-row]:nth-child(even)]:bg-muted/20',
 ]
 
 const thinkingClasses = [
   'text-[11px] text-muted-foreground/80',
   '[&_p]:my-1',
-  '[&_[data-streamdown=heading-1]]:text-xs [&_[data-streamdown=heading-2]]:text-[11px]',
+  '[&_[data-streamdown=heading-1]]:text-xs [&_[data-streamdown=heading-2]]:text-[11px] [&_[data-streamdown=heading-3]]:text-[11px]',
 ]
 
 const streamdownControls: ControlsConfig = {

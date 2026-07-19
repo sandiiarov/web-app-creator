@@ -1,4 +1,5 @@
 import {
+  formatHashlineHeader,
   formatNumberedLine,
   HL_FILE_HASH_SEP,
   HL_FILE_PREFIX,
@@ -122,13 +123,16 @@ export function unseenLinesMessage(
   tag: string,
 ): string {
   const ranges = formatLineRanges(unseenLines)
-  const selector = ranges.replace(/, /g, ',')
+  const first = Math.min(...unseenLines)
+  const last = Math.max(...unseenLines)
+  const limit = Math.max(1, last - first + 1)
+  const header = formatHashlineHeader(sectionPath || undefined, tag)
+  const where = sectionPath ? ` of ${sectionPath}` : ''
   return (
-    `This edit anchors to lines ${ranges} of ${sectionPath} that ` +
-    `${HL_FILE_PREFIX}${sectionPath}${HL_FILE_HASH_SEP}${tag}${HL_FILE_SUFFIX} never displayed (it showed a ` +
-    `partial range, a search hit, or a folded summary). Re-read them in full first with a ranged read like ` +
-    `\`${sectionPath}:${selector}\` — it skips summarization and mints a fresh tag (a plain re-read just re-folds ` +
-    `them) — then re-issue the edit.`
+    `This edit anchors to lines ${ranges}${where} that the ${header} snapshot ` +
+    `never displayed (its read/find showed a different range). Re-read those ` +
+    `lines with \`read({ offset: ${first}, limit: ${limit} })\` so a fresh tag ` +
+    `marks them as seen, then re-issue the edit with that tag.`
   )
 }
 
