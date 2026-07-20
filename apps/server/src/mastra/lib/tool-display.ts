@@ -24,7 +24,7 @@ export interface ToolCallDisplay {
 }
 
 const INVALID_EDIT_RESULT_MESSAGE =
-  'Edit failed: the diff was missing or malformed. Retry with edit({ action, diff: "[index.html#TAG]\\nSWAP N.=M:\\n+TEXT" }) using the #TAG from your latest read/find.'
+  'Edit failed: the edit was malformed. Retry with edit({ action, edits: [{ start, end, content }] }) using anchors from your latest read/find.'
 
 export function asToolArgs(value: unknown): ToolArgs {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return {}

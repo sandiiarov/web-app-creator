@@ -1,7 +1,4 @@
-import type { Filesystem } from '../lib/hashline/fs.ts'
-import { HtmlStoreFilesystem } from '../lib/hashline/html-store-filesystem.ts'
-import { createSnapshotStore } from '../lib/hashline/snapshot-store.ts'
-import type { SnapshotStore } from '../lib/hashline/snapshots.ts'
+import { HtmlStoreFilesystem } from '../lib/anchor-edit/html-store-filesystem.ts'
 import type { HtmlStore } from '../lib/html-store.ts'
 import { createEditTool } from './edit.ts'
 import { createFindTool } from './find.ts'
@@ -26,10 +23,9 @@ type LandingTool =
 interface LandingToolContext {
   baseUrl: string
   captureProjectSelector?: RequestProjectScreenshot
-  fs: Filesystem
+  fs: HtmlStoreFilesystem
   imageModel?: string
   projectId?: string
-  snapshots: SnapshotStore
   store: HtmlStore
   turnId?: string
   visionModel?: string
@@ -50,7 +46,7 @@ function tool(
 }
 
 /**
- * Single source of truth for the agent's callable tools.
+ * Single source of truth for the agent's callable tools (anchor-label engine).
  *
  * To disable a tool, comment out exactly one `tool(...)` line below. The Mastra
  * tool map, the "available tools" list, and the tool-specific instructions all
@@ -65,18 +61,18 @@ const LANDING_TOOL_DEFINITIONS = [
   ),
   tool(
     'read',
-    'Use `read` to inspect the current project HTML as a hashline section: a `[#TAG]` header (copy the TAG into your next edit) followed by `N:TEXT` rows. Reference those line numbers in edit SWAP/DEL/INS ops. Before an edit that touches several regions (e.g. CSS in <style> and HTML in <body>), pass `ranges: [{ offset, limit? }, ...]` to read them all under one fresh tag so every anchor is covered.',
-    ({ fs, snapshots }) => createReadTool(fs, snapshots, { tagOnly: true }),
+    "Use `read` to inspect the current project HTML as `<anchor> <text>` labeled lines (one per document line). Use those anchors — never line numbers — as the `start`/`end` of your edit ranges. The whole document is returned; anchors you don't edit stay valid across edits.",
+    ({ fs }) => createReadTool(fs),
   ),
   tool(
     'find',
-    'Use `find` to locate text in the project HTML before editing. Literal search is the default; set `regex=true` only when needed. Returns a hashline section (`[#TAG]` + `N:TEXT` rows) for matches with optional context; copy the TAG into your next edit.',
-    ({ fs, snapshots }) => createFindTool(fs, snapshots, { tagOnly: true }),
+    "Use `find` to locate text in the project HTML before editing. Literal search is the default; set `regex=true` only when needed. Returns matching lines (with optional context) as `<anchor> <text>` rows — use those anchors directly in your next edit's `start`/`end`.",
+    ({ fs }) => createFindTool(fs),
   ),
   tool(
     'edit',
-    'Use `edit` to change the project HTML with `{ action, diff }`. `diff` is hashline DSL: a `[#TAG]` header (TAG from your latest read/find) then `SWAP N.=M:`/`DEL N.=M`/`INS.PRE|POST|HEAD|TAIL N:` ops with `+TEXT` body rows. Line numbers come from read/find and refer to the original file. Touch only lines your read displayed; ranges cover only changed lines (pure additions use INS, never a widened SWAP). For a new draft: `edit({ action: "Create initial page", diff: "[#TAG]\\nINS.HEAD:\\n+<!doctype html>..." })` using a fresh read tag, or scaffold then build up with section edits. Batch a complete logical change — a whole section, a related block of edits, or an entire fix — into ONE `edit` call (one `diff` may carry many SWAP/DEL/INS ops); prefer one medium-sized edit over a chain of tiny one-line edits. On stale-tag rejection, re-read before retrying. The preview updates automatically after a successful edit; the result is concise metadata plus the fresh TAG for your next edit.',
-    ({ fs, snapshots }) => createEditTool(fs, snapshots, { tagOnly: true }),
+    "Use `edit` to change the project HTML with `{ action, edits: [{ start, end, content }] }`. `start`/`end` are anchors from read/find (inclusive span; `start==end` for one line); `content` is the new lines as a single multi-line string (`\\n` between lines; empty string deletes the span). Anchors are stable — reuse any you have seen; the response returns the new `<anchor> <text>` lines it created as a delta. Batch a whole section's changes into ONE call (one `edits` array may carry many ranges). For a new draft, read first, then replace the placeholder span with the full page. If an anchor is reported absent, re-read once and retry.",
+    ({ fs }) => createEditTool(fs),
   ),
   tool(
     'screenshot',
@@ -103,7 +99,6 @@ export function createLandingTools(
   } = {},
 ): Record<string, LandingTool> {
   const fs = new HtmlStoreFilesystem(store)
-  const snapshots = createSnapshotStore()
   return Object.fromEntries(
     LANDING_TOOL_DEFINITIONS.map(({ create, id }) => [
       id,
@@ -113,7 +108,6 @@ export function createLandingTools(
         fs,
         imageModel: options.imageModel,
         projectId: options.projectId,
-        snapshots,
         store,
         turnId: options.turnId,
         visionModel: options.visionModel,

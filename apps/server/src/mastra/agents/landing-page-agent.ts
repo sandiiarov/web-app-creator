@@ -2,7 +2,7 @@ import { Agent, type Agent as AgentType } from '@mastra/core/agent'
 import type { Mastra } from '@mastra/core/mastra'
 
 import { config } from '../../config.ts'
-import { HASHLINE_SYSTEM_GUIDANCE } from '../lib/hashline/edit-prompt.ts'
+import { ANCHOR_SYSTEM_GUIDANCE } from '../lib/anchor-edit/edit-prompt.ts'
 import { createHtmlStore, type HtmlStore } from '../lib/html-store.ts'
 import { openrouterModel } from '../lib/openrouter-model.ts'
 import {
@@ -11,13 +11,13 @@ import {
 } from '../tools/landing-tools.ts'
 
 /**
- * Concise system prompt: one-sentence role, a hashline quick reference, then
- * working guidelines. Detailed tool schemas still travel via the `tools` param.
+ * Concise system prompt: one-sentence role, the anchor-label quick reference,
+ * then working guidelines. Detailed tool schemas travel via the `tools` param.
  */
 const LANDING_AGENT_INSTRUCTIONS = [
   'You are a landing-page design agent. You build and refine a single self-contained project HTML document by scraping reference brands, reading and editing the HTML, generating imagery, and taking screenshots.',
   '',
-  HASHLINE_SYSTEM_GUIDANCE,
+  ANCHOR_SYSTEM_GUIDANCE,
   '',
   "Build exactly what the user asked for. Use real scraped/supplied content (scrape.images, scrape.branding, the user's text); do not invent product content (names, metrics, testimonials, features, copy) that is not in the request or scraped assets — ask the user if essential content is missing. Reserve `screenshot` for a final check once the page or the requested change is complete, like running tests or a linter, not after every edit.",
   '',

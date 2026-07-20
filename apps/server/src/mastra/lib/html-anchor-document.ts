@@ -3,9 +3,9 @@ import { createHash } from 'node:crypto'
 /**
  * Anchored HTML document model — the persisted shape of a project's
  * `html.json`. Each line carries a stable anchor (`a1`, `a2`, … base-36) so
- * the document can be rendered to HTML and re-parsed losslessly. The edit
- * engine is the hashline DSL in `lib/hashline/` (operating on the rendered
- * HTML string); this module is the storage/round-trip backbone only.
+ * the document can be rendered to HTML and re-parsed losslessly. The anchor
+ * edit engine in `lib/anchor-edit/` edits this document in place (splicing
+ * `lines`, preserving anchors); this module is the storage/round-trip backbone.
  */
 
 export interface HtmlDocumentJsonV1 {

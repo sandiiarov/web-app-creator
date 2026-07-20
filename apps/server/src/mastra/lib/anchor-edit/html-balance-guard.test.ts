@@ -7,7 +7,7 @@ const BALANCED =
 
 describe('checkHtmlBalance', () => {
   it('balanced document passes', () => {
-    expect(checkHtmlBalance(BALANCED)).toEqual({ ok: true, issues: [] })
+    expect(checkHtmlBalance(BALANCED)).toEqual({ issues: [], ok: true })
   })
 
   it('eaten </style> is flagged (the root-cause case)', () => {

@@ -1279,7 +1279,7 @@ describe('streamLandingAgent html updates', () => {
       expect.arrayContaining([
         expect.objectContaining({
           data: expect.objectContaining({
-            result: expect.stringContaining('diff was missing or malformed'),
+            result: expect.stringContaining('edit was malformed'),
             state: 'error',
             tool: 'edit',
           }),
@@ -1312,7 +1312,7 @@ describe('streamLandingAgent html updates', () => {
     expect(saved?.messages[0]?.parts).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          result: expect.stringContaining('diff was missing or malformed'),
+          result: expect.stringContaining('edit was malformed'),
           state: 'error',
           tool: 'edit',
           type: 'tool_call',

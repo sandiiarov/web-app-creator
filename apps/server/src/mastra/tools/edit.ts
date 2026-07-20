@@ -1,96 +1,33 @@
 import { createTool } from '@mastra/core/tools'
 import { z } from 'zod'
 
-import { autofixHtmlBalance } from '../lib/hashline/autofix.ts'
-import {
-  HASHLINE_EDIT_GUIDANCE,
-  HASHLINE_PATH,
-} from '../lib/hashline/edit-prompt.ts'
-import { formatHashlineHeader } from '../lib/hashline/format.ts'
-import type { Filesystem } from '../lib/hashline/fs.ts'
-import { checkHtmlBalance } from '../lib/hashline/html-balance-guard.ts'
-import { splitPatchInput } from '../lib/hashline/input.ts'
-import { Patcher } from '../lib/hashline/patcher.ts'
-import type { SnapshotStore } from '../lib/hashline/snapshots.ts'
+import { ANCHOR_EDIT_GUIDANCE } from '../lib/anchor-edit/edit-prompt.ts'
+import { HtmlStoreFilesystem } from '../lib/anchor-edit/html-store-filesystem.ts'
+import { runAnchorEdit } from '../lib/anchor-edit/tool.ts'
 
 /**
- * Apply a hashline-DSL edit to the project HTML. The `diff` must start with the
- * `[#TAG]` header from the latest read/find; the engine verifies the
- * snapshot tag (rejecting stale/drifted references with a re-read instruction),
- * applies the `SWAP`/`DEL`/`INS` ops, runs an HTML-tag-balance guard, applies
- * a conservative adjacent-duplicate autofix when the guard fails, then
- * persists through the store. Throws on stale tag, malformed diff, or an
- * unrepairable balance failure so the agent re-reads and retries.
+ * Edit the project HTML by anchor spans (v2 anchor-label engine — the single
+ * version). Takes structured `edits`: each { start, end, content } replaces the
+ * inclusive anchor span `start..end` with `content` (a multi-line string; empty
+ * string deletes the span). Untouched lines keep their anchors; the response
+ * returns a delta of the new `<anchor> <text>` lines so the model learns them.
+ * Throws on an unknown (stale) anchor, reversed/overlapping spans, or an
+ * unbalanced result that isn't a cleanly-truncated tail.
  */
-export function createEditTool(
-  fs: Filesystem,
-  snapshots: SnapshotStore,
-  options: {
-    /** Snapshot/filesystem key. Also the header path when `tagOnly` is false. */
-    path?: string
-    /** Accept/emit `[#TAG]` headers (single-file) instead of `[path#TAG]`. */
-    tagOnly?: boolean
-  } = {},
-) {
-  const path = options.path ?? HASHLINE_PATH
+export function createEditTool(fs: HtmlStoreFilesystem) {
   return createTool({
-    description: HASHLINE_EDIT_GUIDANCE,
-    execute: async ({ diff }) => {
-      const { sections } = splitPatchInput(diff, { defaultPath: path })
-      if (sections.length === 0) {
-        throw new Error(
-          `Edit failed: no ${formatHashlineHeader(options.tagOnly ? undefined : path, 'TAG')} header found in diff. Start the diff with the header copied verbatim from your latest read, then SWAP/DEL/INS ops with +TEXT body rows.`,
-        )
-      }
-      const patcher = new Patcher({ fs, snapshots })
-      let firstChangedLine = 0
-      let warnings: string[] = []
-      let tag = ''
-      let before = ''
-      let after = ''
-      for (const section of sections) {
-        // prepare() validates the snapshot tag — throws MismatchError on stale.
-        const prepared = await patcher.prepare(section)
-        let nextHtml = prepared.applyResult.text
-        let balanceWarnings: string[] = []
-        const balance = checkHtmlBalance(nextHtml)
-        if (!balance.ok) {
-          // Conservative auto-repair before rejecting: collapse adjacent
-          // duplicate tags that survived applyEdits' line-level self-heal.
-          // Only unambiguous fixes are applied (never synthesized tags); a
-          // missing-closer case (e.g. eaten </style>) still rejects so the
-          // agent re-reads and narrows its SWAP range.
-          const fix = autofixHtmlBalance(nextHtml)
-          if (fix.fixed && fix.html !== nextHtml) {
-            // commit/hash/snapshot all derive from applyResult.text, so point
-            // the prepared result at the repaired text before writing.
-            prepared.applyResult.text = fix.html
-            nextHtml = fix.html
-            balanceWarnings = fix.applied.map((d) => `html autofix: ${d}`)
-          } else {
-            throw new Error(
-              `Edit rejected: it would produce unbalanced HTML (${balance.issues.join('; ')}). Re-read the file and narrow the SWAP range to only the lines whose content changes.`,
-            )
-          }
-        }
-        const result = await patcher.commit(prepared)
-        firstChangedLine = result.firstChangedLine ?? 0
-        warnings = [...result.warnings, ...balanceWarnings]
-        tag = result.fileHash
-        before = result.before
-        after = result.after
-      }
-      const header = tag
-        ? formatHashlineHeader(options.tagOnly ? undefined : path, tag)
-        : ''
+    description: ANCHOR_EDIT_GUIDANCE,
+    execute: async ({ edits }) => {
+      const out = runAnchorEdit(fs, edits ?? [])
       return {
-        bytes: Buffer.byteLength(after, 'utf8'),
-        diffPreview: buildPreview(before, after),
-        firstChangedLine,
-        header,
+        bytes: out.bytes,
+        delta: out.delta,
+        diffPreview: out.diffPreview,
+        firstChangedLine: 0,
+        header: '',
         ok: true as const,
-        tag,
-        warnings,
+        tag: out.tag,
+        warnings: [...out.warnings],
       }
     },
     id: 'edit',
@@ -101,15 +38,34 @@ export function createEditTool(
         .describe(
           "One short imperative line stating what this edit does, shown to the user as this step's label.",
         ),
-      diff: z
-        .string()
+      edits: z
+        .array(
+          z.object({
+            content: z
+              .string()
+              .describe(
+                'New lines replacing the start..end span (a multi-line string; one line per \\n). Empty string deletes the span.',
+              ),
+            end: z
+              .string()
+              .describe(
+                'Anchor of the last line to replace (inclusive). Same as start for a single line.',
+              ),
+            start: z
+              .string()
+              .describe(
+                'Anchor of the first line to replace (from read/find).',
+              ),
+          }),
+        )
         .min(1)
         .describe(
-          'Hashline DSL: `[#TAG]` header (TAG from latest read) then ops — `SWAP N.=M:`/`DEL N.=M`/`INS.PRE|POST|HEAD|TAIL N:` with `+TEXT` body rows. One edit may carry many ops (and several TAG sections): batch a whole section or a complete fix into one edit rather than many small calls.',
+          "One or more range-replaces. Batch a whole section's changes into one call; ranges must not overlap.",
         ),
     }),
     outputSchema: z.object({
       bytes: z.number(),
+      delta: z.string().optional(),
       diffPreview: z.string(),
       firstChangedLine: z.number(),
       header: z.string(),
@@ -118,21 +74,4 @@ export function createEditTool(
       warnings: z.array(z.string()),
     }),
   })
-}
-
-/** Compact before/after preview so the UI can show what changed. */
-function buildPreview(before: string, after: string): string {
-  const beforeLines = before.split('\n')
-  const afterLines = after.split('\n')
-  const max = Math.min(3, Math.max(beforeLines.length, afterLines.length))
-  const parts: string[] = []
-  for (let i = 0; i < max; i += 1) {
-    const b = beforeLines[i] ?? ''
-    const a = afterLines[i] ?? ''
-    if (b !== a) {
-      if (b) parts.push(`- ${b}`)
-      if (a) parts.push(`+ ${a}`)
-    }
-  }
-  return parts.length === 0 ? '(no visible change at head)' : parts.join('\n')
 }

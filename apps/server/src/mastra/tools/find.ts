@@ -1,71 +1,56 @@
 import { createTool } from '@mastra/core/tools'
 import { z } from 'zod'
 
-import {
-  HASHLINE_FIND_GUIDANCE,
-  HASHLINE_PATH,
-} from '../lib/hashline/edit-prompt.ts'
-import { formatHashlineHeader } from '../lib/hashline/format.ts'
-import type { Filesystem } from '../lib/hashline/fs.ts'
-import { splitLines } from '../lib/hashline/shared.ts'
-import type { SnapshotStore } from '../lib/hashline/snapshots.ts'
+import { ANCHOR_FIND_GUIDANCE } from '../lib/anchor-edit/edit-prompt.ts'
+import { HtmlStoreFilesystem } from '../lib/anchor-edit/html-store-filesystem.ts'
 
 /**
- * Find text in the project HTML and return a hashline section
- * (`[#TAG]` + `N:TEXT` rows) for the matches with optional context.
- * Records a snapshot covering the displayed lines so the next edit can verify
- * the tag.
+ * Find text in the project HTML and return the matching lines (with optional
+ * context) as `<anchor> <text>` labeled lines (v2 anchor-label engine). Anchors
+ * are stable, so the model can edit the matched lines directly.
  */
-export function createFindTool(
-  fs: Filesystem,
-  snapshots: SnapshotStore,
-  options: {
-    /** Snapshot/filesystem key. Also the header path when `tagOnly` is false. */
-    path?: string
-    /** Emit `[#TAG]` headers (single-file) instead of `[path#TAG]`. */
-    tagOnly?: boolean
-  } = {},
-) {
-  const path = options.path ?? HASHLINE_PATH
+export function createFindTool(fs: HtmlStoreFilesystem) {
   return createTool({
-    description: HASHLINE_FIND_GUIDANCE,
+    description: ANCHOR_FIND_GUIDANCE,
     execute: async ({ context, ignoreCase, limit, regex, text: query }) => {
-      const html = await fs.readText(path)
-      const lines = splitLines(html)
+      const doc = fs.getDocument()
+      const lines = doc.lines
       const flags = ignoreCase ? 'i' : ''
       const pattern = regex
         ? new RegExp(query, flags)
         : new RegExp(escapeRegex(query), flags)
-      const matchLines: number[] = []
+      const matchIdx: number[] = []
       for (let i = 0; i < lines.length; i += 1) {
-        if (pattern.test(lines[i]!)) matchLines.push(i + 1)
+        if (pattern.test(lines[i]![1])) matchIdx.push(i)
       }
       const maxMatches = limit ?? 100
-      const matchLimitReached = matchLines.length > maxMatches
+      const matchLimitReached = matchIdx.length > maxMatches
       const ctx = context ?? 0
       const display = new Set<number>()
-      for (const m of matchLines.slice(0, maxMatches)) {
+      for (const m of matchIdx.slice(0, maxMatches)) {
         for (let c = m - ctx; c <= m + ctx; c += 1) {
-          if (c >= 1 && c <= lines.length) display.add(c)
+          if (c >= 0 && c < lines.length) display.add(c)
         }
       }
       const sortedDisplay = [...display].sort((a, b) => a - b)
-      const tag = await snapshots.record(path, html, sortedDisplay)
-      const header = formatHashlineHeader(
-        options.tagOnly ? undefined : path,
-        tag,
-      )
+      const gen =
+        doc.checksum && doc.checksum !== 'sha256:'
+          ? doc.checksum.slice('sha256:'.length).slice(0, 4).toUpperCase()
+          : ''
+      const head = gen ? `@${gen}\n` : ''
       const body =
-        matchLines.length === 0
+        matchIdx.length === 0
           ? `[no matches for "${query}"]`
-          : sortedDisplay.map((n) => `${n}:${lines[n - 1]}`).join('\n')
+          : sortedDisplay
+              .map((i) => `${lines[i]![0]} ${lines[i]![1]}`)
+              .join('\n')
       return {
-        matchCount: matchLines.length,
+        matchCount: matchIdx.length,
         matchLimitReached,
         ok: true as const,
         returnedLines: sortedDisplay.length,
-        tag,
-        text: `${header}\n${body}`,
+        tag: gen,
+        text: `${head}${body}`,
         totalLines: lines.length,
       }
     },
