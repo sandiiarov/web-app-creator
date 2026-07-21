@@ -7,7 +7,7 @@ import {
   claimRun,
   getRun,
   releaseRun,
-  subscribe,
+  subscribeProject,
 } from './run-bus.ts'
 
 const projectId = 'proj-bus'
@@ -56,11 +56,51 @@ describe('run-bus', () => {
     expect(getRun(projectId)).toBeUndefined()
   })
 
-  it('subscribe is a no-op when no run exists', () => {
-    const unsubscribe = subscribe(projectId, fakeResponse())
-    expect(typeof unsubscribe).toBe('function')
-    // Broadcasting with no run must not throw.
-    expect(() => broadcast(projectId, 'text', { delta: 'x' })).not.toThrow()
+  it('subscribeProject persists across the run lifecycle (idle → run starts → events arrive)', () => {
+    // The bug this pins: a tab that subscribes while the project is IDLE must
+    // still receive events when a run starts later (e.g. the user sends a
+    // prompt from that same tab). The old transient `subscribe` was a no-op
+    // when no run was active → the editor never saw the run it started.
+    const response = fakeResponse()
+    const unsubscribe = subscribeProject(projectId, response)
+
+    // No active run yet — broadcast must STILL reach the persistent subscriber.
+    broadcast(projectId, 'text', { delta: 'before-run' })
+    expect(response.write).toHaveBeenCalledTimes(1)
+    expect(response.write).toHaveBeenCalledWith(
+      'event: text\ndata: {"delta":"before-run"}\n\n',
+    )
+
+    // A run starts + broadcasts — same subscriber still receives.
+    const entry = makeEntry()
+    claimRun(projectId, entry)
+    broadcast(projectId, 'tool_call', { id: 'c', state: 'running' })
+    expect(response.write).toHaveBeenCalledTimes(2)
+
+    // Run ends — subscriber stays registered (next run reaches it too).
+    releaseRun(projectId, entry)
+    broadcast(projectId, 'done', {})
+    expect(response.write).toHaveBeenCalledTimes(3)
+
+    unsubscribe()
+    broadcast(projectId, 'text', { delta: 'after-unsubscribe' })
+    expect(response.write).toHaveBeenCalledTimes(3)
+  })
+
+  it('subscribeProject supports multiple subscribers on the same idle project', () => {
+    const first = fakeResponse()
+    const second = fakeResponse()
+    const unsubFirst = subscribeProject(projectId, first)
+    subscribeProject(projectId, second)
+
+    broadcast(projectId, 'text', { delta: 'hi' })
+    expect(first.write).toHaveBeenCalledTimes(1)
+    expect(second.write).toHaveBeenCalledTimes(1)
+
+    unsubFirst()
+    broadcast(projectId, 'text', { delta: 'again' })
+    expect(first.write).toHaveBeenCalledTimes(1)
+    expect(second.write).toHaveBeenCalledTimes(2)
   })
 
   it('broadcast fans every event out to ALL subscribers (multi-subscriber proof)', () => {
@@ -69,8 +109,8 @@ describe('run-bus', () => {
 
     const sender = fakeResponse()
     const reopened = fakeResponse()
-    const unsubscribeSender = subscribe(projectId, sender)
-    const unsubscribeReopened = subscribe(projectId, reopened)
+    const unsubscribeSender = subscribeProject(projectId, sender)
+    const unsubscribeReopened = subscribeProject(projectId, reopened)
 
     broadcast(projectId, 'text', { delta: 'hi' })
     broadcast(projectId, 'done', {})
@@ -95,9 +135,19 @@ describe('run-bus', () => {
     unsubscribeReopened()
   })
 
-  it('broadcast skips a run whose subscribers set is empty', () => {
+  it('broadcast reaches both the run entry subscribers + persistent project subscribers', () => {
+    // The run entry's own subscriber (startLandingAgent `subscriber` param) AND
+    // a persistent project subscriber (events endpoint) both get the event.
+    const entrySubscriber = fakeResponse()
     const entry = makeEntry()
+    entry.subscribers.add(entrySubscriber)
     claimRun(projectId, entry)
-    expect(() => broadcast(projectId, 'text', { delta: 'x' })).not.toThrow()
+
+    const persistent = fakeResponse()
+    subscribeProject(projectId, persistent)
+
+    broadcast(projectId, 'text', { delta: 'both' })
+    expect(entrySubscriber.write).toHaveBeenCalledTimes(1)
+    expect(persistent.write).toHaveBeenCalledTimes(1)
   })
 })
