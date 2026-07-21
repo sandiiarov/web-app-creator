@@ -23,7 +23,7 @@ import {
   reconcileInterruptedRuns,
   updateProjectModel,
 } from './mastra/lib/project-store.ts'
-import { subscribe, subscribeList } from './mastra/lib/run-bus.ts'
+import { subscribeList, subscribeProject } from './mastra/lib/run-bus.ts'
 import { endSse, sendSse, startSse } from './mastra/lib/sse.ts'
 import {
   resolveModelId,
@@ -382,11 +382,7 @@ async function handlePatchProject(
  *  mid-flight may miss events in the sub-ms window between snapshot read and
  *  subscribe registration — self-heals on refresh (html_update carries full
  *  HTML; stats are rolling). Stays open until the client closes. */
-async function handleProjectEvents(
-  id: string,
-  request: IncomingMessage,
-  response: ServerResponse,
-) {
+async function handleProjectEvents(id: string, response: ServerResponse) {
   const project = await getProject(id)
   if (!project) {
     sendJson(response, 404, { error: 'Project not found', ok: false })
@@ -406,8 +402,8 @@ async function handleProjectEvents(
     turns,
   })
 
-  const unsubscribe = subscribe(id, response)
-  request.on('close', () => {
+  const unsubscribe = subscribeProject(id, response)
+  response.on('close', () => {
     unsubscribe()
     endSse(response)
   })
@@ -416,10 +412,7 @@ async function handleProjectEvents(
 /** GET /api/projects/events — SSE. Emit one `project_status` per project as an
  *  initial snapshot, then tail the list bus for live status changes (driven by
  *  `setRunStatusSync` → `broadcastStatus`). Stays open until the client closes. */
-async function handleProjectListEvents(
-  request: IncomingMessage,
-  response: ServerResponse,
-) {
+async function handleProjectListEvents(response: ServerResponse) {
   startSse(response)
   const projects = await listProjects()
   for (const project of projects) {
@@ -431,7 +424,7 @@ async function handleProjectListEvents(
     })
   }
   const unsubscribe = subscribeList(response)
-  request.on('close', () => {
+  response.on('close', () => {
     unsubscribe()
     endSse(response)
   })
@@ -475,7 +468,7 @@ async function routeProjects(
   }
 
   if (PROJECT_LIST_EVENTS_RE.test(pathname) && request.method === 'GET') {
-    await handleProjectListEvents(request, response)
+    await handleProjectListEvents(response)
     return true
   }
 
@@ -509,7 +502,7 @@ async function routeProjects(
 
   const eventsMatch = pathname.match(PROJECT_EVENTS_RE)
   if (eventsMatch && request.method === 'GET') {
-    await handleProjectEvents(eventsMatch[1]!, request, response)
+    await handleProjectEvents(eventsMatch[1]!, response)
     return true
   }
 
