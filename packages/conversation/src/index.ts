@@ -1,6 +1,7 @@
 export {
   applyEventToTurn,
   replayClientEvents,
+  replayClientEventsLive,
   terminalizeTools,
 } from './reducer.ts'
 export type {

@@ -99,34 +99,10 @@ export function applyEventToTurn<T extends ConversationTurn>(
  * reload renders identically to the run that produced it. Each `dir:"in"`
  * prompt starts a turn; subsequent `dir:"out"` events populate it; `done`
  * finalizes. Any tool left `running`/`start` is terminalized to `error` on
- * restore.
+ * restore (a finished log with no `done` is treated as a crashed/lost run).
  */
 export function replayClientEvents(events: ClientEvent[]): ConversationTurn[] {
-  const turns: ConversationTurn[] = []
-  let currentIndex = -1
-
-  for (const event of events) {
-    if (event.dir === 'in') {
-      if (event.type === 'prompt') {
-        turns.push({
-          htmlSwaps: 0,
-          id:
-            typeof event.turnId === 'string'
-              ? event.turnId
-              : `turn-${turns.length + 1}`,
-          isStreaming: true,
-          model: typeof event.model === 'string' ? event.model : '',
-          parts: [],
-          prompt: typeof event.prompt === 'string' ? event.prompt : '',
-        })
-        currentIndex = turns.length - 1
-      }
-      continue
-    }
-
-    if (currentIndex === -1) continue
-    turns[currentIndex] = applyEventToTurn(turns[currentIndex]!, event)
-  }
+  const turns = buildTurnsFromEvents(events)
 
   // Restore: any tool still running/started when the log ended is terminalized.
   for (let index = 0; index < turns.length; index++) {
@@ -136,6 +112,20 @@ export function replayClientEvents(events: ClientEvent[]): ConversationTurn[] {
     }
   }
   return turns
+}
+
+/**
+ * Like `replayClientEvents` but leaves a still-streaming turn LIVE: the final
+ * turn keeps `isStreaming: true` and any tool still `running`/`start` stays
+ * that way (NO terminalize-to-error pass). Used for subscribe catch-up — a
+ * reopened tab joining an in-flight run — where the restore variant would
+ * falsely render genuinely-active tools as failed. The restore variant
+ * remains correct for finished/crashed logs (reload of a completed project).
+ */
+export function replayClientEventsLive(
+  events: ClientEvent[],
+): ConversationTurn[] {
+  return buildTurnsFromEvents(events)
 }
 
 /**
@@ -217,6 +207,42 @@ function applyToolCall<T extends ConversationTurn>(
   return htmlSwaps === turn.htmlSwaps && parts === turn.parts
     ? turn
     : ({ ...turn, htmlSwaps, parts } as T)
+}
+
+/** Build `ConversationTurn[]` from a client-messages log by replaying events,
+ *  WITHOUT any terminalization pass. Each `dir:"in"` prompt starts a turn
+ *  (streaming); subsequent `dir:"out"` events populate it via the shared
+ *  per-event reducer. Shared by `replayClientEvents` (restore, terminalizes
+ *  active tools to error) and `replayClientEventsLive` (subscribe catch-up,
+ *  leaves active tools live). */
+function buildTurnsFromEvents(events: ClientEvent[]): ConversationTurn[] {
+  const turns: ConversationTurn[] = []
+  let currentIndex = -1
+
+  for (const event of events) {
+    if (event.dir === 'in') {
+      if (event.type === 'prompt') {
+        turns.push({
+          htmlSwaps: 0,
+          id:
+            typeof event.turnId === 'string'
+              ? event.turnId
+              : `turn-${turns.length + 1}`,
+          isStreaming: true,
+          model: typeof event.model === 'string' ? event.model : '',
+          parts: [],
+          prompt: typeof event.prompt === 'string' ? event.prompt : '',
+        })
+        currentIndex = turns.length - 1
+      }
+      continue
+    }
+
+    if (currentIndex === -1) continue
+    turns[currentIndex] = applyEventToTurn(turns[currentIndex]!, event)
+  }
+
+  return turns
 }
 
 function terminalizeParts(
