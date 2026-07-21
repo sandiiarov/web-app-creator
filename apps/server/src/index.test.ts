@@ -58,7 +58,7 @@ describe('server HTTP routes', () => {
   })
 
   it('allows matching browser origins to reach state-changing routes', async () => {
-    await withServer(async ({ baseUrl, streamLandingAgent }) => {
+    await withServer(async ({ baseUrl, startLandingAgent }) => {
       const response = await postJson(
         `${baseUrl}/agent`,
         { projectId: 'project-1', prompt: 'Build' },
@@ -70,13 +70,13 @@ describe('server HTTP routes', () => {
         'https://client.test',
       )
       expect(response.headers.get('vary')).toBe('Origin')
-      expect(streamLandingAgent).toHaveBeenCalledOnce()
+      expect(startLandingAgent).toHaveBeenCalledOnce()
     })
   })
 
   it('rejects mismatching browser origins before route side effects', async () => {
     await withServer(
-      async ({ baseUrl, stopLandingAgent, streamLandingAgent }) => {
+      async ({ baseUrl, startLandingAgent, stopLandingAgent }) => {
         for (const origin of ['https://other.test', 'null']) {
           const response = await postJson(
             `${baseUrl}/agent`,
@@ -105,14 +105,14 @@ describe('server HTTP routes', () => {
         )
         expect(stop.status).toBe(403)
 
-        expect(streamLandingAgent).not.toHaveBeenCalled()
+        expect(startLandingAgent).not.toHaveBeenCalled()
         expect(stopLandingAgent).not.toHaveBeenCalled()
       },
     )
   })
 
   it('bounds encoded JSON bodies by route without invoking handlers', async () => {
-    await withServer(async ({ baseUrl, streamLandingAgent }) => {
+    await withServer(async ({ baseUrl, startLandingAgent }) => {
       const accepted = await postJson(`${baseUrl}/api/projects`, {
         title: 'Small request',
       })
@@ -139,12 +139,12 @@ describe('server HTTP routes', () => {
         error: 'Request body exceeds the allowed size.',
         ok: false,
       })
-      expect(streamLandingAgent).not.toHaveBeenCalled()
+      expect(startLandingAgent).not.toHaveBeenCalled()
     })
   })
 
   it('validates /agent request bodies before streaming', async () => {
-    await withServer(async ({ baseUrl, streamLandingAgent }) => {
+    await withServer(async ({ baseUrl, startLandingAgent }) => {
       const cases = [
         [{ projectId: 'project-1', prompt: '' }, 'Expected { prompt: string }'],
         [{ prompt: 'Build' }, 'Expected { projectId: string }'],
@@ -224,12 +224,12 @@ describe('server HTTP routes', () => {
         expect(response.status).toBe(400)
         await expect(response.json()).resolves.toEqual({ error, ok: false })
       }
-      expect(streamLandingAgent).not.toHaveBeenCalled()
+      expect(startLandingAgent).not.toHaveBeenCalled()
     })
   })
 
   it('validates decoded attachment sizes before streaming', async () => {
-    await withServer(async ({ baseUrl, streamLandingAgent }) => {
+    await withServer(async ({ baseUrl, startLandingAgent }) => {
       const mismatch = await postJson(`${baseUrl}/agent`, {
         attachments: [{ ...IMAGE_ATTACHMENT, size: IMAGE_ATTACHMENT.size + 1 }],
         projectId: 'project-1',
@@ -278,12 +278,12 @@ describe('server HTTP routes', () => {
         error: 'Attached items must be 16 MiB or smaller in total.',
         ok: false,
       })
-      expect(streamLandingAgent).not.toHaveBeenCalled()
+      expect(startLandingAgent).not.toHaveBeenCalled()
     })
   })
 
   it('streams valid /agent requests with normalized attachments, model ids, and turn id', async () => {
-    await withServer(async ({ baseUrl, streamLandingAgent }) => {
+    await withServer(async ({ baseUrl, startLandingAgent }) => {
       const response = await postJson(`${baseUrl}/agent`, {
         attachments: [IMAGE_ATTACHMENT, ELEMENT_ATTACHMENT],
         imageModel: 'openrouter/bytedance-seed/seedream-4.5',
@@ -295,8 +295,12 @@ describe('server HTTP routes', () => {
       })
 
       expect(response.status).toBe(200)
-      await expect(response.text()).resolves.toBe('event: done\ndata: {}\n\n')
-      const call = streamLandingAgent.mock.calls[0]?.[0]
+      await expect(response.json()).resolves.toEqual({
+        ok: true,
+        status: 'running',
+        turnId: 'turn-x',
+      })
+      const call = startLandingAgent.mock.calls[0]?.[0]
       expect(call).toMatchObject({
         attachments: [
           expect.objectContaining({ name: 'hero.png' }),
@@ -317,9 +321,9 @@ describe('server HTTP routes', () => {
 
   it('leaves image/vision models undefined when omitted so role defaults apply', async () => {
     // Regression: callers may send only textModel. The handler must forward
-    // `undefined` for omitted roles so streamLandingAgent applies the configured
+    // `undefined` for omitted roles so startLandingAgent applies the configured
     // image/vision defaults instead of substituting the chat model.
-    await withServer(async ({ baseUrl, streamLandingAgent }) => {
+    await withServer(async ({ baseUrl, startLandingAgent }) => {
       const response = await postJson(`${baseUrl}/agent`, {
         projectId: 'project-1',
         prompt: 'Build a hero',
@@ -327,8 +331,12 @@ describe('server HTTP routes', () => {
       })
 
       expect(response.status).toBe(200)
-      await expect(response.text()).resolves.toBe('event: done\ndata: {}\n\n')
-      const call = streamLandingAgent.mock.calls[0]?.[0]
+      await expect(response.json()).resolves.toEqual({
+        ok: true,
+        status: 'running',
+        turnId: 'turn-x',
+      })
+      const call = startLandingAgent.mock.calls[0]?.[0]
       expect(call).toMatchObject({
         projectId: 'project-1',
         prompt: 'Build a hero',
@@ -746,8 +754,8 @@ function statusOf(data: unknown): string {
 async function withServer(
   fn: (context: {
     baseUrl: string
+    startLandingAgent: ReturnType<typeof vi.fn>
     stopLandingAgent: ReturnType<typeof vi.fn>
-    streamLandingAgent: ReturnType<typeof vi.fn>
   }) => Promise<void>,
 ) {
   vi.resetModules()
@@ -755,17 +763,9 @@ async function withServer(
   vi.stubEnv('CLIENT_ORIGIN', 'https://client.test')
 
   const stopLandingAgent = vi.fn<() => boolean>(() => true)
-  const streamLandingAgent = vi.fn<
-    (input: {
-      response: {
-        end: (chunk: string) => void
-        writeHead: (statusCode: number, headers: Record<string, string>) => void
-      }
-    }) => Promise<void>
-  >(async ({ response }) => {
-    response.writeHead(200, { 'content-type': 'text/event-stream' })
-    response.end('event: done\ndata: {}\n\n')
-  })
+  const startLandingAgent = vi.fn<
+    () => Promise<{ ok: true; status: 'running'; turnId: string }>
+  >(async () => ({ ok: true, status: 'running', turnId: 'turn-x' }))
   vi.doMock('./mastra/route.ts', () => ({
     resolveModelId: (model?: string) => {
       const requested = model ?? 'default-model'
@@ -773,8 +773,8 @@ async function withServer(
         ? requested.slice('openrouter/'.length)
         : requested
     },
+    startLandingAgent,
     stopLandingAgent,
-    streamLandingAgent,
   }))
 
   const { server } = await import('./index.ts')
@@ -784,8 +784,8 @@ async function withServer(
   try {
     await fn({
       baseUrl: `http://127.0.0.1:${port}`,
+      startLandingAgent,
       stopLandingAgent,
-      streamLandingAgent,
     })
   } finally {
     await close(server)

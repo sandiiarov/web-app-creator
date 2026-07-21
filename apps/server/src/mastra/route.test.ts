@@ -7,6 +7,8 @@ import type {
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
+import type { AgentAttachmentInput } from './route.ts'
+
 const PNG_DATA_URL = 'data:image/png;base64,iVBORw0KGgo='
 
 const createdProjectIds: string[] = []
@@ -21,6 +23,77 @@ afterEach(async () => {
   await Promise.all(createdProjectIds.splice(0).map((id) => deleteProject(id)))
 })
 
+/**
+ * Test compatibility shim for the old `streamLandingAgent({ projectId, prompt,
+ * request, response, ... })` API. The real export is now `startLandingAgent`
+ * (fire-and-forget, bus-based). This shim subscribes the passed response to the
+ * run bus, starts the detached run, awaits its completion (so log/project
+ * assertions observe terminal state), and reconstructs the SSE error/done
+ * frames the old not_found/overlap paths emitted directly — keeping the
+ * existing SSE-based assertions intact.
+ */
+async function streamLandingAgent({
+  attachments,
+  imageModel,
+  projectId,
+  prompt,
+  request,
+  response,
+  textModel,
+  turnId,
+  visionModel,
+}: {
+  attachments?: AgentAttachmentInput[]
+  imageModel?: string
+  projectId: string
+  prompt: string
+  request: IncomingMessage
+  response: ServerResponse
+  textModel: string
+  turnId?: string
+  visionModel?: string
+}) {
+  const { startLandingAgent } = await import('./route.ts')
+  const { endSse } = await import('./lib/sse.ts')
+  const { getRun } = await import('./lib/run-bus.ts')
+  const baseUrl = `http://${request.headers.host ?? `localhost:3001`}`
+
+  const result = await startLandingAgent({
+    attachments,
+    baseUrl,
+    imageModel,
+    projectId,
+    prompt,
+    subscriber: response,
+    textModel,
+    turnId,
+    visionModel,
+  })
+
+  if (!result.ok) {
+    if (result.reason === 'not_found') {
+      response.writeHead(404, { 'content-type': 'text/event-stream' })
+    }
+    response.write(
+      `event: error\ndata: ${JSON.stringify({
+        message:
+          result.reason === 'not_found'
+            ? 'Project not found'
+            : 'A run is already active for this project.',
+      })}\n\n`,
+    )
+    response.write('event: done\ndata: {}\n\n')
+    endSse(response)
+    return
+  }
+
+  // Await the detached run's release so log/project assertions see terminal state.
+  for (let i = 0; i < 500 && getRun(projectId); i++) {
+    await new Promise((resolve) => setTimeout(resolve, 5))
+  }
+  endSse(response)
+}
+
 describe('streamLandingAgent missing projects', () => {
   it('returns an SSE error when the project does not exist', async () => {
     vi.stubEnv('OPENROUTER_API_KEY', 'test-openrouter-key')
@@ -29,7 +102,6 @@ describe('streamLandingAgent missing projects', () => {
       createLandingPageAgent: vi.fn<() => never>(),
     }))
 
-    const { streamLandingAgent } = await import('./route.ts')
     const response = new FakeResponse()
 
     await streamLandingAgent({
@@ -62,7 +134,6 @@ describe('streamLandingAgent turnId', () => {
       await import('./lib/project-store.ts')
     const project = await createProject()
     createdProjectIds.push(project.id)
-    const { streamLandingAgent } = await import('./route.ts')
 
     await streamLandingAgent({
       projectId: project.id,
@@ -127,7 +198,6 @@ describe('streamLandingAgent attachments', () => {
     const { createProject, getProject } = await import('./lib/project-store.ts')
     const project = await createProject()
     createdProjectIds.push(project.id)
-    const { streamLandingAgent } = await import('./route.ts')
     const response = new FakeResponse()
 
     await streamLandingAgent({
@@ -245,7 +315,6 @@ describe('streamLandingAgent attachments', () => {
     const { createProject, getProject } = await import('./lib/project-store.ts')
     const project = await createProject()
     createdProjectIds.push(project.id)
-    const { streamLandingAgent } = await import('./route.ts')
     const response = new FakeResponse()
 
     await streamLandingAgent({
@@ -314,7 +383,7 @@ describe('streamLandingAgent attachments', () => {
     const { createProject } = await import('./lib/project-store.ts')
     const project = await createProject()
     createdProjectIds.push(project.id)
-    const { stopLandingAgent, streamLandingAgent } = await import('./route.ts')
+    const { stopLandingAgent } = await import('./route.ts')
     const request = fakeRequest()
     const response = new FakeResponse()
 
@@ -366,7 +435,6 @@ describe('streamLandingAgent error handling', () => {
     const { createProject, getProject } = await import('./lib/project-store.ts')
     const project = await createProject()
     createdProjectIds.push(project.id)
-    const { streamLandingAgent } = await import('./route.ts')
     const response = new FakeResponse()
 
     await streamLandingAgent({
@@ -415,7 +483,6 @@ describe('streamLandingAgent error handling', () => {
       await import('./lib/project-store.ts')
     const project = await createProject()
     createdProjectIds.push(project.id)
-    const { streamLandingAgent } = await import('./route.ts')
     const response = new FakeResponse()
 
     await streamLandingAgent({
@@ -481,7 +548,6 @@ describe('streamLandingAgent cost accounting', () => {
     const { createProject } = await import('./lib/project-store.ts')
     const project = await createProject()
     createdProjectIds.push(project.id)
-    const { streamLandingAgent } = await import('./route.ts')
     const response = new FakeResponse()
 
     await streamLandingAgent({
@@ -547,7 +613,6 @@ describe('streamLandingAgent cost accounting', () => {
     const { createProject } = await import('./lib/project-store.ts')
     const project = await createProject()
     createdProjectIds.push(project.id)
-    const { streamLandingAgent } = await import('./route.ts')
     const response = new FakeResponse()
 
     await streamLandingAgent({
@@ -593,7 +658,6 @@ describe('streamLandingAgent cost accounting', () => {
     const { createProject } = await import('./lib/project-store.ts')
     const project = await createProject()
     createdProjectIds.push(project.id)
-    const { streamLandingAgent } = await import('./route.ts')
     const response = new FakeResponse()
 
     await streamLandingAgent({
@@ -637,7 +701,6 @@ describe('streamLandingAgent cost accounting', () => {
     const { createProject } = await import('./lib/project-store.ts')
     const project = await createProject()
     createdProjectIds.push(project.id)
-    const { streamLandingAgent } = await import('./route.ts')
     const response = new FakeResponse()
 
     await streamLandingAgent({
@@ -679,7 +742,6 @@ describe('streamLandingAgent cost accounting', () => {
     const { createProject } = await import('./lib/project-store.ts')
     const project = await createProject()
     createdProjectIds.push(project.id)
-    const { streamLandingAgent } = await import('./route.ts')
     const response = new FakeResponse()
 
     await streamLandingAgent({
@@ -726,7 +788,6 @@ describe('streamLandingAgent stream mapping', () => {
     const { createProject, getProject } = await import('./lib/project-store.ts')
     const project = await createProject()
     createdProjectIds.push(project.id)
-    const { streamLandingAgent } = await import('./route.ts')
     const response = new FakeResponse()
 
     await streamLandingAgent({
@@ -887,7 +948,6 @@ describe('streamLandingAgent generated image persistence', () => {
       await import('./lib/project-store.ts')
     const project = await createProject()
     createdProjectIds.push(project.id)
-    const { streamLandingAgent } = await import('./route.ts')
 
     await streamLandingAgent({
       projectId: project.id,
@@ -957,7 +1017,6 @@ describe('streamLandingAgent edit stream', () => {
     const { createProject, getProject } = await import('./lib/project-store.ts')
     const project = await createProject()
     createdProjectIds.push(project.id)
-    const { streamLandingAgent } = await import('./route.ts')
     const response = new FakeResponse()
 
     await streamLandingAgent({
@@ -1053,7 +1112,6 @@ describe('streamLandingAgent default tool intents', () => {
     const { createProject } = await import('./lib/project-store.ts')
     const project = await createProject()
     createdProjectIds.push(project.id)
-    const { streamLandingAgent } = await import('./route.ts')
     const response = new FakeResponse()
 
     await streamLandingAgent({
@@ -1120,7 +1178,6 @@ describe('streamLandingAgent retries', () => {
     const { createProject } = await import('./lib/project-store.ts')
     const project = await createProject()
     createdProjectIds.push(project.id)
-    const { streamLandingAgent } = await import('./route.ts')
     const response = new FakeResponse()
 
     await streamLandingAgent({
@@ -1168,7 +1225,6 @@ describe('streamLandingAgent html updates', () => {
       await import('./lib/project-store.ts')
     const project = await createProject()
     createdProjectIds.push(project.id)
-    const { streamLandingAgent } = await import('./route.ts')
     const response = new FakeResponse()
 
     await streamLandingAgent({
@@ -1241,7 +1297,6 @@ describe('streamLandingAgent html updates', () => {
     const { createProject } = await import('./lib/project-store.ts')
     const project = await createProject()
     createdProjectIds.push(project.id)
-    const { streamLandingAgent } = await import('./route.ts')
     const response = new FakeResponse()
 
     await streamLandingAgent({
@@ -1271,7 +1326,6 @@ describe('streamLandingAgent html updates', () => {
     const { createProject, getProject } = await import('./lib/project-store.ts')
     const project = await createProject()
     createdProjectIds.push(project.id)
-    const { streamLandingAgent } = await import('./route.ts')
     const response = new FakeResponse()
 
     await streamLandingAgent({
@@ -1353,7 +1407,6 @@ describe('streamLandingAgent html updates', () => {
     const { createProject } = await import('./lib/project-store.ts')
     const project = await createProject()
     createdProjectIds.push(project.id)
-    const { streamLandingAgent } = await import('./route.ts')
     const response = new FakeResponse()
 
     await streamLandingAgent({
@@ -1411,7 +1464,6 @@ describe('streamLandingAgent html updates', () => {
     const { createProject } = await import('./lib/project-store.ts')
     const project = await createProject()
     createdProjectIds.push(project.id)
-    const { streamLandingAgent } = await import('./route.ts')
     const response = new FakeResponse()
 
     await streamLandingAgent({
@@ -1468,7 +1520,6 @@ describe('streamLandingAgent history', () => {
       prompt: 'Create a nice landing page for AI coding agent',
     })
 
-    const { streamLandingAgent } = await import('./route.ts')
     const response = new FakeResponse()
 
     await streamLandingAgent({
@@ -1560,7 +1611,6 @@ describe('streamLandingAgent screenshots', () => {
     const { createProject } = await import('./lib/project-store.ts')
     const project = await createProject()
     createdProjectIds.push(project.id)
-    const { streamLandingAgent } = await import('./route.ts')
     const response = new FakeResponse()
 
     await streamLandingAgent({
@@ -1602,7 +1652,6 @@ describe('streamLandingAgent screenshots', () => {
     const { createProject, getProject } = await import('./lib/project-store.ts')
     const project = await createProject()
     createdProjectIds.push(project.id)
-    const { streamLandingAgent } = await import('./route.ts')
     const response = new FakeResponse()
 
     await streamLandingAgent({
@@ -1680,7 +1729,6 @@ describe('streamLandingAgent screenshots', () => {
     const { createProject } = await import('./lib/project-store.ts')
     const project = await createProject()
     createdProjectIds.push(project.id)
-    const { streamLandingAgent } = await import('./route.ts')
     const response = new FakeResponse()
 
     await streamLandingAgent({
@@ -1736,7 +1784,6 @@ describe('streamLandingAgent message persistence', () => {
     const project = await createProject()
     createdProjectIds.push(project.id)
     capturedProjectId = project.id
-    const { streamLandingAgent } = await import('./route.ts')
     const response = new FakeResponse()
 
     await streamLandingAgent({
@@ -1799,7 +1846,6 @@ describe('streamLandingAgent screenshot capture errors', () => {
     const { createProject } = await import('./lib/project-store.ts')
     const project = await createProject()
     createdProjectIds.push(project.id)
-    const { streamLandingAgent } = await import('./route.ts')
     const response = new FakeResponse()
 
     await streamLandingAgent({
@@ -1878,7 +1924,6 @@ describe('streamLandingAgent raw mastra message persistence', () => {
     const { createProject } = await import('./lib/project-store.ts')
     const project = await createProject()
     createdProjectIds.push(project.id)
-    const { streamLandingAgent } = await import('./route.ts')
 
     // First turn: produces the page; raw response messages are captured.
     await streamLandingAgent({
@@ -1975,7 +2020,6 @@ describe('streamLandingAgent raw mastra message persistence', () => {
       await import('./lib/project-store.ts')
     const project = await createProject()
     createdProjectIds.push(project.id)
-    const { streamLandingAgent } = await import('./route.ts')
 
     await streamLandingAgent({
       projectId: project.id,
@@ -2013,7 +2057,6 @@ describe('streamLandingAgent stream errors + cleanup', () => {
     const { createProject } = await import('./lib/project-store.ts')
     const project = await createProject()
     createdProjectIds.push(project.id)
-    const { streamLandingAgent } = await import('./route.ts')
     const request = fakeRequest()
     const response = new FakeResponse()
     await streamLandingAgent({
@@ -2061,7 +2104,6 @@ describe('streamLandingAgent stream errors + cleanup', () => {
       await import('./lib/project-store.ts')
     const project = await createProject()
     createdProjectIds.push(project.id)
-    const { streamLandingAgent } = await import('./route.ts')
     const request = fakeRequest()
     const response = new FakeResponse()
     const run = streamLandingAgent({
@@ -2113,7 +2155,7 @@ describe('streamLandingAgent stream errors + cleanup', () => {
       await import('./lib/project-store.ts')
     const project = await createProject()
     createdProjectIds.push(project.id)
-    const { stopLandingAgent, streamLandingAgent } = await import('./route.ts')
+    const { stopLandingAgent } = await import('./route.ts')
     const request = fakeRequest()
     const response = new FakeResponse()
     const run = streamLandingAgent({
@@ -2195,7 +2237,7 @@ describe('streamLandingAgent stream errors + cleanup', () => {
       await import('./lib/project-store.ts')
     const project = await createProject()
     createdProjectIds.push(project.id)
-    const { stopLandingAgent, streamLandingAgent } = await import('./route.ts')
+    const { stopLandingAgent } = await import('./route.ts')
     const firstRequest = fakeRequest()
     const firstResponse = new FakeResponse()
     const firstRun = streamLandingAgent({
@@ -2254,7 +2296,7 @@ describe('streamLandingAgent stream errors + cleanup', () => {
       await import('./lib/project-store.ts')
     const project = await createProject()
     createdProjectIds.push(project.id)
-    const { stopLandingAgent, streamLandingAgent } = await import('./route.ts')
+    const { stopLandingAgent } = await import('./route.ts')
     const request = fakeRequest()
     const response = new FakeResponse({ throwOnWrite: true })
 
@@ -2292,7 +2334,6 @@ describe('streamLandingAgent stream errors + cleanup', () => {
     const { createProject } = await import('./lib/project-store.ts')
     const project = await createProject()
     createdProjectIds.push(project.id)
-    const { streamLandingAgent } = await import('./route.ts')
     const response = new FakeResponse()
     await streamLandingAgent({
       projectId: project.id,
