@@ -66,6 +66,7 @@ const PROJECTS_DIR = join(DATA_DIR, 'projects')
 const HTML_JSON = 'html.json'
 const INDEX_HTML = 'index.html'
 const PROJECT_JSON = 'project.json'
+const RUN_STATE_JSON = 'run-state.json'
 // Legacy filenames (read-only fallback for projects persisted before the
 // append-log refactor). Never written by new code.
 const MESSAGES_JSON = 'messages.json'
@@ -135,12 +136,34 @@ export interface ProjectRawTurnMessages {
   turnId: string
 }
 
+/** Run-lifecycle fields composed onto `ProjectMeta` at the list/get read
+ *  boundary (NOT persisted to `project.json` — read from `run-state.json`). */
+export interface ProjectRunMeta {
+  runStartedAt: null | string
+  runTurnId: null | string
+  status: RunStatus
+}
+
 /** A persisted screenshot file written under `screenshots/`. */
 export interface ProjectScreenshot {
   ext: string
   /** Project-relative URL (`/api/projects/<id>/screenshots/<file>`). */
   path: string
 }
+
+/** Full run-lifecycle record on disk. `idle` (default) when the file is absent
+ *  — the back-compat state for all pre-existing projects + fresh drafts. */
+export interface RunState {
+  error: null | string
+  finishedAt: null | string
+  startedAt: null | string
+  status: RunStatus
+  turnId: null | string
+}
+
+/** Run-lifecycle status persisted in `run-state.json` (separate from
+ *  `project.json` so run writes don't contend with model/hasHtml RMWs). */
+export type RunStatus = 'error' | 'idle' | 'interrupted' | 'running' | 'stopped'
 /** One entry in `vision-messages.json`: a single OCR/vision call (`ocrImageInputs`).
  * Text/usage/cost only — never image bytes. */
 export type VisionMessageEntry = {
@@ -173,7 +196,7 @@ export async function appendProjectMessageTurn(
 /** Create a new draft project seeded with the placeholder page. */
 export async function createProject(
   input: ProjectInput = {},
-): Promise<Project> {
+): Promise<Project & ProjectRunMeta> {
   const id = randomUUID()
   const now = new Date().toISOString()
   const meta: ProjectMeta = {
@@ -193,7 +216,12 @@ export async function createProject(
   await writeMeta(id, meta)
   await writeHtmlDocument(id, document)
 
-  return { ...meta, indexHtml: renderHtmlDocument(document), messages: [] }
+  return {
+    ...meta,
+    ...composeRunMeta(id),
+    indexHtml: renderHtmlDocument(document),
+    messages: [],
+  }
 }
 
 /**
@@ -245,7 +273,9 @@ export async function deleteProject(id: string): Promise<void> {
 }
 
 /** Full project (metadata + rendered indexHtml + messages), or null if missing. */
-export async function getProject(id: string): Promise<null | Project> {
+export async function getProject(
+  id: string,
+): Promise<null | (Project & ProjectRunMeta)> {
   const meta = await readMeta(id)
   if (!meta) return null
   const document = await readOrCreateHtmlDocument(id)
@@ -259,17 +289,26 @@ export async function getProject(id: string): Promise<null | Project> {
     messages = replayed.length > 0 ? replayed : await readMessages(id)
     turnCache.set(id, messages)
   }
-  return { ...meta, indexHtml: renderHtmlDocument(document), messages }
+  return {
+    ...meta,
+    ...composeRunMeta(id),
+    indexHtml: renderHtmlDocument(document),
+    messages,
+  }
 }
 
 /** List all projects (metadata only), newest first. Drafts (no HTML) hidden. */
-export async function listProjects(): Promise<ProjectMeta[]> {
+export async function listProjects(): Promise<
+  (ProjectMeta & ProjectRunMeta)[]
+> {
   const ids = await readDirSafe(PROJECTS_DIR)
-  const metas: ProjectMeta[] = []
+  const metas: (ProjectMeta & ProjectRunMeta)[] = []
 
   for (const id of ids) {
     const meta = await readMeta(id)
-    if (meta && meta.hasHtml) metas.push(meta)
+    if (meta && meta.hasHtml) {
+      metas.push({ ...meta, ...composeRunMeta(id) })
+    }
   }
 
   return metas.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
@@ -621,6 +660,53 @@ export async function readVisionMessages(
   }
 }
 
+/** Scan all projects; any with a stale `status:'running'` (process restarted
+ *  mid-run) is marked `interrupted` and its open turn is terminalized in the
+ *  client-messages log so replay renders it cleanly. Idempotent: only acts on
+ *  `running`. Returns the number of runs reconciled. */
+export async function reconcileInterruptedRuns(): Promise<number> {
+  const ids = await readDirSafe(PROJECTS_DIR)
+  let reconciled = 0
+  for (const id of ids) {
+    const state = readRunStateSync(id)
+    if (state.status !== 'running' || !state.turnId) continue
+    const ts = new Date().toISOString()
+    setRunStatusSync(id, {
+      error: 'Server restarted while run was active.',
+      finishedAt: ts,
+      status: 'interrupted',
+    })
+    await appendClientMessage(id, {
+      dir: 'out',
+      event: 'error',
+      payload: { message: 'Server restarted while run was active.' },
+      ts,
+    })
+    await appendClientMessage(id, {
+      dir: 'out',
+      event: 'done',
+      payload: {},
+      ts,
+    })
+    invalidateTurnCache(id)
+    reconciled += 1
+  }
+  return reconciled
+}
+
+/** Atomically update the run-lifecycle state for a project (sync RMW over
+ *  `run-state.json`). The single chokepoint for run-status writes — Phase 4
+ *  hooks a list-bus fan-out here so status changes broadcast to list
+ *  subscribers. */
+export function setRunStatusSync(
+  id: string,
+  partial: Partial<RunState>,
+): RunState {
+  const next = { ...readRunStateSync(id), ...partial }
+  writeRunStateSync(id, next)
+  return next
+}
+
 /** Set the title from the prompt if it is still the default. Sync, server-side. */
 export function setTitleIfUntitled(id: string, title: string): void {
   const meta = readMetaSync(id)
@@ -634,7 +720,7 @@ export function setTitleIfUntitled(id: string, title: string): void {
 export async function updateProjectModel(
   id: string,
   selection: ProjectModelSelection,
-): Promise<null | ProjectMeta> {
+): Promise<null | (ProjectMeta & ProjectRunMeta)> {
   // Synchronous read-modify-write so the single-threaded event loop serializes
   // this against the other sync project.json writers (markHasHtmlSync,
   // setTitleIfUntitled) — see plan 017. Only provided selection fields change.
@@ -649,7 +735,7 @@ export async function updateProjectModel(
     (textModel !== undefined && meta.model !== textModel) ||
     (imageModel !== undefined && meta.imageModel !== imageModel) ||
     (visionModel !== undefined && meta.visionModel !== visionModel)
-  if (!changed) return meta
+  if (!changed) return { ...meta, ...composeRunMeta(id) }
 
   const next: ProjectMeta = {
     ...meta,
@@ -659,7 +745,7 @@ export async function updateProjectModel(
     updatedAt: new Date().toISOString(),
   }
   writeMetaSync(id, next)
-  return next
+  return { ...next, ...composeRunMeta(id) }
 }
 
 /**
@@ -984,6 +1070,41 @@ function readMetaSync(id: string): null | ProjectMeta {
   }
 }
 
+const DEFAULT_RUN_STATE: RunState = {
+  error: null,
+  finishedAt: null,
+  startedAt: null,
+  status: 'idle',
+  turnId: null,
+}
+
+const RUN_STATUSES: readonly RunStatus[] = [
+  'error',
+  'idle',
+  'interrupted',
+  'running',
+  'stopped',
+]
+
+/** Compose the run-lifecycle fields onto a `ProjectMeta` at a read boundary
+ *  (list/get). Reads `run-state.json`; defaults to `idle` when absent so all
+ *  pre-existing projects + fresh drafts read cleanly. */
+function composeRunMeta(id: string): ProjectRunMeta {
+  const state = readRunStateSync(id)
+  return {
+    runStartedAt: state.startedAt,
+    runTurnId: state.turnId,
+    status: state.status,
+  }
+}
+
+function isRunStatus(value: unknown): value is RunStatus {
+  return (
+    typeof value === 'string' &&
+    (RUN_STATUSES as readonly string[]).includes(value)
+  )
+}
+
 async function readOrCreateHtmlDocument(
   id: string,
 ): Promise<HtmlDocumentJsonV1> {
@@ -1010,6 +1131,23 @@ function readOrCreateHtmlDocumentSync(id: string): HtmlDocumentJsonV1 {
   writeHtmlDocumentSync(id, document)
   removeIndexHtmlSync(id)
   return document
+}
+
+function readRunStateSync(id: string): RunState {
+  try {
+    const raw = readFileSync(join(projectDir(id), RUN_STATE_JSON), 'utf8')
+    const parsed = JSON.parse(raw) as Partial<RunState>
+    return {
+      error: typeof parsed.error === 'string' ? parsed.error : null,
+      finishedAt:
+        typeof parsed.finishedAt === 'string' ? parsed.finishedAt : null,
+      startedAt: typeof parsed.startedAt === 'string' ? parsed.startedAt : null,
+      status: isRunStatus(parsed.status) ? parsed.status : 'idle',
+      turnId: typeof parsed.turnId === 'string' ? parsed.turnId : null,
+    }
+  } catch {
+    return { ...DEFAULT_RUN_STATE }
+  }
 }
 
 async function removeIndexHtml(id: string) {
@@ -1082,6 +1220,15 @@ function writeMetaSync(id: string, meta: ProjectMeta) {
   writeFileSync(
     join(projectDir(id), PROJECT_JSON),
     JSON.stringify(meta, null, 2),
+    'utf8',
+  )
+}
+
+function writeRunStateSync(id: string, state: RunState) {
+  mkdirSync(projectDir(id), { recursive: true })
+  writeFileSync(
+    join(projectDir(id), RUN_STATE_JSON),
+    `${JSON.stringify(state, null, 2)}\n`,
     'utf8',
   )
 }

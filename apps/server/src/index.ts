@@ -17,6 +17,7 @@ import {
   listProjects,
   readProjectImage,
   readProjectScreenshot,
+  reconcileInterruptedRuns,
   updateProjectModel,
 } from './mastra/lib/project-store.ts'
 import {
@@ -82,9 +83,15 @@ const isMainModule =
   process.argv[1]?.endsWith('src/index.ts')
 
 if (isMainModule) {
-  server.listen(config.port, config.host, () => {
-    console.log(`Server listening at http://${config.host}:${config.port}`)
-  })
+  void (async () => {
+    const reconciled = await reconcileInterruptedRuns()
+    if (reconciled > 0) {
+      console.log(`Reconciled ${reconciled} interrupted run(s) on startup.`)
+    }
+    server.listen(config.port, config.host, () => {
+      console.log(`Server listening at http://${config.host}:${config.port}`)
+    })
+  })()
 }
 
 export { server }
