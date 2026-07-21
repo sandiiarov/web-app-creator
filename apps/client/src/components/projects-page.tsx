@@ -7,12 +7,15 @@ import { Navigate, useNavigate } from 'react-router-dom'
 
 import {
   type ProjectMeta,
+  type RunStatus,
   createProject,
   deleteProject,
   expandProjectImageUrls,
   getProject,
   listProjects,
+  projectListEventsUrl,
 } from '../lib/projects-api'
+import { streamSSEGet } from '../lib/sse-client'
 
 /** Creates a draft project on mount and redirects to its editor route. */
 export function NewProjectPage() {
@@ -69,6 +72,7 @@ export function NewProjectPage() {
 
 export function ProjectsPage() {
   const [projects, setProjects] = useState<ProjectMeta[]>([])
+  const [statusById, setStatusById] = useState<Record<string, RunStatus>>({})
   const [error, setError] = useState<null | string>(null)
   const [loading, setLoading] = useState(true)
   const navigate = useNavigate()
@@ -77,7 +81,15 @@ export function ProjectsPage() {
     setLoading(true)
     setError(null)
     try {
-      setProjects(await listProjects())
+      const list = await listProjects()
+      setProjects(list)
+      setStatusById((prev) => {
+        const next = { ...prev }
+        for (const project of list) {
+          next[project.id] = project.status ?? 'idle'
+        }
+        return next
+      })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load projects')
     } finally {
@@ -88,6 +100,32 @@ export function ProjectsPage() {
   useEffect(() => {
     void refresh()
   }, [refresh])
+
+  // Live status updates: the list SSE fans out `project_status` events whenever
+  // a run starts/terminates (driven by `setRunStatusSync` → `broadcastStatus`).
+  useEffect(() => {
+    const controller = new AbortController()
+    void streamSSEGet(projectListEventsUrl(), {
+      onEvent: ({ data, event }) => {
+        if (event !== 'project_status') return
+        const payload = data as {
+          projectId?: string
+          status?: RunStatus
+        }
+        const projectId = payload.projectId
+        const status = payload.status
+        if (!projectId || !status) return
+        setStatusById((prev) =>
+          prev[projectId] === status ? prev : { ...prev, [projectId]: status },
+        )
+      },
+      signal: controller.signal,
+    }).catch(() => {
+      // Server unreachable / stream ended — best-effort; statuses still seed
+      // from the initial listProjects() fetch above.
+    })
+    return () => controller.abort()
+  }, [])
 
   const handleDelete = useCallback(async (id: string) => {
     if (!window.confirm('Delete this project? This cannot be undone.')) return
@@ -133,6 +171,7 @@ export function ProjectsPage() {
                 onDelete={handleDelete}
                 onOpen={(id) => navigate(`/projects/${id}`)}
                 project={project}
+                status={statusById[project.id] ?? project.status ?? 'idle'}
               />
             ))}
           </ul>
@@ -180,14 +219,52 @@ function formatRelative(iso: string): string {
   })
 }
 
+const STATUS_BADGE: Partial<
+  Record<RunStatus, { dot: string; label: string; text: string }>
+> = {
+  error: { dot: 'bg-destructive', label: 'Failed', text: 'text-destructive' },
+  interrupted: {
+    dot: 'bg-destructive',
+    label: 'Interrupted',
+    text: 'text-destructive',
+  },
+  running: {
+    dot: 'bg-accent-foreground animate-pulse',
+    label: 'Generating',
+    text: 'text-foreground',
+  },
+  stopped: {
+    dot: 'bg-muted-foreground',
+    label: 'Stopped',
+    text: 'text-muted-foreground',
+  },
+}
+
+/** Inline run-status indicator for a project card. `idle` renders nothing. */
+export function StatusBadge({ status }: { status: RunStatus }) {
+  const config = STATUS_BADGE[status]
+  if (!config) return null
+  return (
+    <span
+      className={cn('inline-flex items-center gap-1.5', config.text)}
+      data-status={status}
+    >
+      <span className={cn('size-1.5 shrink-0', config.dot)} />
+      {config.label}
+    </span>
+  )
+}
+
 function ProjectCard({
   onDelete,
   onOpen,
   project,
+  status,
 }: {
   onDelete: (id: string) => void
   onOpen: (id: string) => void
   project: ProjectMeta
+  status: RunStatus
 }) {
   const title = project.title || 'Untitled'
 
@@ -205,8 +282,9 @@ function ProjectCard({
             <span className="block truncate text-sm font-medium text-foreground">
               {title}
             </span>
-            <span className="mt-0.5 block text-xs text-muted-foreground">
-              Updated {formatRelative(project.updatedAt)}
+            <span className="mt-0.5 flex items-center gap-2 text-xs text-muted-foreground">
+              <StatusBadge status={status} />
+              <span>Updated {formatRelative(project.updatedAt)}</span>
             </span>
           </span>
           <ArrowRight className="size-4 text-muted-foreground transition-colors group-hover:text-foreground" />
