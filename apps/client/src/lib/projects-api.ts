@@ -18,10 +18,15 @@ export interface ProjectMeta {
   id: string
   imageModel?: string
   model: string
+  runStartedAt?: null | string
+  runTurnId?: null | string
+  status?: RunStatus
   title: string
   updatedAt: string
   visionModel?: string
 }
+
+export type RunStatus = 'error' | 'idle' | 'interrupted' | 'running' | 'stopped'
 
 export class ProjectNotFoundError extends Error {
   readonly id: string
