@@ -2,6 +2,15 @@ import type { LandingTurn } from '@workspace/prompt-panel'
 
 import { SERVER_URL } from './landing-agent'
 
+export interface AgentEventSubscription {
+  html: string
+  models: { image: string; text: string; vision: string }
+  runStartedAt: null | string
+  runTurnId: null | string
+  status: RunStatus
+  turns: LandingTurn[]
+}
+
 export interface Project extends ProjectMeta {
   indexHtml: string
   messages: LandingTurn[]
@@ -27,6 +36,30 @@ export interface ProjectMeta {
 }
 
 export type RunStatus = 'error' | 'idle' | 'interrupted' | 'running' | 'stopped'
+
+export interface SendPromptInput {
+  attachments?: Array<
+    | {
+        dataUrl: string
+        id: string
+        mediaType: string
+        name: string
+        size: number
+      }
+    | { kind: 'element'; selector: string }
+  >
+  imageModel?: string
+  projectId: string
+  prompt: string
+  textModel: string
+  turnId: string
+  visionModel?: string
+}
+
+export interface SendPromptResult {
+  status: string
+  turnId: string
+}
 
 export class ProjectNotFoundError extends Error {
   readonly id: string
@@ -95,6 +128,43 @@ export async function listProjects(): Promise<ProjectMeta[]> {
   }
   if (!json.ok) throw new Error('Failed to list projects')
   return json.projects
+}
+
+/** SSE URL for the per-project live event stream (state snapshot + run tail). */
+export function projectEventsUrl(projectId: string): string {
+  return `${SERVER_URL}/api/projects/${projectId}/events`
+}
+
+/** SSE URL for the project-list live status stream. */
+export function projectListEventsUrl(): string {
+  return `${SERVER_URL}/api/projects/events`
+}
+
+/**
+ * Start a landing-page agent run. Returns immediately with the resolved turn
+ * id + `status: 'running'`; the run proceeds on the server and its events are
+ * delivered through the per-project event subscription. 404 → ProjectNotFound,
+ * 409 → throws (a run is already active).
+ */
+export async function sendPrompt(
+  input: SendPromptInput,
+): Promise<SendPromptResult> {
+  const response = await fetch(`${SERVER_URL}/agent`, {
+    body: JSON.stringify(input),
+    headers: { 'content-type': 'application/json' },
+    method: 'POST',
+  })
+  if (response.status === 404) throw new ProjectNotFoundError(input.projectId)
+  const json = (await response.json()) as {
+    error?: string
+    ok: boolean
+    status?: string
+    turnId?: string
+  }
+  if (!json.ok || !json.turnId || !json.status) {
+    throw new Error(json.error ?? 'Failed to start agent run')
+  }
+  return { status: json.status, turnId: json.turnId }
 }
 
 /**

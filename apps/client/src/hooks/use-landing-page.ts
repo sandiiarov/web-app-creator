@@ -7,24 +7,20 @@ import {
   type PromptAttachmentInput,
   type PromptAttachmentMeta,
   resolveLandingModels,
-  type TurnPart,
 } from '@workspace/prompt-panel'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
+import { type HtmlUpdateEvent, type RetryEvent } from '../lib/landing-agent'
 import {
-  LANDING_AGENT_API,
-  type HtmlUpdateEvent,
-  type RetryEvent,
-} from '../lib/landing-agent'
-import {
+  type AgentEventSubscription,
   ProjectNotFoundError,
   expandProjectImageUrls,
-  getProject,
+  projectEventsUrl,
+  sendPrompt,
   stopProjectAgent,
   updateProjectModels,
-  type Project,
 } from '../lib/projects-api'
-import { streamSSE } from '../lib/sse-client'
+import { streamSSEGet } from '../lib/sse-client'
 
 export interface UseLandingPage {
   html: string
@@ -42,7 +38,7 @@ export interface UseLandingPageOptions {
   projectId: string
 }
 
-const RECONCILIATION_DELAYS_MS = [0, 100, 300, 1000] as const
+const STOP_SAFETY_MS = 8000
 
 let turnSeq = 0
 const nextTurnId = () => `turn-${Date.now()}-${turnSeq++}`
@@ -58,43 +54,125 @@ export function useLandingPage({
   )
   const [isStreaming, setIsStreaming] = useState(false)
   const [missing, setMissing] = useState(false)
-  const controllerRef = useRef<AbortController | null>(null)
+
+  // Synchronous send lock (two sends in one render tick must not both fire).
+  const sendingRef = useRef(false)
+  // The turn id live events currently target (the active run's turn). Null when
+  // no run is streaming.
+  const activeTurnIdRef = useRef<null | string>(null)
+  // Attachments from the in-flight send, used to enrich `analyze_image` tool
+  // diagnostics with the uploaded image data URLs (which never round-trip
+  // through the durable event log).
+  const pendingAttachmentsRef = useRef<PromptAttachmentInput[]>([])
   const stoppingRef = useRef(false)
   const stopSafetyRef = useRef<null | number>(null)
   const modelSaveSeq = useRef(0)
 
-  // Load the project on mount (and when switching projects): the server owns
-  // the HTML, so the UI pulls it rather than holding its own canonical copy.
+  // Subscribe to the project's live event stream on mount (and when switching
+  // projects). The server sends a `state` snapshot first (current HTML, models,
+  // status, live-replayed turns), then tails run events as they happen — so a
+  // tab reopened mid-run sees live progress instead of a frozen snapshot.
   useEffect(() => {
-    let cancelled = false
     setMissing(false)
     setHtml('')
     setTurns([])
+    setIsStreaming(false)
+    sendingRef.current = false
+    activeTurnIdRef.current = null
+    pendingAttachmentsRef.current = []
 
-    void getProject(projectId)
-      .then((project) => {
-        if (cancelled) return
-        setHtml(expandProjectImageUrls(project.indexHtml))
-        setTurns(restoreProjectTurns(project.messages))
-        setModelsState(
-          resolveLandingModels({
-            image: project.imageModel,
-            text: project.model,
-            vision: project.visionModel,
+    const controller = new AbortController()
+
+    void streamSSEGet(projectEventsUrl(projectId), {
+      onEvent: ({ data, event }) => {
+        if (event === 'state') {
+          const state = data as AgentEventSubscription
+          setHtml(expandProjectImageUrls(state.html))
+          // Live-replayed turns keep an in-flight turn `isStreaming` so the UI
+          // shows it as active; do NOT force-finalize on hydrate.
+          setTurns(restoreTurnsFromState(state.turns))
+          setModelsState(
+            resolveLandingModels({
+              image: state.models.image,
+              text: state.models.text,
+              vision: state.models.vision,
+            }),
+          )
+          const streaming = state.status === 'running'
+          setIsStreaming(streaming)
+          sendingRef.current = streaming
+          stoppingRef.current = false
+          activeTurnIdRef.current = streaming
+            ? (lastStreamingTurnId(state.turns) ?? null)
+            : null
+          return
+        }
+
+        if (event === 'html_update') {
+          const update = data as HtmlUpdateEvent
+          if (update.projectId === projectId) {
+            setHtml(expandProjectImageUrls(update.html))
+          }
+          return
+        }
+
+        const turnId = activeTurnIdRef.current
+        if (!turnId) return
+
+        if (event === 'retry') {
+          const retry = data as RetryEvent
+          patchTurn(turnId, (turn) => ({
+            ...turn,
+            parts: [
+              ...turn.parts,
+              {
+                ...retry,
+                id: `${turnId}-retry-${retry.attempt}`,
+                startedAt: Date.now(),
+                type: 'retry',
+              },
+            ],
+          }))
+          return
+        }
+
+        patchTurn(turnId, (turn) =>
+          applyEventToTurn(turn, {
+            dir: 'out',
+            event,
+            payload: withAnalyzeImageArgs(
+              data,
+              event,
+              pendingAttachmentsRef.current,
+            ),
+            ts: '',
           }),
         )
-      })
-      .catch((err: unknown) => {
-        if (cancelled) return
-        if (err instanceof ProjectNotFoundError) setMissing(true)
-        else
-          onError(err instanceof Error ? err.message : 'Failed to load project')
-      })
+
+        if (event === 'done' || event === 'error') {
+          finalizeActiveRun()
+        }
+      },
+      signal: controller.signal,
+    }).catch((err: unknown) => {
+      if (controller.signal.aborted) return
+      if (err instanceof Error && /404/.test(err.message)) {
+        setMissing(true)
+        return
+      }
+      onError(
+        err instanceof Error ? err.message : 'Failed to open event stream',
+      )
+    })
 
     return () => {
-      cancelled = true
+      controller.abort()
+      if (stopSafetyRef.current !== null) {
+        window.clearTimeout(stopSafetyRef.current)
+        stopSafetyRef.current = null
+      }
     }
-  }, [projectId, onError])
+  }, [onError, projectId])
 
   const patchTurn = useCallback(
     (turnId: string, fn: (turn: LandingTurn) => LandingTurn) => {
@@ -105,15 +183,17 @@ export function useLandingPage({
     [],
   )
 
-  const appendPart = useCallback(
-    (turnId: string, part: TurnPart) => {
-      patchTurn(turnId, (turn) => ({
-        ...turn,
-        parts: [...turn.parts, part],
-      }))
-    },
-    [patchTurn],
-  )
+  const finalizeActiveRun = useCallback(() => {
+    setIsStreaming(false)
+    sendingRef.current = false
+    stoppingRef.current = false
+    activeTurnIdRef.current = null
+    pendingAttachmentsRef.current = []
+    if (stopSafetyRef.current !== null) {
+      window.clearTimeout(stopSafetyRef.current)
+      stopSafetyRef.current = null
+    }
+  }, [])
 
   const persistModels = useCallback(
     (nextModels: LandingModels) => {
@@ -144,7 +224,7 @@ export function useLandingPage({
 
   const send = useCallback(
     ({ attachments = [], prompt }: LandingAgentSendInput) => {
-      if (isStreaming || controllerRef.current !== null) return
+      if (isStreaming || sendingRef.current) return
 
       const turnId = nextTurnId()
       const attachmentMetadata = attachments.map(stripAttachmentData)
@@ -159,137 +239,61 @@ export function useLandingPage({
       }
       setTurns((prev) => [...prev, turn])
       setIsStreaming(true)
+      sendingRef.current = true
+      activeTurnIdRef.current = turnId
+      pendingAttachmentsRef.current = attachments
 
-      const controller = new AbortController()
-      controllerRef.current = controller
-
-      let receivedDone = false
-      void streamSSE(
-        LANDING_AGENT_API,
-        {
-          attachments: attachments.map(toWireAttachment),
-          imageModel: models.image,
-          projectId,
-          prompt,
-          textModel: models.text,
-          turnId,
-          visionModel: models.vision,
-        },
-        {
-          onEvent: ({ data, event }) => {
-            if (event === 'done') receivedDone = true
-            // Side-effect events have no turn-structure effect and stay
-            // client-local; structural events share the reducer with the
-            // server's hydration path (@workspace/conversation).
-            if (event === 'html_update') {
-              const update = data as HtmlUpdateEvent
-              if (update.projectId === projectId) {
-                setHtml(expandProjectImageUrls(update.html))
-              }
-              return
-            }
-            if (event === 'retry') {
-              const retry = data as RetryEvent
-              appendPart(turnId, {
-                ...retry,
-                id: `${turnId}-retry-${retry.attempt}`,
-                startedAt: Date.now(),
-                type: 'retry',
-              })
-              return
-            }
-            patchTurn(turnId, (turn) =>
-              applyEventToTurn(turn, {
-                dir: 'out',
-                event,
-                payload: withAnalyzeImageArgs(data, event, attachments),
-                ts: '',
-              }),
-            )
-          },
-          signal: controller.signal,
-        },
-      )
-        .then(() => {
-          if (!receivedDone) {
-            throw new Error('Agent stream ended before terminal done event.')
-          }
-        })
-        .catch(async (error: unknown) => {
-          const reconciled = await reconcilePersistedTurn(projectId, turnId)
-          if (reconciled) {
-            setHtml(expandProjectImageUrls(reconciled.project.indexHtml))
-            setTurns((prev) =>
-              prev.map((turn) => (turn.id === turnId ? reconciled.turn : turn)),
-            )
-            return
-          }
-
-          const message = error instanceof Error ? error.message : String(error)
-          if (message !== 'stopped' && !controller.signal.aborted) {
-            patchTurn(turnId, (turn) =>
-              applyEventToTurn(turn, {
-                dir: 'out',
-                event: 'error',
-                payload: { message },
-                ts: '',
-              }),
-            )
-          }
-        })
-        .finally(() => {
-          patchTurn(turnId, (turn) =>
-            applyEventToTurn(turn, {
-              dir: 'out',
-              event: 'done',
-              payload: {},
-              ts: '',
-            }),
-          )
-          setIsStreaming(false)
-          stoppingRef.current = false
-          if (stopSafetyRef.current !== null) {
-            window.clearTimeout(stopSafetyRef.current)
-            stopSafetyRef.current = null
-          }
-          controllerRef.current = null
-        })
+      void sendPrompt({
+        attachments: attachments.map(toWireAttachment),
+        imageModel: models.image,
+        projectId,
+        prompt,
+        textModel: models.text,
+        turnId,
+        visionModel: models.vision,
+      }).catch((error: unknown) => {
+        // The server rejected the run (e.g. 409 overlap, validation, or it was
+        // deleted). Roll back the optimistic turn to a terminal error state.
+        const message = error instanceof Error ? error.message : String(error)
+        patchTurn(turnId, (current) =>
+          applyEventToTurn(
+            { ...current, isStreaming: false },
+            { dir: 'out', event: 'error', payload: { message }, ts: '' },
+          ),
+        )
+        finalizeActiveRun()
+      })
     },
-    [appendPart, isStreaming, models, patchTurn, projectId],
+    [finalizeActiveRun, isStreaming, models, patchTurn, projectId],
   )
 
   const stop = useCallback(() => {
-    const controller = controllerRef.current
-    if (!controller || stoppingRef.current) return
+    if (!sendingRef.current || stoppingRef.current) return
     stoppingRef.current = true
     // Immediate visual feedback: terminalize still-running tools on the active
-    // turn and stop its part animations. The panel-level `isStreaming` stays
-    // true until the stream actually closes, so a new send stays blocked while
-    // the server flushes the terminal cost/stats for this run.
-    setTurns((prev) =>
-      prev.map((turn) =>
-        turn.isStreaming
-          ? {
-              ...terminalizeTools(turn, 'Stopped.'),
-              isStreaming: false,
-              stopped: true,
-            }
-          : turn,
-      ),
-    )
-    // Graceful stop: ask the server to abort its Mastra stream WITHOUT closing
-    // the SSE response, then keep reading so the final stats + `done` arrive
-    // and the Spend / tokens block renders for a stopped run. Do NOT abort the
-    // fetch here — that would close the connection and drop the terminal stats.
+    // turn + stop its part animations. The panel-level `isStreaming` stays true
+    // until the subscribe stream delivers the terminal `error`/`done`, so a new
+    // send stays blocked while the server flushes the terminal cost/stats.
+    const turnId = activeTurnIdRef.current
+    if (turnId) {
+      patchTurn(turnId, (turn) => ({
+        ...terminalizeTools(turn, 'Stopped.'),
+        isStreaming: false,
+        stopped: true,
+      }))
+    }
+    // Ask the server to abort its Mastra stream; the subscribe stream delivers
+    // the terminal stats + `done` (do NOT abort the subscribe connection).
     void stopProjectAgent(projectId).catch(() => {
-      // Endpoint failed (server down / already finished): fall back to a hard
-      // abort so the UI does not wait on a stream that will not close.
-      controller.abort()
+      // Endpoint failed: force-finalize locally so the UI doesn't wait.
+      finalizeActiveRun()
     })
-    // Safety: if the server does not close the stream promptly (e.g. stuck on
-    // a slow tool), force-abort. Stats may be lost in that degraded case.
-    stopSafetyRef.current = window.setTimeout(() => controller.abort(), 8000)
-  }, [projectId])
+    // Safety: if the server doesn't deliver a terminal event promptly, reset
+    // local streaming state so the panel isn't stuck.
+    stopSafetyRef.current = window.setTimeout(() => {
+      finalizeActiveRun()
+    }, STOP_SAFETY_MS)
+  }, [finalizeActiveRun, patchTurn, projectId])
 
   return {
     html,
@@ -303,41 +307,22 @@ export function useLandingPage({
   }
 }
 
-async function reconcilePersistedTurn(
-  projectId: string,
-  turnId: string,
-): Promise<null | { project: Project; turn: LandingTurn }> {
-  for (const delayMs of RECONCILIATION_DELAYS_MS) {
-    if (delayMs > 0) await wait(delayMs)
-    try {
-      const project = await getProject(projectId)
-      const persisted = project.messages.find((turn) => turn.id === turnId)
-      if (persisted && !persisted.isStreaming) {
-        return {
-          project,
-          turn: restoreProjectTurns([persisted])[0]!,
-        }
-      }
-    } catch {
-      // The next bounded attempt may observe the server's final log flush.
-    }
+function lastStreamingTurnId(turns: LandingTurn[]): string | undefined {
+  for (let index = turns.length - 1; index >= 0; index -= 1) {
+    if (turns[index]?.isStreaming) return turns[index]?.id
   }
-  return null
+  return undefined
 }
 
-function restoreProjectTurns(turns: LandingTurn[]): LandingTurn[] {
-  return turns.map((turn) => {
-    const restored = terminalizeTools({
-      ...turn,
-      parts: turn.parts ?? [],
-    })
-    return {
-      ...restored,
-      attachments: turn.attachments ?? [],
-      htmlSwaps: turn.htmlSwaps ?? 0,
-      isStreaming: false,
-    }
-  })
+/** Restore turns delivered by the `state` snapshot. Unlike a reload of a
+ *  finished project, an in-flight turn stays `isStreaming` (live-replayed); we
+ *  only normalize optional attachment/part fields. */
+function restoreTurnsFromState(turns: LandingTurn[]): LandingTurn[] {
+  return turns.map((turn) => ({
+    ...turn,
+    attachments: turn.attachments ?? [],
+    parts: turn.parts ?? [],
+  }))
 }
 
 function stripAttachmentData(
@@ -352,13 +337,15 @@ function stripAttachmentData(
  *  only `{ kind, selector }`; uploaded images send their full payload + dataUrl. */
 function toWireAttachment(attachment: PromptAttachmentInput) {
   if (attachment.kind === 'element') {
-    return { kind: 'element', selector: attachment.selector }
+    return { kind: 'element' as const, selector: attachment.selector }
   }
-  return attachment
-}
-
-function wait(delayMs: number): Promise<void> {
-  return new Promise((resolve) => window.setTimeout(resolve, delayMs))
+  return {
+    dataUrl: attachment.dataUrl,
+    id: attachment.id,
+    mediaType: attachment.mediaType,
+    name: attachment.name,
+    size: attachment.size,
+  }
 }
 
 function withAnalyzeImageArgs(

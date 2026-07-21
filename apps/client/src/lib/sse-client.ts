@@ -1,7 +1,8 @@
 /**
- * Minimal SSE client for POST requests. Parses `text/event-stream` frames and
- * invokes `onEvent(event, data)` for each. Returns an AbortController so the
- * caller can cancel the stream.
+ * Minimal SSE client. `streamSSE` does a POST with a JSON body (the agent
+ * control RPC); `streamSSEGet` opens a long-lived GET subscribe stream (project
+ * events). Both parse `text/event-stream` frames and invoke `onEvent` for each.
+ * Returns when the server ends the stream; the caller can cancel via `signal`.
  */
 export interface SSEEvent {
   data: unknown
@@ -24,7 +25,21 @@ export async function streamSSE(
     method: 'POST',
     signal,
   })
+  return readSseResponse(response, onEvent)
+}
 
+export async function streamSSEGet(
+  url: string,
+  { onEvent, signal }: StreamSSEOptions,
+): Promise<void> {
+  const response = await fetch(url, { signal })
+  return readSseResponse(response, onEvent)
+}
+
+async function readSseResponse(
+  response: Response,
+  onEvent: (event: SSEEvent) => void,
+): Promise<void> {
   if (!response.ok || !response.body) {
     const text = await response.text().catch(() => '')
     throw new Error(
