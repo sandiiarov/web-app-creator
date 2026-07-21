@@ -5,43 +5,57 @@ import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import type { Project, ProjectMeta } from '../lib/projects-api'
-import type { StreamSSEOptions } from '../lib/sse-client'
+import type {
+  AgentEventSubscription,
+  ProjectMeta,
+  SendPromptResult,
+} from '../lib/projects-api'
+import type { SSEEvent, StreamSSEOptions } from '../lib/sse-client'
 import { useLandingPage, type UseLandingPage } from './use-landing-page'
 
 const mocks = vi.hoisted(() => ({
-  getProject: vi.fn<(id: string) => Promise<Project>>(),
+  sendPrompt: vi
+    .fn<(input: unknown) => Promise<SendPromptResult>>()
+    .mockResolvedValue({
+      status: 'running',
+      turnId: 'replaced-in-tests',
+    }),
   stopProjectAgent: vi.fn<(id: string) => Promise<boolean>>(),
-  streamSSE:
-    vi.fn<
-      (url: string, body: unknown, options: StreamSSEOptions) => Promise<void>
-    >(),
+  streamSSEGet:
+    vi.fn<(url: string, options: StreamSSEOptions) => Promise<void>>(),
   updateProjectModels: vi.fn<() => Promise<ProjectMeta>>(),
 }))
 
 vi.mock('../lib/projects-api', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../lib/projects-api')>()),
-  getProject: mocks.getProject,
+  sendPrompt: mocks.sendPrompt,
   stopProjectAgent: mocks.stopProjectAgent,
   updateProjectModels: mocks.updateProjectModels,
 }))
 
-vi.mock('../lib/sse-client', () => ({ streamSSE: mocks.streamSSE }))
+vi.mock('../lib/sse-client', () => ({ streamSSEGet: mocks.streamSSEGet }))
 
 const priorTurn = turn({ id: 'turn-prior', prompt: 'Earlier' })
 
 let container: HTMLDivElement
 let current: UseLandingPage
 let root: Root
+let subscribeOnEvent: (event: SSEEvent) => void
 
 beforeEach(() => {
   ;(
     globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }
   ).IS_REACT_ACT_ENVIRONMENT = true
   vi.resetAllMocks()
+  mocks.sendPrompt.mockResolvedValue({ status: 'running', turnId: 'replaced' })
   container = document.createElement('div')
   document.body.append(container)
   root = createRoot(container)
+  mocks.streamSSEGet.mockImplementation(async (_url, options) => {
+    // Subscribe stream stays open for the test; events arrive via `onEvent`.
+    subscribeOnEvent = options.onEvent
+    return new Promise<void>(() => {})
+  })
 })
 
 afterEach(async () => {
@@ -50,117 +64,146 @@ afterEach(async () => {
   vi.useRealTimers()
 })
 
-describe('useLandingPage transport reconciliation', () => {
-  it('reconciles a persisted terminal turn after a transport rejection', async () => {
-    await mount(project({ messages: [priorTurn] }))
-    mocks.streamSSE.mockImplementation(async (_url, body) => {
-      const turnId = requestTurnId(body)
-      mocks.getProject.mockResolvedValueOnce(
-        project({
-          indexHtml: '<main>Recovered</main>',
-          messages: [priorTurn, terminalTurn(turnId)],
-        }),
-      )
-      throw new Error('network lost')
-    })
+describe('useLandingPage subscribe mount', () => {
+  it('applies the state snapshot (html, models, turns, streaming flag)', async () => {
+    await mount(
+      state({
+        html: '<main>Live</main>',
+        models: {
+          image: 'bytedance-seed/seedream-4.5',
+          text: 'z-ai/glm-5.2',
+          vision: 'moonshotai/kimi-k2.7-code',
+        },
+        status: 'idle',
+        turns: [priorTurn],
+      }),
+    )
 
-    await act(async () => {
-      current.send({ prompt: 'Build it' })
-      await flushAsyncWork()
-    })
-
+    expect(current.html).toBe('<main>Live</main>')
     expect(current.isStreaming).toBe(false)
-    expect(current.turns.map(({ id }) => id)).toEqual([
-      'turn-prior',
-      expect.stringMatching(/^turn-/),
-    ])
-    expect(current.turns[1]).toMatchObject({
-      isStreaming: false,
-      parts: [expect.objectContaining({ type: 'stats' })],
-    })
-    expect(current.turns[1]?.error).toBeUndefined()
-    expect(current.html).toBe('<main>Recovered</main>')
-    expect(mocks.getProject).toHaveBeenCalledTimes(2)
+    expect(current.models.image).toBe('bytedance-seed/seedream-4.5')
+    expect(current.models.vision).toBe('moonshotai/kimi-k2.7-code')
+    expect(current.models.text).toContain('glm-5.2')
+    expect(current.turns.map(({ id }) => id)).toEqual(['turn-prior'])
   })
 
-  it('treats EOF without custom done as transport loss and reconciles', async () => {
-    await mount(project())
-    mocks.streamSSE.mockImplementation(async (_url, body) => {
-      const turnId = requestTurnId(body)
-      mocks.getProject.mockResolvedValueOnce(
-        project({ messages: [terminalTurn(turnId)] }),
-      )
-    })
+  it('marks a project missing when the subscribe stream 404s', async () => {
+    mocks.streamSSEGet.mockReset()
+    mocks.streamSSEGet.mockRejectedValue(
+      new Error('Request failed (404): Project not found'),
+    )
+    await mount()
 
-    await act(async () => {
-      current.send({ prompt: 'Build it' })
-      await flushAsyncWork()
-    })
-
-    expect(current.turns[0]).toMatchObject({
-      isStreaming: false,
-      parts: [expect.objectContaining({ type: 'stats' })],
-    })
-    expect(current.turns[0]?.error).toBeUndefined()
-    expect(mocks.getProject).toHaveBeenCalledTimes(2)
+    expect(current.missing).toBe(true)
   })
 
-  it('records a transport error when EOF reconciliation is exhausted', async () => {
-    await mount(project())
-    vi.useFakeTimers()
-    mocks.getProject.mockResolvedValue(project())
-    mocks.streamSSE.mockResolvedValue()
+  it('keeps an in-flight turn streaming when the state snapshot rejoins mid-run', async () => {
+    await mount(
+      state({
+        status: 'running',
+        turns: [turn({ id: 'turn-live', isStreaming: true })],
+      }),
+    )
 
-    act(() => current.send({ prompt: 'Build it' }))
-    await act(async () => {
-      await vi.runAllTimersAsync()
-      await flushAsyncWork()
-    })
-
-    expect(current.isStreaming).toBe(false)
+    expect(current.isStreaming).toBe(true)
     expect(current.turns[0]).toMatchObject({
-      error: 'Agent stream ended before terminal done event.',
-      isStreaming: false,
+      id: 'turn-live',
+      isStreaming: true,
     })
-    expect(mocks.getProject).toHaveBeenCalledTimes(5)
   })
 })
 
 describe('useLandingPage run lifecycle', () => {
-  it('gracefully drains a stopped run, preserves stats, clears the safety timeout, and blocks another send', async () => {
-    await mount(project())
-    vi.useFakeTimers()
-    mocks.stopProjectAgent.mockResolvedValue(true)
-    let resolveStream!: () => void
-    let streamOptions!: StreamSSEOptions
-    mocks.streamSSE.mockImplementation(
-      async (_url, _body, options) =>
-        new Promise<void>((resolve) => {
-          resolveStream = resolve
-          streamOptions = options
-        }),
-    )
+  it('POSTs sendPrompt, appends an optimistic turn, and applies live events from the subscribe stream', async () => {
+    mocks.sendPrompt.mockResolvedValue({ status: 'running', turnId: 'turn-1' })
+    await mount(state())
 
-    act(() => current.send({ prompt: 'Build it' }))
-    const requestBody = mocks.streamSSE.mock.calls[0]?.[1]
-    const turnId = requestTurnId(requestBody)
-    expect(turnId).toBe(current.turns[0]?.id)
+    await act(async () => {
+      current.send({ prompt: 'Build it' })
+      await flushAsyncWork()
+    })
+
+    expect(mocks.sendPrompt).toHaveBeenCalledOnce()
+    expect(current.isStreaming).toBe(true)
+    expect(current.turns).toHaveLength(1)
+    expect(current.turns[0]?.prompt).toBe('Build it')
+
+    act(() => {
+      subscribeOnEvent({ data: { delta: 'Working' }, event: 'text' })
+      subscribeOnEvent({
+        data: {
+          cost: 0.01,
+          durationMs: 5,
+          finishReason: 'stop',
+          model: 'z-ai/glm-5.2',
+          usage: { totalTokens: 10 },
+        },
+        event: 'stats',
+      })
+      subscribeOnEvent({ data: {}, event: 'done' })
+    })
+
+    expect(current.isStreaming).toBe(false)
+    expect(current.turns[0]?.parts).toEqual([
+      expect.objectContaining({ text: 'Working', type: 'text' }),
+      expect.objectContaining({ finishReason: 'stop', type: 'stats' }),
+    ])
+  })
+
+  it('rolls back the optimistic turn to an error when sendPrompt rejects', async () => {
+    mocks.sendPrompt.mockRejectedValue(new Error('A run is already active.'))
+    await mount(state())
+
+    await act(async () => {
+      current.send({ prompt: 'Build it' })
+      await flushAsyncWork()
+    })
+
+    expect(current.isStreaming).toBe(false)
+    expect(current.turns[0]).toMatchObject({
+      error: 'A run is already active.',
+      isStreaming: false,
+    })
+  })
+
+  it('blocks duplicate sends before streaming state rerenders', async () => {
+    await mount(state())
+
+    act(() => {
+      current.send({ prompt: 'First' })
+      current.send({ prompt: 'Duplicate' })
+    })
+    await act(async () => flushAsyncWork())
+
+    expect(mocks.sendPrompt).toHaveBeenCalledOnce()
+    expect(current.turns).toHaveLength(1)
+  })
+
+  it('gracefully stops: terminalizes active tools, POSTs /stop, drains terminal events from subscribe', async () => {
+    mocks.stopProjectAgent.mockResolvedValue(true)
+    await mount(state())
+
+    await act(async () => {
+      current.send({ prompt: 'Build it' })
+      await flushAsyncWork()
+    })
 
     act(() => current.stop())
     expect(mocks.stopProjectAgent).toHaveBeenCalledOnce()
-    expect(streamOptions.signal.aborted).toBe(false)
+    // Immediate visual feedback while the server flushes terminal cost/stats.
     expect(current.isStreaming).toBe(true)
     expect(current.turns[0]).toMatchObject({
       isStreaming: false,
       stopped: true,
     })
 
+    // A send while still draining is blocked.
     act(() => current.send({ prompt: 'Must stay blocked' }))
-    expect(mocks.streamSSE).toHaveBeenCalledOnce()
-    expect(current.turns).toHaveLength(1)
+    expect(mocks.sendPrompt).toHaveBeenCalledOnce()
 
+    // Subscribe delivers the terminal events; the run finalizes.
     act(() => {
-      streamOptions.onEvent({
+      subscribeOnEvent({
         data: {
           cost: 0.01,
           durationMs: 250,
@@ -170,66 +213,42 @@ describe('useLandingPage run lifecycle', () => {
         },
         event: 'stats',
       })
-      streamOptions.onEvent({ data: { message: 'stopped' }, event: 'error' })
-      streamOptions.onEvent({ data: {}, event: 'done' })
-    })
-    await act(async () => {
-      resolveStream()
-      await flushAsyncWork()
+      subscribeOnEvent({ data: { message: 'stopped' }, event: 'error' })
+      subscribeOnEvent({ data: {}, event: 'done' })
     })
 
     expect(current.isStreaming).toBe(false)
-    expect(current.turns[0]).toMatchObject({
-      isStreaming: false,
-      parts: [expect.objectContaining({ type: 'stats' })],
-      stopped: true,
-    })
+    expect(current.turns[0]).toMatchObject({ stopped: true })
     expect(current.turns[0]?.error).toBeUndefined()
-    await vi.advanceTimersByTimeAsync(8001)
-    expect(streamOptions.signal.aborted).toBe(false)
   })
 
-  it('blocks duplicate sends before streaming state rerenders', async () => {
-    await mount(project())
-    let resolveStream!: () => void
-    let streamOptions!: StreamSSEOptions
-    mocks.streamSSE.mockImplementation(
-      async (_url, _body, options) =>
-        new Promise<void>((resolve) => {
-          resolveStream = resolve
-          streamOptions = options
-        }),
-    )
+  it('applies live html_update events to the preview html', async () => {
+    await mount(state({ html: '<main>Initial</main>' }))
 
-    act(() => {
-      current.send({ prompt: 'First' })
-      current.send({ prompt: 'Duplicate' })
-    })
-
-    expect(mocks.streamSSE).toHaveBeenCalledOnce()
-    expect(current.turns).toHaveLength(1)
-    act(() => streamOptions.onEvent({ data: {}, event: 'done' }))
     await act(async () => {
-      resolveStream()
+      current.send({ prompt: 'Build it' })
       await flushAsyncWork()
     })
+
+    act(() => {
+      subscribeOnEvent({
+        data: {
+          bytes: 20,
+          hash: 'h2',
+          html: '<main>Updated</main>',
+          previousHash: 'h1',
+          projectId: 'p1',
+          sequence: 1,
+        },
+        event: 'html_update',
+      })
+    })
+
+    expect(current.html).toBe('<main>Updated</main>')
   })
 
-  it('adds attached image previews to analyze-image tool args', async () => {
-    await mount(project())
-    mocks.streamSSE.mockImplementation(async (_url, _body, options) => {
-      options.onEvent({
-        data: {
-          action: 'Analyze attached visual reference',
-          detail: 'Analyze attached visual reference\nwireframe.png',
-          id: 'tool-1-analyze_image',
-          state: 'running',
-          tool: 'analyze_image',
-        },
-        event: 'tool_call',
-      })
-      options.onEvent({ data: {}, event: 'done' })
-    })
+  it('enriches analyze-image tool args with the submitted attachment data URLs', async () => {
+    await mount(state())
 
     await act(async () => {
       current.send({
@@ -245,6 +264,19 @@ describe('useLandingPage run lifecycle', () => {
         prompt: 'Use this reference',
       })
       await flushAsyncWork()
+    })
+
+    act(() => {
+      subscribeOnEvent({
+        data: {
+          action: 'Analyze attached visual reference',
+          detail: 'Analyze attached visual reference\nwireframe.png',
+          id: 'tool-1-analyze_image',
+          state: 'running',
+          tool: 'analyze_image',
+        },
+        event: 'tool_call',
+      })
     })
 
     expect(current.turns[0]?.parts[0]).toMatchObject({
@@ -275,54 +307,32 @@ function Harness({
   return null
 }
 
-async function mount(initialProject: Project): Promise<void> {
-  mocks.getProject.mockResolvedValueOnce(initialProject)
-
+/** Render the harness and emit an initial `state` event through the mocked
+ *  subscribe stream. Omit `initialState` for a 404/missing scenario. */
+async function mount(initialState?: AgentEventSubscription): Promise<void> {
   await act(async () => {
     root.render(
       <Harness onError={vi.fn<(message: string) => void>()} projectId="p1" />,
     )
     await flushAsyncWork()
   })
+  if (initialState) {
+    act(() => subscribeOnEvent({ data: initialState, event: 'state' }))
+  }
 }
 
-function project(overrides: Partial<Project> = {}): Project {
+function state(
+  overrides: Partial<AgentEventSubscription> = {},
+): AgentEventSubscription {
   return {
-    createdAt: '2026-01-01T00:00:00.000Z',
-    hasHtml: true,
-    id: 'p1',
-    indexHtml: '<main>Initial</main>',
-    messages: [],
-    model: 'z-ai/glm-5.2',
-    title: 'Project',
-    updatedAt: '2026-01-01T00:00:00.000Z',
+    html: '<main>Initial</main>',
+    models: { image: '', text: 'z-ai/glm-5.2', vision: '' },
+    runStartedAt: null,
+    runTurnId: null,
+    status: 'idle',
+    turns: [],
     ...overrides,
   }
-}
-
-function requestTurnId(body: unknown): string {
-  if (!body || typeof body !== 'object' || !('turnId' in body)) {
-    throw new Error('Expected request turnId')
-  }
-  const turnId = body.turnId
-  if (typeof turnId !== 'string') throw new Error('Expected string turnId')
-  return turnId
-}
-
-function terminalTurn(id: string): LandingTurn {
-  return turn({
-    id,
-    parts: [
-      {
-        cost: 0.01,
-        durationMs: 250,
-        finishReason: 'stop',
-        model: 'z-ai/glm-5.2',
-        type: 'stats',
-        usage: { totalTokens: 10 },
-      },
-    ],
-  })
 }
 
 function turn(overrides: Partial<LandingTurn> = {}): LandingTurn {
