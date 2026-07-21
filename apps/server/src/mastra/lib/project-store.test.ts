@@ -22,8 +22,10 @@ import {
   readProjectImage,
   readProjectRawMessages,
   readVisionMessages,
+  reconcileInterruptedRuns,
   saveProjectMessageTurn,
   saveProjectRawMessages,
+  setRunStatusSync,
   setTitleIfUntitled,
   updateProjectModel,
   writeProjectScreenshotSync,
@@ -734,6 +736,113 @@ describe('append-only debug logs', () => {
     // oldest pruned, newest kept, and the 51st write did not reuse 001
     expect(remaining).not.toContain('001-req-1.png')
     expect(remaining).toContain('051-req-51.png')
+  })
+})
+
+describe('run-state (run lifecycle persistence)', () => {
+  it('defaults to idle status when no run-state.json exists', async () => {
+    const project = await createProject({ title: 'Idle draft' })
+    createdProjectIds.push(project.id)
+
+    expect(project.status).toBe('idle')
+    expect(project.runTurnId).toBeNull()
+    expect(project.runStartedAt).toBeNull()
+
+    const fetched = await getProject(project.id)
+    expect(fetched?.status).toBe('idle')
+  })
+
+  it('setRunStatusSync round-trips through run-state.json', async () => {
+    const project = await createProject({ title: 'Run trip' })
+    createdProjectIds.push(project.id)
+
+    const startedAt = new Date('2026-07-20T00:00:00.000Z').toISOString()
+    setRunStatusSync(project.id, {
+      startedAt,
+      status: 'running',
+      turnId: 'turn-x',
+    })
+
+    const fetched = await getProject(project.id)
+    expect(fetched?.status).toBe('running')
+    expect(fetched?.runTurnId).toBe('turn-x')
+    expect(fetched?.runStartedAt).toBe(startedAt)
+  })
+
+  it('listProjects surfaces the composed run status', async () => {
+    const project = await createProject({ title: 'Listed run' })
+    createdProjectIds.push(project.id)
+    // Give it HTML so it survives the list's hasHtml filter.
+    createProjectHtmlStore(project.id).set('<!doctype html><p>hi</p>')
+    setRunStatusSync(project.id, { status: 'error', turnId: 'turn-err' })
+
+    const all = await listProjects()
+    const found = all.find((meta) => meta.id === project.id)
+    expect(found?.status).toBe('error')
+    expect(found?.runTurnId).toBe('turn-err')
+  })
+
+  it('reconcileInterruptedRuns flips stale running→interrupted and terminalizes the open turn', async () => {
+    const project = await createProject({ title: 'Orphan run' })
+    createdProjectIds.push(project.id)
+    const turnId = 'turn-orphan'
+
+    // Plant an open turn (prompt-in, no terminal event) + a stale running state.
+    await appendClientMessage(project.id, {
+      dir: 'in',
+      model: 'm',
+      prompt: 'build it',
+      ts: new Date('2026-07-20T00:00:00.000Z').toISOString(),
+      turnId,
+      type: 'prompt',
+    })
+    setRunStatusSync(project.id, {
+      startedAt: new Date('2026-07-20T00:00:00.000Z').toISOString(),
+      status: 'running',
+      turnId,
+    })
+
+    const reconciled = await reconcileInterruptedRuns()
+    expect(reconciled).toBeGreaterThanOrEqual(1)
+
+    const fetched = await getProject(project.id)
+    expect(fetched?.status).toBe('interrupted')
+
+    // The open turn is now terminalized in the replayed messages.
+    const turn = fetched?.messages.find((m) => m.id === turnId)
+    expect(turn?.isStreaming).toBe(false)
+    expect(turn?.error).toBe('Server restarted while run was active.')
+  })
+
+  it('reconcileInterruptedRuns is idempotent (interrupted runs are not re-terminalized)', async () => {
+    const project = await createProject({ title: 'Idempotent orphan' })
+    createdProjectIds.push(project.id)
+    const turnId = 'turn-idem'
+    await appendClientMessage(project.id, {
+      dir: 'in',
+      model: 'm',
+      prompt: 'build it',
+      ts: new Date().toISOString(),
+      turnId,
+      type: 'prompt',
+    })
+    setRunStatusSync(project.id, { status: 'running', turnId })
+
+    await reconcileInterruptedRuns()
+    const afterFirst = await readClientMessages(project.id)
+    const errorEventsAfterFirst = afterFirst.filter(
+      (entry) => entry.dir === 'out' && entry.event === 'error',
+    ).length
+
+    await reconcileInterruptedRuns()
+    const afterSecond = await readClientMessages(project.id)
+    const errorEventsAfterSecond = afterSecond.filter(
+      (entry) => entry.dir === 'out' && entry.event === 'error',
+    ).length
+
+    expect(errorEventsAfterSecond).toBe(errorEventsAfterFirst)
+    const fetched = await getProject(project.id)
+    expect(fetched?.status).toBe('interrupted')
   })
 })
 
