@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest'
 
-import { applyEventToTurn, replayClientEvents } from './reducer.ts'
+import {
+  applyEventToTurn,
+  replayClientEvents,
+  replayClientEventsLive,
+} from './reducer.ts'
 import type { ClientEvent } from './types.ts'
 
 const out = (
@@ -243,6 +247,65 @@ describe('replayClientEvents (hydration fold)', () => {
     expect(turns[0]?.parts).toEqual([
       { id: 'turn-1-text', text: 'x', type: 'text' },
     ])
+  })
+})
+
+describe('replayClientEventsLive (subscribe catch-up)', () => {
+  it('keeps a still-streaming turn live: isStreaming true, running tool NOT terminalized', () => {
+    const events = [
+      prompt('turn-1'),
+      out('text', { delta: 'working' }),
+      out('tool_call', { id: 'c', state: 'running', tool: 'edit' }),
+    ]
+    const live = replayClientEventsLive(events)
+    expect(live).toHaveLength(1)
+    expect(live[0]?.isStreaming).toBe(true)
+    expect(live[0]?.parts[0]).toMatchObject({ text: 'working', type: 'text' })
+    expect(live[0]?.parts[1]).toMatchObject({
+      id: 'c',
+      state: 'running',
+      tool: 'edit',
+      type: 'tool_call',
+    })
+    expect(live[0]?.parts[1]).not.toHaveProperty('result')
+  })
+
+  it('still honors an explicit done/error in the log (terminal events apply)', () => {
+    const live = replayClientEventsLive([
+      prompt('turn-1'),
+      out('tool_call', { id: 'c', state: 'running', tool: 'edit' }),
+      out('done'),
+    ])
+    expect(live[0]?.isStreaming).toBe(false)
+    expect(live[0]?.parts[0]).toMatchObject({ id: 'c', state: 'error' })
+  })
+
+  it('diverges from replayClientEvents only on an unterminated final turn', () => {
+    const events = [
+      prompt('turn-1'),
+      out('text', { delta: 'x' }),
+      out('tool_call', { id: 'c', state: 'running', tool: 'edit' }),
+    ]
+    // Restore variant terminalizes the running tool to error.
+    expect(replayClientEvents(events)[0]?.parts[1]).toMatchObject({
+      id: 'c',
+      result: expect.any(String),
+      state: 'error',
+    })
+    // Live variant leaves it running.
+    expect(replayClientEventsLive(events)[0]?.parts[1]).toMatchObject({
+      id: 'c',
+      state: 'running',
+    })
+  })
+
+  it('produces identical output for a fully terminal log (done present)', () => {
+    const events = [
+      prompt('turn-1'),
+      out('text', { delta: 'done' }),
+      out('done'),
+    ]
+    expect(replayClientEventsLive(events)).toEqual(replayClientEvents(events))
   })
 })
 
