@@ -16,6 +16,21 @@ export interface RunEntry {
 
 const runs = new Map<string, RunEntry>()
 
+/** SSE responses tailing the project LIST for live status badges (one per
+ *  `ProjectsPage` mount). Distinct from per-project `subscribe` (which tails a
+ *  single run's events). */
+const listSubscribers = new Set<ServerResponse>()
+
+/** Payload of one `project_status` event on the list SSE. `status` is a
+ *  `RunStatus` string; kept as `string` here so this module doesn't import from
+ *  project-store (project-store imports `broadcastStatus` from here — one-way). */
+export interface ProjectStatusPayload {
+  projectId: string
+  runStartedAt: null | string
+  runTurnId: null | string
+  status: string
+}
+
 /** Fan one event out to every current subscriber (best-effort; dead sockets are
  *  swallowed by `sendSse`'s writability guard). No-op when no active run. */
 export function broadcast(
@@ -27,6 +42,15 @@ export function broadcast(
   if (!entry) return
   for (const response of entry.subscribers) {
     sendSse(response, event, payload)
+  }
+}
+
+/** Fan one `project_status` event to every list subscriber. Called from
+ *  `setRunStatusSync` so any status write (run claim, terminal, stop, boot
+ *  reconcile) reaches all open list pages. */
+export function broadcastStatus(payload: ProjectStatusPayload): void {
+  for (const response of listSubscribers) {
+    sendSse(response, 'project_status', payload)
   }
 }
 
@@ -62,5 +86,15 @@ export function subscribe(
   entry.subscribers.add(response)
   return () => {
     entry.subscribers.delete(response)
+  }
+}
+
+/** Register a list SSE response for live `project_status` updates. Returns an
+ *  unsubscribe fn. Caller emits the initial snapshot of statuses itself before
+ *  subscribing (snapshot-then-tail). */
+export function subscribeList(response: ServerResponse): () => void {
+  listSubscribers.add(response)
+  return () => {
+    listSubscribers.delete(response)
   }
 }

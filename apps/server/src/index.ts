@@ -6,6 +6,8 @@ import {
 } from 'node:http'
 import { fileURLToPath } from 'node:url'
 
+import { replayClientEventsLive } from '@workspace/conversation'
+
 import { config } from './config.ts'
 import { readRequestBody, RequestBodyTooLargeError } from './http-body.ts'
 import { getImage } from './mastra/lib/image-store.ts'
@@ -15,11 +17,14 @@ import {
   getProject,
   getProjectHtmlInlined,
   listProjects,
+  readClientMessages,
   readProjectImage,
   readProjectScreenshot,
   reconcileInterruptedRuns,
   updateProjectModel,
 } from './mastra/lib/project-store.ts'
+import { subscribe, subscribeList } from './mastra/lib/run-bus.ts'
+import { endSse, sendSse, startSse } from './mastra/lib/sse.ts'
 import {
   resolveModelId,
   stopLandingAgent,
@@ -273,6 +278,8 @@ const PROJECT_STOP_RE = /^\/api\/projects\/([a-f0-9-]+)\/stop$/i
 const PROJECT_ITEM_RE = /^\/api\/projects\/([a-f0-9-]+)$/i
 const PROJECT_IMAGE_RE = /^\/api\/projects\/([a-f0-9-]+)\/images\/([^/]+)$/i
 const PROJECT_HTML_RE = /^\/api\/projects\/([a-f0-9-]+)\/html$/i
+const PROJECT_EVENTS_RE = /^\/api\/projects\/([a-f0-9-]+)\/events$/i
+const PROJECT_LIST_EVENTS_RE = /^\/api\/projects\/events\/?$/i
 
 async function handleCreateProject(
   request: IncomingMessage,
@@ -355,6 +362,67 @@ async function handlePatchProject(
   sendJson(response, 200, { ok: true, project })
 }
 
+/** GET /api/projects/:id/events — SSE. Emit a `state` snapshot (current HTML +
+ *  per-role models + status + live-replayed turns), then tail the run bus so a
+ *  reopened tab watches live progress. Snapshot-then-subscribe: a run rejoined
+ *  mid-flight may miss events in the sub-ms window between snapshot read and
+ *  subscribe registration — self-heals on refresh (html_update carries full
+ *  HTML; stats are rolling). Stays open until the client closes. */
+async function handleProjectEvents(
+  id: string,
+  request: IncomingMessage,
+  response: ServerResponse,
+) {
+  const project = await getProject(id)
+  if (!project) {
+    sendJson(response, 404, { error: 'Project not found', ok: false })
+    return
+  }
+
+  startSse(response)
+  const turns = replayClientEventsLive(await readClientMessages(id))
+  sendSse(response, 'state', {
+    html: project.indexHtml,
+    models: {
+      image: project.imageModel,
+      text: project.model,
+      vision: project.visionModel,
+    },
+    status: project.status,
+    turns,
+  })
+
+  const unsubscribe = subscribe(id, response)
+  request.on('close', () => {
+    unsubscribe()
+    endSse(response)
+  })
+}
+
+/** GET /api/projects/events — SSE. Emit one `project_status` per project as an
+ *  initial snapshot, then tail the list bus for live status changes (driven by
+ *  `setRunStatusSync` → `broadcastStatus`). Stays open until the client closes. */
+async function handleProjectListEvents(
+  request: IncomingMessage,
+  response: ServerResponse,
+) {
+  startSse(response)
+  const projects = await listProjects()
+  for (const project of projects) {
+    sendSse(response, 'project_status', {
+      projectId: project.id,
+      runStartedAt: project.runStartedAt,
+      runTurnId: project.runTurnId,
+      status: project.status,
+    })
+  }
+  const unsubscribe = subscribeList(response)
+  request.on('close', () => {
+    unsubscribe()
+    endSse(response)
+  })
+}
+
 async function handleStopProject(id: string, response: ServerResponse) {
   // Graceful stop: aborts the run's Mastra stream but leaves its SSE response
   // open so terminal cost/stats + `done` are still delivered to the client.
@@ -392,6 +460,11 @@ async function routeProjects(
     return false
   }
 
+  if (PROJECT_LIST_EVENTS_RE.test(pathname) && request.method === 'GET') {
+    await handleProjectListEvents(request, response)
+    return true
+  }
+
   const imageMatch = pathname.match(PROJECT_IMAGE_RE)
   if (imageMatch && request.method === 'GET') {
     await serveProjectImage(imageMatch[1]!, imageMatch[2]!, response)
@@ -417,6 +490,12 @@ async function routeProjects(
   const htmlMatch = pathname.match(PROJECT_HTML_RE)
   if (htmlMatch && request.method === 'GET') {
     await serveProjectHtml(htmlMatch[1]!, response)
+    return true
+  }
+
+  const eventsMatch = pathname.match(PROJECT_EVENTS_RE)
+  if (eventsMatch && request.method === 'GET') {
+    await handleProjectEvents(eventsMatch[1]!, request, response)
     return true
   }
 

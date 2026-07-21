@@ -58,6 +58,7 @@ import {
 } from './html-anchor-document.ts'
 import { PLACEHOLDER_INDEX_HTML, type HtmlStore } from './html-store.ts'
 import { getImage } from './image-store.ts'
+import { broadcastStatus } from './run-bus.ts'
 
 const MODULE_DIR = dirname(fileURLToPath(import.meta.url))
 const DATA_DIR = join(MODULE_DIR, '..', '..', '..', '.data')
@@ -704,6 +705,14 @@ export function setRunStatusSync(
 ): RunState {
   const next = { ...readRunStateSync(id), ...partial }
   writeRunStateSync(id, next)
+  // Fan out to any open project-list SSE subscribers so status badges update
+  // live. No-op when none are connected (e.g. boot reconcile).
+  broadcastStatus({
+    projectId: id,
+    runStartedAt: next.startedAt,
+    runTurnId: next.turnId,
+    status: next.status,
+  })
   return next
 }
 
