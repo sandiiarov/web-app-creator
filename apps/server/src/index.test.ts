@@ -557,6 +557,76 @@ describe('server HTTP routes', () => {
   })
 })
 
+describe('project events SSE', () => {
+  it('GET /api/projects/:id/events emits a state snapshot for an idle project', async () => {
+    await withServer(async ({ baseUrl }) => {
+      const { createProject } = await import('./mastra/lib/project-store.ts')
+      const project = await createProject({ title: 'Events idle' })
+      createdProjectIds.push(project.id)
+
+      const controller = new AbortController()
+      const response = await fetch(
+        `${baseUrl}/api/projects/${project.id}/events`,
+        { signal: controller.signal },
+      )
+      expect(response.status).toBe(200)
+      const frame = await readSseFrameUntil(
+        response,
+        (entry) => entry.event === 'state',
+      )
+      controller.abort()
+
+      const state = frame.data as {
+        html: string
+        models: { image: string; text: string; vision: string }
+        status: string
+        turns: unknown[]
+      }
+      expect(state.status).toBe('idle')
+      expect(state.turns).toEqual([])
+      expect(state.models).toEqual({ image: '', text: '', vision: '' })
+    })
+  })
+
+  it('GET /api/projects/events snapshots statuses then tails a live setRunStatusSync change', async () => {
+    await withServer(async ({ baseUrl }) => {
+      const { createProject, createProjectHtmlStore, setRunStatusSync } =
+        await import('./mastra/lib/project-store.ts')
+      const project = await createProject({ title: 'Events live' })
+      createdProjectIds.push(project.id)
+      // Give it HTML so it survives listProjects' hasHtml filter.
+      createProjectHtmlStore(project.id).set('<!doctype html><p>live</p>')
+
+      const controller = new AbortController()
+      const response = await fetch(`${baseUrl}/api/projects/events`, {
+        signal: controller.signal,
+      })
+
+      const initial = await readSseFrameUntil(
+        response,
+        (entry) =>
+          entry.event === 'project_status' &&
+          isStatusFor(entry.data, project.id),
+      )
+      expect(statusOf(initial.data)).toBe('idle')
+
+      // setRunStatusSync fans out to the open list subscriber via broadcastStatus.
+      setRunStatusSync(project.id, { status: 'running', turnId: 'turn-1' })
+
+      const updated = await readSseFrameUntil(
+        response,
+        (entry) =>
+          entry.event === 'project_status' &&
+          isStatusFor(entry.data, project.id) &&
+          statusOf(entry.data) === 'running',
+      )
+      expect(statusOf(updated.data)).toBe('running')
+      expect((updated.data as { runTurnId: string }).runTurnId).toBe('turn-1')
+      controller.abort()
+    })
+  })
+})
+
 async function close(server: Server) {
   await new Promise<void>((resolve, reject) => {
     server.close((error?: Error) => {
@@ -571,10 +641,36 @@ async function fetchJson(url: string) {
   return response.json()
 }
 
+function isStatusFor(data: unknown, projectId: string): boolean {
+  return (
+    !!data &&
+    typeof data === 'object' &&
+    (data as { projectId?: unknown }).projectId === projectId
+  )
+}
+
 async function listen(server: Server) {
   await new Promise<void>((resolve) => {
     server.listen(0, '127.0.0.1', () => resolve())
   })
+}
+
+/** Parse one SSE frame (`event:`/`data:` lines) into `{event, data}`. */
+function parseSseFrame(frame: string): { data: unknown; event: string } {
+  let event = 'message'
+  let data: unknown = null
+  for (const line of frame.split('\n')) {
+    if (line.startsWith('event: ')) {
+      event = line.slice(7).trim()
+    } else if (line.startsWith('data: ')) {
+      try {
+        data = JSON.parse(line.slice(6))
+      } catch {
+        data = line.slice(6)
+      }
+    }
+  }
+  return { data, event }
 }
 
 async function postChunkedJson(url: string, chunks: Iterable<string>) {
@@ -613,6 +709,38 @@ async function postJson(
     headers: { 'content-type': 'application/json', ...headers },
     method: 'POST',
   })
+}
+
+/** Read frames from a streaming fetch Response until `predicate` matches or the
+ *  stream ends. Bounded so an unrelated flood can't hang the test. */
+async function readSseFrameUntil(
+  response: Response,
+  predicate: (frame: { data: unknown; event: string }) => boolean,
+  maxFrames = 500,
+): Promise<{ data: unknown; event: string }> {
+  const reader = response.body!.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+  try {
+    while (maxFrames-- > 0) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buffer += decoder.decode(value, { stream: true })
+      let index: number
+      while ((index = buffer.indexOf('\n\n')) !== -1) {
+        const parsed = parseSseFrame(buffer.slice(0, index))
+        buffer = buffer.slice(index + 2)
+        if (predicate(parsed)) return parsed
+      }
+    }
+  } finally {
+    reader.releaseLock()
+  }
+  throw new Error('matching SSE frame not found before stream end')
+}
+
+function statusOf(data: unknown): string {
+  return (data as { status?: string }).status ?? ''
 }
 
 async function withServer(
