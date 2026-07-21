@@ -40,6 +40,14 @@ import {
   type ProjectRawMessage,
 } from './lib/project-store.ts'
 import { createLandingAgentErrorProcessors } from './lib/retry.ts'
+import {
+  broadcast,
+  claimRun,
+  getRun,
+  releaseRun,
+  subscribe,
+  type RunEntry,
+} from './lib/run-bus.ts'
 import { endSse, sendSse, startSse } from './lib/sse.ts'
 import {
   asToolArgs,
@@ -90,7 +98,6 @@ interface ActiveStreamOptions {
   projectId: string
   prompt: string
   request: IncomingMessage
-  response: ServerResponse
   textModel: string
   turnId?: string
   visionModel: string
@@ -157,25 +164,15 @@ export function resolveModelId(model?: string): string {
 }
 
 /**
- * Active landing-agent runs keyed by projectId. A graceful stop (see
- * `stopLandingAgent`) aborts the run's Mastra stream WITHOUT closing the SSE
- * response, so the run still flushes its terminal cost/stats before `done` and
- * the client can show what a stopped run spent. A client disconnect still
- * aborts via the `request('close')` listener as a fallback. The map is mutated
- * only inside `streamLandingAgent` (register on start, conditional delete in
- * `finally`).
- */
-const activeRuns = new Map<string, AbortController>()
-
-/**
  * Gracefully stop the active run for a project: aborts its Mastra stream but
- * leaves the SSE response open so final cost/stats + `done` are delivered.
- * Returns whether an active run was found and aborted.
+ * leaves subscriber SSE responses open so final cost/stats + `done` are still
+ * delivered. Returns whether an active run was found and aborted. The run
+ * registry (claim/release/subscribers) lives in `./lib/run-bus.ts`.
  */
 export function stopLandingAgent(projectId: string): boolean {
-  const controller = activeRuns.get(projectId)
-  if (!controller) return false
-  controller.abort()
+  const entry = getRun(projectId)
+  if (!entry) return false
+  entry.controller.abort()
   return true
 }
 
@@ -207,7 +204,14 @@ export async function streamLandingAgent({
   }
 
   const controller = new AbortController()
-  if (activeRuns.has(projectId)) {
+  const resolvedTurnId = turnId ?? `turn-${randomUUID()}`
+  const entry: RunEntry = {
+    controller,
+    startedAt: new Date().toISOString(),
+    subscribers: new Set<ServerResponse>(),
+    turnId: resolvedTurnId,
+  }
+  if (!claimRun(projectId, entry)) {
     startSse(response)
     sendSse(response, 'error', {
       message: 'A run is already active for this project.',
@@ -216,9 +220,18 @@ export async function streamLandingAgent({
     endSse(response)
     return
   }
-  activeRuns.set(projectId, controller)
 
   startSse(response)
+  // The originating POST /agent response is one subscriber on the run bus
+  // (Phase 3: the ONLY one; Phase 4 adds reopened-tab subscribers). `emit`
+  // broadcasts to all subscribers, so this response receives events via the
+  // bus like any other.
+  const unsubscribe = subscribe(projectId, response)
+  // A client disconnect (tab close) is delivery loss, NOT cancellation: drop
+  // the subscriber so the set doesn't leak, but leave the run going so a
+  // reopened tab can resubscribe and watch it finish.
+  const onSenderClose = () => unsubscribe()
+  request.on('close', onSenderClose)
 
   try {
     await activeStreamLandingAgent({
@@ -229,13 +242,14 @@ export async function streamLandingAgent({
       projectId,
       prompt,
       request,
-      response,
       textModel,
-      turnId,
+      turnId: resolvedTurnId,
       visionModel,
     })
   } finally {
-    if (activeRuns.get(projectId) === controller) activeRuns.delete(projectId)
+    request.off('close', onSenderClose)
+    unsubscribe()
+    releaseRun(projectId, entry)
     try {
       await flushProjectLogs(projectId)
     } finally {
@@ -252,7 +266,6 @@ async function activeStreamLandingAgent({
   projectId,
   prompt,
   request,
-  response,
   textModel,
   turnId,
   visionModel,
@@ -267,18 +280,22 @@ async function activeStreamLandingAgent({
     turnId,
   )
 
-  // Debug: mirror the client wire to `client-messages.jsonl`. Every SSE event we
-  // emit to the browser is also appended (timestamped, dir:"out") so the exact
-  // client-visible data at any moment is inspectable mid-run. `appendClientMessage`
-  // serializes appends per file, so fire-and-forget is safe and order-preserving.
+  // Mirror the client wire to `client-messages.jsonl` (the single source of
+  // truth replayed on reopen) AND fan the event out to every run subscriber via
+  // the bus. `html_update` is broadcast live but NOT appended — it carries full
+  // HTML, the reducer ignores it, and terminal HTML already lives in html.json,
+  // so logging it only bloats the SSOT. `appendClientMessage` serializes appends
+  // per file, so fire-and-forget is safe and order-preserving.
   const emit = (event: string, payload: unknown) => {
-    void appendClientMessage(projectId, {
-      dir: 'out',
-      event,
-      payload,
-      ts: new Date().toISOString(),
-    } satisfies ClientMessageEntry)
-    sendSse(response, event, payload)
+    if (event !== 'html_update') {
+      void appendClientMessage(projectId, {
+        dir: 'out',
+        event,
+        payload,
+        ts: new Date().toISOString(),
+      } satisfies ClientMessageEntry)
+    }
+    broadcast(projectId, event, payload)
   }
   const startedAt = Date.now()
   const store = createProjectHtmlStore(projectId)

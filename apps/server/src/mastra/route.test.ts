@@ -1164,7 +1164,8 @@ describe('streamLandingAgent html updates', () => {
       }),
     }))
 
-    const { createProject, getProject } = await import('./lib/project-store.ts')
+    const { createProject, getProject, readClientMessages } =
+      await import('./lib/project-store.ts')
     const project = await createProject()
     createdProjectIds.push(project.id)
     const { streamLandingAgent } = await import('./route.ts')
@@ -1214,6 +1215,14 @@ describe('streamLandingAgent html updates', () => {
     await expect(getProject(project.id)).resolves.toMatchObject({
       indexHtml: nextHtml,
     })
+
+    // html_update is broadcast live but NOT appended to the durable log — it
+    // carries full HTML, the reducer ignores it, and terminal HTML already
+    // lives in html.json. Logging it would only bloat the single source of truth.
+    const logged = await readClientMessages(project.id)
+    expect(
+      logged.filter((entry) => entry.event === 'html_update'),
+    ).toHaveLength(0)
   })
 
   it('does not emit html_update for failed edits', async () => {
