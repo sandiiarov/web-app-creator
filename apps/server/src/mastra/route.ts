@@ -1,6 +1,6 @@
 import { Buffer } from 'node:buffer'
 import { createHash, randomUUID } from 'node:crypto'
-import type { IncomingMessage, ServerResponse } from 'node:http'
+import type { ServerResponse } from 'node:http'
 
 import type { MastraDBMessage } from '@mastra/core/agent/message-list'
 
@@ -28,6 +28,7 @@ import {
   getProject,
   persistGeneratedImage,
   readAgentRawByTurn,
+  setRunStatusSync,
   setTitleIfUntitled,
   updateProjectModel,
   type AgentMessageEntry,
@@ -38,6 +39,7 @@ import {
   type ProjectMessageToolCallPart,
   type ProjectMessageTurn,
   type ProjectRawMessage,
+  type RunStatus,
 } from './lib/project-store.ts'
 import { createLandingAgentErrorProcessors } from './lib/retry.ts'
 import {
@@ -45,10 +47,8 @@ import {
   claimRun,
   getRun,
   releaseRun,
-  subscribe,
   type RunEntry,
 } from './lib/run-bus.ts'
-import { endSse, sendSse, startSse } from './lib/sse.ts'
 import {
   asToolArgs,
   compactLines,
@@ -90,18 +90,9 @@ export interface AgentImageAttachmentInput {
   size: number
 }
 
-interface ActiveStreamOptions {
-  attachments: AgentAttachmentInput[]
-  controller: AbortController
-  imageModel: string
-  project: Project
-  projectId: string
-  prompt: string
-  request: IncomingMessage
-  textModel: string
-  turnId?: string
-  visionModel: string
-}
+export type StartAgentResult =
+  | { ok: false; reason: 'not_found' | 'overlap' }
+  | { ok: true; status: 'running'; turnId: string }
 
 type AgentConversationMessage =
   | { content: string; role: 'assistant' }
@@ -134,13 +125,27 @@ interface HtmlUpdatePayload {
 type RecordedStatsPayload = Omit<ProjectMessageStatsPart, 'type'>
 type RecordedToolPayload = Omit<ProjectMessageToolCallPart, 'type'>
 
-interface StreamOptions {
+interface RunBodyOptions {
+  attachments: AgentAttachmentInput[]
+  baseUrl: string
+  controller: AbortController
+  entry: RunEntry
+  imageModel: string
+  project: Project
+  projectId: string
+  prompt: string
+  textModel: string
+  turnId: string
+  visionModel: string
+}
+
+interface StartAgentOptions {
   attachments?: AgentAttachmentInput[]
+  baseUrl: string
   imageModel?: string
   projectId: string
   prompt: string
-  request: IncomingMessage
-  response: ServerResponse
+  subscriber?: ServerResponse
   textModel: string
   turnId?: string
   visionModel?: string
@@ -164,6 +169,69 @@ export function resolveModelId(model?: string): string {
 }
 
 /**
+ * Start a landing-page agent run for a project and return IMMEDIATELY with the
+ * resolved turn id. The run is decoupled from the request: it proceeds in the
+ * background, broadcasting events to run-bus subscribers (reopened tabs via
+ * `GET /api/projects/:id/events`). The originating `POST /agent` caller gets
+ * the JSON ack here and tracks progress via the subscribe endpoint — so closing
+ * that tab is delivery loss, not cancellation. Run lifecycle (running/terminal)
+ * is persisted to `run-state.json` via `setRunStatusSync`. Returns `not_found`
+ * when the project is missing or `overlap` when a run is already active.
+ */
+export async function startLandingAgent({
+  attachments = [],
+  baseUrl,
+  imageModel = config.openrouter.defaultImageModel,
+  projectId,
+  prompt,
+  subscriber,
+  textModel,
+  turnId,
+  visionModel = config.openrouter.defaultVisionModel,
+}: StartAgentOptions): Promise<StartAgentResult> {
+  const project = await getProject(projectId)
+  if (!project) return { ok: false, reason: 'not_found' }
+
+  const controller = new AbortController()
+  const resolvedTurnId = turnId ?? `turn-${randomUUID()}`
+  const startedAt = new Date().toISOString()
+  const entry: RunEntry = {
+    controller,
+    startedAt,
+    subscribers: subscriber
+      ? new Set<ServerResponse>([subscriber])
+      : new Set<ServerResponse>(),
+    turnId: resolvedTurnId,
+  }
+  if (!claimRun(projectId, entry)) return { ok: false, reason: 'overlap' }
+
+  setRunStatusSync(projectId, {
+    startedAt,
+    status: 'running',
+    turnId: resolvedTurnId,
+  })
+
+  // Detached: the run proceeds independently of the request that started it.
+  // `runLandingAgentBody` never rejects (it catches + terminalizes), so `void`
+  // is safe — no unhandled rejection.
+  void runLandingAgentBody({
+    attachments,
+    baseUrl,
+    controller,
+    entry,
+    imageModel,
+    project,
+    projectId,
+    prompt,
+    textModel,
+    turnId: resolvedTurnId,
+    visionModel,
+  })
+
+  return { ok: true, status: 'running', turnId: resolvedTurnId }
+}
+
+/**
  * Gracefully stop the active run for a project: aborts its Mastra stream but
  * leaves subscriber SSE responses open so final cost/stats + `done` are still
  * delivered. Returns whether an active run was found and aborted. The run
@@ -176,100 +244,396 @@ export function stopLandingAgent(projectId: string): boolean {
   return true
 }
 
-/**
- * Run the landing-page agent and stream the custom SSE protocol by mapping
- * Mastra `fullStream` chunks. Emits: thinking, text, tool_call (with action +
- * terminal error/result states), stats, error, done. Rolling `stats` snapshots
- * follow completed LLM steps, provider cost metadata, and terminal tool events;
- * final accounting still runs in `finally` for stops and mid-stream errors.
- */
-export async function streamLandingAgent({
-  attachments = [],
-  imageModel = config.openrouter.defaultImageModel,
+function addUsageSnapshots(
+  current: UsageSnapshot,
+  next: UsageSnapshot,
+): UsageSnapshot {
+  const sum = (key: keyof Omit<UsageSnapshot, 'raw'>) => {
+    const currentValue = current[key]
+    const nextValue = next[key]
+    if (typeof currentValue !== 'number') return nextValue
+    if (typeof nextValue !== 'number') return currentValue
+    return currentValue + nextValue
+  }
+
+  return {
+    cachedInputTokens: sum('cachedInputTokens'),
+    inputTokens: sum('inputTokens'),
+    outputTokens: sum('outputTokens'),
+    raw: next.raw ?? current.raw,
+    reasoningTokens: sum('reasoningTokens'),
+    totalTokens: sum('totalTokens'),
+  }
+}
+
+async function analyzePromptAttachments({
+  attachments,
+  baseUrl,
+  emit,
+  nextToolSeq,
   projectId,
-  prompt,
-  request,
-  response,
-  textModel,
-  turnId,
-  visionModel = config.openrouter.defaultVisionModel,
-}: StreamOptions) {
-  const project = await getProject(projectId)
-  if (!project) {
-    startSse(response, 404)
-    sendSse(response, 'error', { message: 'Project not found' })
-    sendSse(response, 'done', {})
-    endSse(response)
-    return
+  recordedTurn,
+  signal,
+  store,
+  visionModel,
+}: {
+  attachments: AgentAttachmentInput[]
+  baseUrl: string
+  emit: (event: string, payload: unknown) => void
+  nextToolSeq: () => number
+  projectId: string
+  recordedTurn: ProjectMessageTurn
+  signal: AbortSignal
+  store: ReturnType<typeof createProjectHtmlStore>
+  visionModel: string
+}): Promise<AttachmentAnalysis> {
+  if (attachments.length === 0) {
+    return { contextBlock: '', cost: 0, images: 0, ok: true }
   }
 
-  const controller = new AbortController()
-  const resolvedTurnId = turnId ?? `turn-${randomUUID()}`
-  const entry: RunEntry = {
-    controller,
-    startedAt: new Date().toISOString(),
-    subscribers: new Set<ServerResponse>(),
-    turnId: resolvedTurnId,
-  }
-  if (!claimRun(projectId, entry)) {
-    startSse(response)
-    sendSse(response, 'error', {
-      message: 'A run is already active for this project.',
-    })
-    sendSse(response, 'done', {})
-    endSse(response)
-    return
-  }
+  const elementSelectors = attachments
+    .filter(
+      (attachment): attachment is AgentElementAttachmentInput =>
+        attachment.kind === 'element',
+    )
+    .map((attachment) => attachment.selector)
+  const imageAttachments = attachments.filter(
+    (attachment): attachment is AgentImageAttachmentInput =>
+      attachment.kind !== 'element',
+  )
 
-  startSse(response)
-  // The originating POST /agent response is one subscriber on the run bus
-  // (Phase 3: the ONLY one; Phase 4 adds reopened-tab subscribers). `emit`
-  // broadcasts to all subscribers, so this response receives events via the
-  // bus like any other.
-  const unsubscribe = subscribe(projectId, response)
-  // A client disconnect (tab close) is delivery loss, NOT cancellation: drop
-  // the subscriber so the set doesn't leak, but leave the run going so a
-  // reopened tab can resubscribe and watch it finish.
-  const onSenderClose = () => unsubscribe()
-  request.on('close', onSenderClose)
+  const id = `tool-${nextToolSeq()}-analyze_image`
+  const action = 'Analyze attached visual reference'
+  const detail = compactLines([
+    action,
+    ...attachments.map((attachment) =>
+      attachment.kind === 'element'
+        ? `Element ${attachment.selector}`
+        : attachment.name,
+    ),
+  ])
+  const runningPayload: RecordedToolPayload = {
+    action,
+    detail,
+    id,
+    state: 'running',
+    tool: 'analyze_image',
+  }
+  emit('tool_call', runningPayload)
 
   try {
-    await activeStreamLandingAgent({
-      attachments,
-      controller,
-      imageModel,
-      project,
-      projectId,
-      prompt,
-      request,
-      textModel,
-      turnId: resolvedTurnId,
+    // Capture selected-element selectors server-side into safe persisted
+    // screenshots. One Cloudflare acquisition handles all selectors.
+    let elementCaptures: CapturedProjectSelector[] = []
+    if (elementSelectors.length > 0) {
+      elementCaptures = await captureProjectSelectors({
+        html: store.get(),
+        projectId,
+        selectors: elementSelectors,
+        signal,
+      })
+    }
+
+    // Build OCR inputs: uploaded images (with their dataUrls) plus captured
+    // element screenshots (mobile/tablet/desktop per selector).
+    const ocrInputs = [
+      ...imageAttachments.map((attachment) => ({
+        dataUrl: attachment.dataUrl,
+        sourceLabel: attachment.name,
+      })),
+      ...elementCaptures.flatMap((capture) =>
+        capture.captures.map((viewport) => ({
+          dataUrl: viewport.dataUrl,
+          sourceLabel: `Element ${capture.selector} (${viewport.viewport})`,
+        })),
+      ),
+    ]
+
+    const result = await ocrImageInputs(
+      ocrInputs,
+      ATTACHMENT_OCR_PROMPT,
       visionModel,
+      undefined,
+      { signal },
+    )
+    const cost = visionCost(result.usage ?? {}, result.cost)
+    const images = result.imagesAnalyzed
+
+    // Record this OCR/vision call in vision-messages.json (text/usage/cost only).
+    void appendVisionMessage(projectId, {
+      costUsd: cost,
+      imagesAnalyzed: result.imagesAnalyzed,
+      model: visionModel,
+      ok: result.ok,
+      reason: result.reason,
+      source: 'attachment',
+      text: result.text,
+      ts: new Date().toISOString(),
+      turnId: recordedTurn.id,
+      usage: result.usage,
     })
-  } finally {
-    request.off('close', onSenderClose)
-    unsubscribe()
-    releaseRun(projectId, entry)
-    try {
-      await flushProjectLogs(projectId)
-    } finally {
-      endSse(response)
+
+    recordAttachmentAnalysis(recordedTurn, result.text)
+
+    if (!result.ok) {
+      const reason = result.reason ?? 'Image analysis failed.'
+      const errorPayload: RecordedToolPayload = {
+        action,
+        detail,
+        id,
+        result: reason,
+        state: 'error',
+        tool: 'analyze_image',
+      }
+      emit('tool_call', errorPayload)
+      return {
+        contextBlock: `Attached image analysis failed: ${reason}`,
+        cost,
+        images,
+        ok: false,
+      }
+    }
+
+    // Persist safe screenshot URLs for element captures so the conversation UI
+    // can preview them without data URLs. Uploaded images are enriched
+    // client-side from their dataUrl payload.
+    const safeImages = elementCaptures.flatMap((capture) =>
+      capture.captures.map((viewport) => ({
+        alt: `Element ${capture.selector} (${viewport.viewport})`,
+        url: expandScreenshotUrl(viewport.imageUrl, baseUrl),
+      })),
+    )
+    const donePayload: RecordedToolPayload = {
+      action,
+      detail,
+      id,
+      ...(safeImages.length > 0 ? { images: safeImages } : {}),
+      result: `Analyzed ${images} attached image${images === 1 ? '' : 's'}`,
+      state: 'done',
+      tool: 'analyze_image',
+    }
+    emit('tool_call', donePayload)
+    return {
+      contextBlock: buildAttachmentContext(
+        attachments,
+        elementCaptures,
+        result,
+        visionModel,
+      ),
+      cost,
+      images,
+      ok: true,
+    }
+  } catch (error) {
+    signal.throwIfAborted()
+    const reason = summarizeToolError(error)
+    const errorPayload: RecordedToolPayload = {
+      action,
+      detail,
+      id,
+      result: reason,
+      state: 'error',
+      tool: 'analyze_image',
+    }
+    emit('tool_call', errorPayload)
+    return {
+      contextBlock: `Attached image analysis failed: ${reason}`,
+      cost: 0,
+      images: 0,
+      ok: false,
     }
   }
 }
 
-async function activeStreamLandingAgent({
+function buildAgentMessages(
+  history: ProjectMessageTurn[],
+  rawByTurnId: ReadonlyMap<string, MastraDBMessage[]>,
+  currentPrompt: string,
+): AgentReplayMessage[] {
+  const messages: AgentReplayMessage[] = [
+    ...history.flatMap((turn) => {
+      const messages: AgentReplayMessage[] = []
+      const userContent = buildHistoryUserContent(turn)
+      if (userContent) messages.push({ content: userContent, role: 'user' })
+
+      // Prefer the raw Mastra messages recorded for this turn (the real
+      // assistant text + tool calls + tool results) over a lossy prose
+      // reconstruction. Falls back when no raw messages were captured (e.g.
+      // legacy turns from before raw persistence, or a failed/aborted turn).
+      const rawMessages = rawByTurnId.get(turn.id)
+      if (rawMessages && rawMessages.length > 0) {
+        messages.push(...rawMessages)
+      } else {
+        const assistantContent = buildHistoryAssistantContent(turn)
+        if (assistantContent) {
+          messages.push({ content: assistantContent, role: 'assistant' })
+        }
+      }
+      return messages
+    }),
+    { content: currentPrompt, role: 'user' },
+  ]
+
+  return messages
+}
+
+function buildAttachmentContext(
+  attachments: AgentAttachmentInput[],
+  elementCaptures: CapturedProjectSelector[],
+  result: ImageOcrResult,
+  visionModel: string,
+): string {
+  const imageList = attachments
+    .map((attachment, index) => {
+      if (attachment.kind === 'element') {
+        const capture = elementCaptures.find(
+          (capture) => capture.selector === attachment.selector,
+        )
+        const viewports = capture
+          ? capture.captures.map((viewport) => viewport.viewport).join('/')
+          : 'unavailable'
+        return `${index + 1}. Element ${attachment.selector} (captured: ${viewports})`
+      }
+      return `${index + 1}. ${attachment.name} (${attachment.mediaType}, ${attachment.size} bytes)`
+    })
+    .join('\n')
+  return [
+    `Attached image OCR/visual transcript from OpenRouter \`${visionModel}\`:`,
+    imageList,
+    '',
+    result.text || 'No text returned.',
+  ].join('\n')
+}
+
+function buildHistoryAssistantContent(turn: ProjectMessageTurn): null | string {
+  const lines = turn.parts.flatMap((part) => {
+    switch (part.type) {
+      case 'stats':
+        return []
+      case 'text':
+        return [part.text]
+      case 'thinking':
+      case 'tool_call':
+        return []
+    }
+  })
+
+  if (turn.error) lines.push(`Turn error: ${turn.error}`)
+  return compactLines(lines)
+}
+
+function buildHistoryUserContent(turn: ProjectMessageTurn): null | string {
+  const attachmentLines = (turn.attachments ?? []).flatMap(
+    (attachment, index) => {
+      if (attachment.kind === 'element') {
+        return [
+          `${index + 1}. Element ${attachment.selector ?? attachment.name}`,
+          attachment.analysisText
+            ? `OCR/visual transcript: ${attachment.analysisText}`
+            : null,
+        ]
+      }
+      return [
+        `${index + 1}. ${attachment.name} (${attachment.mediaType ?? 'unknown'}, ${attachment.size ?? 0} bytes)`,
+        attachment.analysisText
+          ? `OCR/visual transcript: ${attachment.analysisText}`
+          : null,
+      ]
+    },
+  )
+
+  return compactLines([
+    turn.prompt,
+    attachmentLines.length > 0 ? 'Attachments:' : null,
+    ...attachmentLines,
+  ])
+}
+
+function createHtmlUpdatePayload({
+  html,
+  previousHtml,
+  projectId,
+  sequence,
+}: {
+  html: string
+  previousHtml: string
+  projectId: string
+  sequence: number
+}): HtmlUpdatePayload {
+  return {
+    bytes: Buffer.byteLength(html, 'utf8'),
+    hash: hashHtml(html),
+    html,
+    previousHash: hashHtml(previousHtml),
+    projectId,
+    sequence,
+  }
+}
+
+function createRecordedTurn(
+  prompt: string,
+  model: string,
+  attachments: ProjectMessageAttachment[] = [],
+  turnId?: string,
+): ProjectMessageTurn {
+  return {
+    ...(attachments.length > 0 ? { attachments } : {}),
+    htmlSwaps: 0,
+    id: turnId ?? `turn-${randomUUID()}`,
+    isStreaming: true,
+    model,
+    parts: [],
+    prompt,
+  }
+}
+
+function getToolCallDisplay(
+  displayByProviderId: Map<string, ToolCallDisplay>,
+  providerId: string,
+  tool: string,
+  args: ToolArgs,
+  nextDisplaySeq: number,
+): ToolCallDisplay {
+  return (
+    displayByProviderId.get(providerId) ??
+    startToolCallDisplay(
+      displayByProviderId,
+      new Set<string>(),
+      nextDisplaySeq,
+      providerId,
+      tool,
+      args,
+    )
+  )
+}
+
+function hashHtml(html: string): string {
+  return createHash('sha256').update(html).digest('hex')
+}
+
+function recordAttachmentAnalysis(
+  turn: ProjectMessageTurn,
+  analysisText: string,
+) {
+  if (!analysisText || !turn.attachments?.length) return
+  turn.attachments = turn.attachments.map((attachment) => ({
+    ...attachment,
+    analysisText,
+  }))
+}
+
+async function runAgentStream({
   attachments,
+  baseUrl,
   controller,
   imageModel,
   project,
   projectId,
   prompt,
-  request,
   textModel,
   turnId,
   visionModel,
-}: ActiveStreamOptions) {
+}: RunBodyOptions) {
   await updateProjectModel(projectId, { textModel })
   setTitleIfUntitled(projectId, prompt)
 
@@ -301,7 +665,6 @@ async function activeStreamLandingAgent({
   const store = createProjectHtmlStore(projectId)
   let lastHtmlUpdate = store.get()
   let htmlUpdateSequence = 0
-  const baseUrl = `http://${request.headers.host ?? `localhost:${config.port}`}`
   const agent = createLandingPageAgent(
     store,
     mastra,
@@ -881,388 +1244,59 @@ async function activeStreamLandingAgent({
           emit('error', { message: NO_GENERATED_HTML_MESSAGE })
         }
       }
+      // Persist terminal run-lifecycle status so the project list + editor
+      // views reflect completion/stop/error (drives the list SSE badge + the
+      // editor subscribe `state` snapshot). `idle` = cleanly finished, ready
+      // for the next run.
+      const terminalStatus: RunStatus = fatalRunError
+        ? 'error'
+        : controller.signal.aborted
+          ? 'stopped'
+          : streamError
+            ? 'error'
+            : 'idle'
+      setRunStatusSync(projectId, {
+        error:
+          fatalRunError ??
+          (controller.signal.aborted ? null : (streamError ?? null)),
+        finishedAt: new Date().toISOString(),
+        status: terminalStatus,
+      })
     } finally {
       emit('done', {})
     }
   }
 }
 
-function addUsageSnapshots(
-  current: UsageSnapshot,
-  next: UsageSnapshot,
-): UsageSnapshot {
-  const sum = (key: keyof Omit<UsageSnapshot, 'raw'>) => {
-    const currentValue = current[key]
-    const nextValue = next[key]
-    if (typeof currentValue !== 'number') return nextValue
-    if (typeof nextValue !== 'number') return currentValue
-    return currentValue + nextValue
-  }
-
-  return {
-    cachedInputTokens: sum('cachedInputTokens'),
-    inputTokens: sum('inputTokens'),
-    outputTokens: sum('outputTokens'),
-    raw: next.raw ?? current.raw,
-    reasoningTokens: sum('reasoningTokens'),
-    totalTokens: sum('totalTokens'),
-  }
-}
-
-async function analyzePromptAttachments({
-  attachments,
-  baseUrl,
-  emit,
-  nextToolSeq,
-  projectId,
-  recordedTurn,
-  signal,
-  store,
-  visionModel,
-}: {
-  attachments: AgentAttachmentInput[]
-  baseUrl: string
-  emit: (event: string, payload: unknown) => void
-  nextToolSeq: () => number
-  projectId: string
-  recordedTurn: ProjectMessageTurn
-  signal: AbortSignal
-  store: ReturnType<typeof createProjectHtmlStore>
-  visionModel: string
-}): Promise<AttachmentAnalysis> {
-  if (attachments.length === 0) {
-    return { contextBlock: '', cost: 0, images: 0, ok: true }
-  }
-
-  const elementSelectors = attachments
-    .filter(
-      (attachment): attachment is AgentElementAttachmentInput =>
-        attachment.kind === 'element',
-    )
-    .map((attachment) => attachment.selector)
-  const imageAttachments = attachments.filter(
-    (attachment): attachment is AgentImageAttachmentInput =>
-      attachment.kind !== 'element',
-  )
-
-  const id = `tool-${nextToolSeq()}-analyze_image`
-  const action = 'Analyze attached visual reference'
-  const detail = compactLines([
-    action,
-    ...attachments.map((attachment) =>
-      attachment.kind === 'element'
-        ? `Element ${attachment.selector}`
-        : attachment.name,
-    ),
-  ])
-  const runningPayload: RecordedToolPayload = {
-    action,
-    detail,
-    id,
-    state: 'running',
-    tool: 'analyze_image',
-  }
-  emit('tool_call', runningPayload)
-
+/**
+ * Run body wrapper: owns run-lifecycle cleanup. `runAgentStream` does the
+ * actual work (attachment OCR, agent.stream, event loop, cost accounting,
+ * terminal emit); this wrapper guarantees the run slot is released + logs
+ * flushed even if it throws OUTSIDE its own try/catch (a bug), terminalizing
+ * status to `error` so the project never gets stuck `running`.
+ */
+async function runLandingAgentBody(options: RunBodyOptions) {
+  const { entry, projectId } = options
   try {
-    // Capture selected-element selectors server-side into safe persisted
-    // screenshots. One Cloudflare acquisition handles all selectors.
-    let elementCaptures: CapturedProjectSelector[] = []
-    if (elementSelectors.length > 0) {
-      elementCaptures = await captureProjectSelectors({
-        html: store.get(),
-        projectId,
-        selectors: elementSelectors,
-        signal,
-      })
-    }
-
-    // Build OCR inputs: uploaded images (with their dataUrls) plus captured
-    // element screenshots (mobile/tablet/desktop per selector).
-    const ocrInputs = [
-      ...imageAttachments.map((attachment) => ({
-        dataUrl: attachment.dataUrl,
-        sourceLabel: attachment.name,
-      })),
-      ...elementCaptures.flatMap((capture) =>
-        capture.captures.map((viewport) => ({
-          dataUrl: viewport.dataUrl,
-          sourceLabel: `Element ${capture.selector} (${viewport.viewport})`,
-        })),
-      ),
-    ]
-
-    const result = await ocrImageInputs(
-      ocrInputs,
-      ATTACHMENT_OCR_PROMPT,
-      visionModel,
-      undefined,
-      { signal },
-    )
-    const cost = visionCost(result.usage ?? {}, result.cost)
-    const images = result.imagesAnalyzed
-
-    // Record this OCR/vision call in vision-messages.json (text/usage/cost only).
-    void appendVisionMessage(projectId, {
-      costUsd: cost,
-      imagesAnalyzed: result.imagesAnalyzed,
-      model: visionModel,
-      ok: result.ok,
-      reason: result.reason,
-      source: 'attachment',
-      text: result.text,
-      ts: new Date().toISOString(),
-      turnId: recordedTurn.id,
-      usage: result.usage,
-    })
-
-    recordAttachmentAnalysis(recordedTurn, result.text)
-
-    if (!result.ok) {
-      const reason = result.reason ?? 'Image analysis failed.'
-      const errorPayload: RecordedToolPayload = {
-        action,
-        detail,
-        id,
-        result: reason,
-        state: 'error',
-        tool: 'analyze_image',
-      }
-      emit('tool_call', errorPayload)
-      return {
-        contextBlock: `Attached image analysis failed: ${reason}`,
-        cost,
-        images,
-        ok: false,
-      }
-    }
-
-    // Persist safe screenshot URLs for element captures so the conversation UI
-    // can preview them without data URLs. Uploaded images are enriched
-    // client-side from their dataUrl payload.
-    const safeImages = elementCaptures.flatMap((capture) =>
-      capture.captures.map((viewport) => ({
-        alt: `Element ${capture.selector} (${viewport.viewport})`,
-        url: expandScreenshotUrl(viewport.imageUrl, baseUrl),
-      })),
-    )
-    const donePayload: RecordedToolPayload = {
-      action,
-      detail,
-      id,
-      ...(safeImages.length > 0 ? { images: safeImages } : {}),
-      result: `Analyzed ${images} attached image${images === 1 ? '' : 's'}`,
-      state: 'done',
-      tool: 'analyze_image',
-    }
-    emit('tool_call', donePayload)
-    return {
-      contextBlock: buildAttachmentContext(
-        attachments,
-        elementCaptures,
-        result,
-        visionModel,
-      ),
-      cost,
-      images,
-      ok: true,
-    }
+    await runAgentStream(options)
   } catch (error) {
-    signal.throwIfAborted()
-    const reason = summarizeToolError(error)
-    const errorPayload: RecordedToolPayload = {
-      action,
-      detail,
-      id,
-      result: reason,
-      state: 'error',
-      tool: 'analyze_image',
-    }
-    emit('tool_call', errorPayload)
-    return {
-      contextBlock: `Attached image analysis failed: ${reason}`,
-      cost: 0,
-      images: 0,
-      ok: false,
-    }
-  }
-}
-
-function buildAgentMessages(
-  history: ProjectMessageTurn[],
-  rawByTurnId: ReadonlyMap<string, MastraDBMessage[]>,
-  currentPrompt: string,
-): AgentReplayMessage[] {
-  const messages: AgentReplayMessage[] = [
-    ...history.flatMap((turn) => {
-      const messages: AgentReplayMessage[] = []
-      const userContent = buildHistoryUserContent(turn)
-      if (userContent) messages.push({ content: userContent, role: 'user' })
-
-      // Prefer the raw Mastra messages recorded for this turn (the real
-      // assistant text + tool calls + tool results) over a lossy prose
-      // reconstruction. Falls back when no raw messages were captured (e.g.
-      // legacy turns from before raw persistence, or a failed/aborted turn).
-      const rawMessages = rawByTurnId.get(turn.id)
-      if (rawMessages && rawMessages.length > 0) {
-        messages.push(...rawMessages)
-      } else {
-        const assistantContent = buildHistoryAssistantContent(turn)
-        if (assistantContent) {
-          messages.push({ content: assistantContent, role: 'assistant' })
-        }
-      }
-      return messages
-    }),
-    { content: currentPrompt, role: 'user' },
-  ]
-
-  return messages
-}
-
-function buildAttachmentContext(
-  attachments: AgentAttachmentInput[],
-  elementCaptures: CapturedProjectSelector[],
-  result: ImageOcrResult,
-  visionModel: string,
-): string {
-  const imageList = attachments
-    .map((attachment, index) => {
-      if (attachment.kind === 'element') {
-        const capture = elementCaptures.find(
-          (capture) => capture.selector === attachment.selector,
-        )
-        const viewports = capture
-          ? capture.captures.map((viewport) => viewport.viewport).join('/')
-          : 'unavailable'
-        return `${index + 1}. Element ${attachment.selector} (captured: ${viewports})`
-      }
-      return `${index + 1}. ${attachment.name} (${attachment.mediaType}, ${attachment.size} bytes)`
-    })
-    .join('\n')
-  return [
-    `Attached image OCR/visual transcript from OpenRouter \`${visionModel}\`:`,
-    imageList,
-    '',
-    result.text || 'No text returned.',
-  ].join('\n')
-}
-
-function buildHistoryAssistantContent(turn: ProjectMessageTurn): null | string {
-  const lines = turn.parts.flatMap((part) => {
-    switch (part.type) {
-      case 'stats':
-        return []
-      case 'text':
-        return [part.text]
-      case 'thinking':
-      case 'tool_call':
-        return []
-    }
-  })
-
-  if (turn.error) lines.push(`Turn error: ${turn.error}`)
-  return compactLines(lines)
-}
-
-function buildHistoryUserContent(turn: ProjectMessageTurn): null | string {
-  const attachmentLines = (turn.attachments ?? []).flatMap(
-    (attachment, index) => {
-      if (attachment.kind === 'element') {
-        return [
-          `${index + 1}. Element ${attachment.selector ?? attachment.name}`,
-          attachment.analysisText
-            ? `OCR/visual transcript: ${attachment.analysisText}`
-            : null,
-        ]
-      }
-      return [
-        `${index + 1}. ${attachment.name} (${attachment.mediaType ?? 'unknown'}, ${attachment.size ?? 0} bytes)`,
-        attachment.analysisText
-          ? `OCR/visual transcript: ${attachment.analysisText}`
-          : null,
-      ]
-    },
-  )
-
-  return compactLines([
-    turn.prompt,
-    attachmentLines.length > 0 ? 'Attachments:' : null,
-    ...attachmentLines,
-  ])
-}
-
-function createHtmlUpdatePayload({
-  html,
-  previousHtml,
-  projectId,
-  sequence,
-}: {
-  html: string
-  previousHtml: string
-  projectId: string
-  sequence: number
-}): HtmlUpdatePayload {
-  return {
-    bytes: Buffer.byteLength(html, 'utf8'),
-    hash: hashHtml(html),
-    html,
-    previousHash: hashHtml(previousHtml),
-    projectId,
-    sequence,
-  }
-}
-
-function createRecordedTurn(
-  prompt: string,
-  model: string,
-  attachments: ProjectMessageAttachment[] = [],
-  turnId?: string,
-): ProjectMessageTurn {
-  return {
-    ...(attachments.length > 0 ? { attachments } : {}),
-    htmlSwaps: 0,
-    id: turnId ?? `turn-${randomUUID()}`,
-    isStreaming: true,
-    model,
-    parts: [],
-    prompt,
-  }
-}
-
-function getToolCallDisplay(
-  displayByProviderId: Map<string, ToolCallDisplay>,
-  providerId: string,
-  tool: string,
-  args: ToolArgs,
-  nextDisplaySeq: number,
-): ToolCallDisplay {
-  return (
-    displayByProviderId.get(providerId) ??
-    startToolCallDisplay(
-      displayByProviderId,
-      new Set<string>(),
-      nextDisplaySeq,
-      providerId,
-      tool,
-      args,
+    console.error(
+      `[landing-agent] run body crashed for project ${projectId}:`,
+      error,
     )
-  )
-}
-
-function hashHtml(html: string): string {
-  return createHash('sha256').update(html).digest('hex')
-}
-
-function recordAttachmentAnalysis(
-  turn: ProjectMessageTurn,
-  analysisText: string,
-) {
-  if (!analysisText || !turn.attachments?.length) return
-  turn.attachments = turn.attachments.map((attachment) => ({
-    ...attachment,
-    analysisText,
-  }))
+    setRunStatusSync(projectId, {
+      error: error instanceof Error ? error.message : 'Unknown error',
+      finishedAt: new Date().toISOString(),
+      status: 'error',
+    })
+  } finally {
+    try {
+      await flushProjectLogs(projectId)
+    } catch {
+      // Best-effort log flush; the run already terminalized its status.
+    }
+    releaseRun(projectId, entry)
+  }
 }
 
 function startToolCallDisplay(

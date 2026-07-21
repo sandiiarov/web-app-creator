@@ -27,8 +27,8 @@ import { subscribe, subscribeList } from './mastra/lib/run-bus.ts'
 import { endSse, sendSse, startSse } from './mastra/lib/sse.ts'
 import {
   resolveModelId,
+  startLandingAgent,
   stopLandingAgent,
-  streamLandingAgent,
   type AgentAttachmentInput,
   type AgentElementAttachmentInput,
   type AgentImageAttachmentInput,
@@ -193,23 +193,37 @@ async function handleAgent(request: IncomingMessage, response: ServerResponse) {
   }
 
   // Only `textModel` falls back to the chat default here. `imageModel` and
-  // `visionModel` must stay `undefined` when omitted so `streamLandingAgent`
+  // `visionModel` must stay `undefined` when omitted so `startLandingAgent`
   // applies their own role-specific defaults (image / vision models). Routing
   // them through `resolveModelId` would silently substitute the chat model,
   // which is neither an image nor a vision model and 404s at the provider.
-  await streamLandingAgent({
+  const baseUrl = `http://${request.headers.host ?? `localhost:${config.port}`}`
+  const result = await startLandingAgent({
     attachments,
+    baseUrl,
     imageModel: body.imageModel ? resolveModelId(body.imageModel) : undefined,
     projectId: body.projectId,
     prompt: body.prompt,
-    request,
-    response,
     textModel: resolveModelId(body.textModel),
     turnId: body.turnId,
     visionModel: body.visionModel
       ? resolveModelId(body.visionModel)
       : undefined,
   })
+  if (result.ok) {
+    sendJson(response, 200, {
+      ok: true,
+      status: result.status,
+      turnId: result.turnId,
+    })
+  } else if (result.reason === 'not_found') {
+    sendJson(response, 404, { error: 'Project not found', ok: false })
+  } else {
+    sendJson(response, 409, {
+      error: 'A run is already active for this project.',
+      ok: false,
+    })
+  }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
