@@ -635,8 +635,11 @@ describe('createScreenshotTool', () => {
       undefined as never,
     )
 
-    expect(captureProjectSelector).toHaveBeenCalledWith('#hero')
+    expect(captureProjectSelector).toHaveBeenCalledWith('#hero', undefined)
     expect(ocrImageInputs).toHaveBeenCalledTimes(1)
+    expect((ocrImageInputs.mock.calls[0] as unknown[])?.[4]).toMatchObject({
+      signal: undefined,
+    })
     expect(ocrImageInputs.mock.calls[0]?.[0]).toHaveLength(3)
     expect(result).toMatchObject({
       captures: expect.arrayContaining([

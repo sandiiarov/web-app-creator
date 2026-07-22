@@ -682,7 +682,13 @@ async function runAgentStream({
       }
       return result
     },
-    { imageModel, projectId, turnId: recordedTurn.id, visionModel },
+    {
+      imageModel,
+      projectId,
+      signal: controller.signal,
+      turnId: recordedTurn.id,
+      visionModel,
+    },
   )
 
   // Record the inbound prompt (client→server) as the first client-messages line.

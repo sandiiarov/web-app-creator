@@ -44,6 +44,7 @@ export function createLandingPageAgent(
   options: {
     imageModel?: string
     projectId?: string
+    signal?: AbortSignal
     turnId?: string
     visionModel?: string
   } = {},
@@ -70,6 +71,7 @@ function createLandingPageAgentConfig(
   options: {
     imageModel?: string
     projectId?: string
+    signal?: AbortSignal
     turnId?: string
     visionModel?: string
   } = {},

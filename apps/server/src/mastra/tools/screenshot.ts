@@ -74,6 +74,7 @@ const ImageOcrSchema = z.object({
 export function createScreenshotTool(
   captureProjectSelector?: RequestProjectScreenshot,
   visionModel: string = config.openrouter.defaultVisionModel,
+  signal?: AbortSignal,
 ) {
   return createTool({
     description:
@@ -118,7 +119,7 @@ export function createScreenshotTool(
 
       let captured: CapturedProjectSelector
       try {
-        captured = await captureProjectSelector(selector)
+        captured = await captureProjectSelector(selector, signal)
       } catch (error) {
         const reason =
           error instanceof Error ? error.message : 'Screenshot capture failed.'
@@ -145,6 +146,10 @@ export function createScreenshotTool(
         })),
         `${action ?? 'Inspect this element for layout, spacing, contrast, and responsive issues across all three viewports.'}\nTarget selector: ${selector}\nViewports: mobile, tablet, desktop`,
         visionModel,
+        undefined,
+        // Thread the run's abort signal so a user `stop` during the (slow)
+        // vision OCR aborts it promptly instead of blocking until completion.
+        { signal },
       )
 
       return {
