@@ -58,7 +58,6 @@ allowBuilds:
 minimumReleaseAgeExclude:
   - oxlint-tailwindcss@1.1.0
   - firecrawl@4.28.3
-  - '@ai-sdk/baseten@1.0.56'
   - '@ai-sdk/openai-compatible@2.0.53'
   - '@ai-sdk/provider-utils@4.0.32'
   - '@ai-sdk/provider@3.0.12'
