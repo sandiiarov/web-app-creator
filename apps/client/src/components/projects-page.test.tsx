@@ -1,57 +1,33 @@
 // @vitest-environment happy-dom
 
-import { act } from 'react'
-import { createRoot, type Root } from 'react-dom/client'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'vitest'
 
 import type { RunStatus } from '../lib/projects-api'
-import { StatusBadge } from './projects-page'
+import { runStatusToPanelStatus } from '../lib/run-status'
 
-let container: HTMLDivElement
-let root: Root
-
-beforeEach(() => {
-  ;(
-    globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }
-  ).IS_REACT_ACT_ENVIRONMENT = true
-  container = document.createElement('div')
-  document.body.append(container)
-  root = createRoot(container)
-})
-
-afterEach(() => {
-  act(() => root.unmount())
-  container.remove()
-})
-
-function renderBadge(status: RunStatus): {
-  el: HTMLElement | null
-  text: string
-} {
-  act(() => root.render(<StatusBadge status={status} />))
-  const el = container.querySelector<HTMLElement>('[data-status]')
-  return { el, text: container.textContent ?? '' }
-}
-
-describe('StatusBadge', () => {
-  it('renders nothing for an idle project', () => {
-    const { el, text } = renderBadge('idle')
-    expect(text).toBe('')
-    expect(el).toBeNull()
+describe('runStatusToPanelStatus', () => {
+  it('maps every RunStatus to the matching prompt-panel PanelStatus', () => {
+    const cases: Array<[RunStatus, ReturnType<typeof runStatusToPanelStatus>]> =
+      [
+        ['idle', 'ready'],
+        ['running', 'generating'],
+        ['error', 'error'],
+        ['interrupted', 'error'],
+        ['stopped', 'stopped'],
+      ]
+    for (const [runStatus, panelStatus] of cases) {
+      expect(runStatusToPanelStatus(runStatus)).toBe(panelStatus)
+    }
   })
 
-  it('shows Generating for a running project', () => {
-    const { el, text } = renderBadge('running')
-    expect(text).toContain('Generating')
-    expect(el?.dataset.status).toBe('running')
+  it('collapses interrupted (process restart mid-run) to error', () => {
+    // The panel has no "interrupted" pill — a crashed run shows as Error.
+    expect(runStatusToPanelStatus('interrupted')).toBe('error')
+    expect(runStatusToPanelStatus('error')).toBe('error')
   })
 
-  it('shows Failed for an errored project and Interrupted for a crashed one', () => {
-    expect(renderBadge('error').text).toContain('Failed')
-    expect(renderBadge('interrupted').text).toContain('Interrupted')
-  })
-
-  it('shows Stopped for a user-stopped project', () => {
-    expect(renderBadge('stopped').text).toContain('Stopped')
+  it('never returns null — every card gets a pill (idle shows Ready)', () => {
+    // The list mirrors the panel header, which always shows a status pill.
+    expect(runStatusToPanelStatus('idle')).toBe('ready')
   })
 })

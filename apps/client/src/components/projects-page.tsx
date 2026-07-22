@@ -1,4 +1,4 @@
-import { DEFAULT_LANDING_MODELS } from '@workspace/prompt-panel'
+import { DEFAULT_LANDING_MODELS, StatusPill } from '@workspace/prompt-panel'
 import { Button } from '@workspace/ui/components/button'
 import { cn } from '@workspace/ui/lib/utils'
 import { ArrowRight, FileCode2, Plus, Trash2 } from 'lucide-react'
@@ -15,6 +15,7 @@ import {
   listProjects,
   projectListEventsUrl,
 } from '../lib/projects-api'
+import { runStatusToPanelStatus } from '../lib/run-status'
 import { streamSSEGet } from '../lib/sse-client'
 
 /** Creates a draft project on mount and redirects to its editor route. */
@@ -219,42 +220,6 @@ function formatRelative(iso: string): string {
   })
 }
 
-const STATUS_BADGE: Partial<
-  Record<RunStatus, { dot: string; label: string; text: string }>
-> = {
-  error: { dot: 'bg-destructive', label: 'Failed', text: 'text-destructive' },
-  interrupted: {
-    dot: 'bg-destructive',
-    label: 'Interrupted',
-    text: 'text-destructive',
-  },
-  running: {
-    dot: 'bg-accent-foreground animate-pulse',
-    label: 'Generating',
-    text: 'text-foreground',
-  },
-  stopped: {
-    dot: 'bg-muted-foreground',
-    label: 'Stopped',
-    text: 'text-muted-foreground',
-  },
-}
-
-/** Inline run-status indicator for a project card. `idle` renders nothing. */
-export function StatusBadge({ status }: { status: RunStatus }) {
-  const config = STATUS_BADGE[status]
-  if (!config) return null
-  return (
-    <span
-      className={cn('inline-flex items-center gap-1.5', config.text)}
-      data-status={status}
-    >
-      <span className={cn('size-1.5 shrink-0', config.dot)} />
-      {config.label}
-    </span>
-  )
-}
-
 function ProjectCard({
   onDelete,
   onOpen,
@@ -283,7 +248,7 @@ function ProjectCard({
               {title}
             </span>
             <span className="mt-0.5 flex items-center gap-2 text-xs text-muted-foreground">
-              <StatusBadge status={status} />
+              <StatusPill status={runStatusToPanelStatus(status)} />
               <span>Updated {formatRelative(project.updatedAt)}</span>
             </span>
           </span>
