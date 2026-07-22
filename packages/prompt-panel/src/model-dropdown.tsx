@@ -29,6 +29,7 @@ import { MinimaxIcon } from './minimax-icon'
 import { MODEL_ROLE_META } from './model-role-meta'
 import { NvidiaIcon } from './nvidia-icon'
 import { OpenaiIcon } from './openai-icon'
+import { PoolsideIcon } from './poolside-icon'
 import { TencentIcon } from './tencent-icon'
 import { XaiIcon } from './xai-icon'
 import { XiaomiIcon } from './xiaomi-icon'
@@ -44,6 +45,7 @@ const MODEL_ICONS: Record<string, ComponentType<{ className?: string }>> = {
   'moonshotai/kimi-k2.7-code:nitro': KimiIcon,
   'nvidia/nemotron-3-ultra-550b-a55b:nitro': NvidiaIcon,
   'openai/gpt-image-2': OpenaiIcon,
+  'poolside/laguna-s-2.1:nitro': PoolsideIcon,
   'tencent/hy3:nitro': TencentIcon,
   'x-ai/grok-imagine-image-quality': XaiIcon,
   'xiaomi/mimo-v2.5': XiaomiIcon,

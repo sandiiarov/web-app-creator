@@ -29,6 +29,7 @@ export const TEXT_MODEL_OPTIONS: LandingModelOption[] = [
     id: 'nvidia/nemotron-3-ultra-550b-a55b:nitro',
     label: 'Nemotron Ultra',
   },
+  { id: 'poolside/laguna-s-2.1:nitro', label: 'Laguna S 2.1' },
 ]
 
 export const IMAGE_MODEL_OPTIONS: LandingModelOption[] = [
