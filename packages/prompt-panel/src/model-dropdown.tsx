@@ -43,6 +43,8 @@ const MODEL_ICONS: Record<string, ComponentType<{ className?: string }>> = {
   'minimax/minimax-m3': MinimaxIcon,
   'moonshotai/kimi-k2.7-code': KimiIcon,
   'moonshotai/kimi-k2.7-code:nitro': KimiIcon,
+  'moonshotai/kimi-k3': KimiIcon,
+  'moonshotai/kimi-k3:nitro': KimiIcon,
   'nvidia/nemotron-3-ultra-550b-a55b:nitro': NvidiaIcon,
   'openai/gpt-image-2': OpenaiIcon,
   'poolside/laguna-s-2.1:nitro': PoolsideIcon,

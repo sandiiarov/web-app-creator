@@ -23,6 +23,7 @@ export const TEXT_MODEL_OPTIONS: LandingModelOption[] = [
   { id: 'z-ai/glm-5.2:nitro', label: 'GLM 5.2' },
   { id: 'tencent/hy3:nitro', label: 'Tencent Hy3' },
   { id: 'moonshotai/kimi-k2.7-code:nitro', label: 'Kimi K2.7 Code' },
+  { id: 'moonshotai/kimi-k3:nitro', label: 'Kimi K3' },
   { id: 'deepseek/deepseek-v4-pro:nitro', label: 'DeepSeek V4 Pro' },
   { id: 'deepseek/deepseek-v4-flash:nitro', label: 'DeepSeek V4 Flash' },
   {
@@ -43,6 +44,7 @@ export const VISION_MODEL_OPTIONS: LandingModelOption[] = [
   { id: 'bytedance-seed/seed-2.0-mini', label: 'Seed 2.0 Mini' },
   { id: 'z-ai/glm-5v-turbo', label: 'GLM 5V Turbo' },
   { id: 'moonshotai/kimi-k2.7-code', label: 'Kimi K2.7 Code' },
+  { id: 'moonshotai/kimi-k3', label: 'Kimi K3' },
   { id: 'minimax/minimax-m3', label: 'MiniMax M3' },
   { id: 'xiaomi/mimo-v2.5', label: 'MiMo V2.5' },
 ]
