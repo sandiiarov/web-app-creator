@@ -33,6 +33,7 @@ import {
   type AgentElementAttachmentInput,
   type AgentImageAttachmentInput,
 } from './mastra/route.ts'
+import { getModelPricing } from './model-catalog.ts'
 
 const ACCEPTED_ATTACHMENT_MEDIA_TYPES = new Set([
   'image/gif',
@@ -270,6 +271,11 @@ async function routeRequest(
     return
   }
 
+  if (request.method === 'GET' && pathname === '/api/models') {
+    await handleModelCatalog(response)
+    return
+  }
+
   if (await routeProjects(request, response, pathname)) {
     return
   }
@@ -326,6 +332,15 @@ async function handleListProjects(response: ServerResponse) {
   // Drafts (no generated HTML yet) are hidden from the list.
   const projects = all.filter((project) => project.hasHtml)
   sendJson(response, 200, { ok: true, projects })
+}
+
+async function handleModelCatalog(response: ServerResponse) {
+  try {
+    const models = await getModelPricing()
+    sendJson(response, 200, { models, ok: true })
+  } catch (error) {
+    sendJson(response, 502, { error: errorMessage(error), ok: false })
+  }
 }
 
 async function handlePatchProject(

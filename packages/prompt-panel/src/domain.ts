@@ -341,10 +341,14 @@ export function formatTokenUsage(usage: TokenUsage | undefined) {
 
 /**
  * Look up per-1M-token USD pricing for a model id, tolerating OpenRouter
- * routing-variant suffixes like `:nitro`.
+ * routing-variant suffixes like `:nitro`. Pass a live catalog map (from the
+ * server's `/api/models` proxy) to override the bundled static snapshot.
  */
-export function modelPricingFor(modelId: string) {
-  return MODEL_PRICING[modelId.replace(/:(?:floor|free|nitro|online)$/, '')]
+export function modelPricingFor(
+  modelId: string,
+  pricing: Record<string, LandingModelPricing> = MODEL_PRICING,
+) {
+  return pricing[modelId.replace(/:(?:floor|free|nitro|online)$/, '')]
 }
 
 /**

@@ -11,7 +11,7 @@
 - `src/App.tsx`: `EditorPage` (preview + prompt panel composition), param-driven, keyed by project id. In dev, exported component identity + latest render fn bridged through `import.meta.hot.data`; inline `accept` callback rerenders stable component so App HMR reconciles around existing preview iframe instead of remounting.
 - `src/components/projects-page.tsx`: project list + new-project redirect.
 - `src/components/`: app-specific UI (error banner, theme provider). `LandingPreview` React component consumed from dedicated `@workspace/landing-preview/react` Fast Refresh boundary (see `packages/landing-preview/AGENTS.md`); preview utilities remain in package barrel. Prompt panel consumed from `@workspace/prompt-panel`; `EditorPage` injects `onAllProjects`, `theme`, `onToggleTheme`, `onLayoutChange`, `onReloadPreview`, sizes preview iframe from reported panel layout (init via `readStoredPanelLayout`).
-- `src/hooks/`: streaming hooks.
+- `src/hooks/`: streaming hooks + `use-model-pricing.ts` (fetches `GET /api/models` once per session; live per-1M pricing passed to `PromptPanel` as `modelPricing`, panel falls back to bundled static map when unavailable).
 - `src/lib/`: custom SSE client, landing-agent transport (server URL + SSE wire events; domain model lives in `@workspace/prompt-panel`, re-exported from `landing-agent.ts` as bridge while in-flight files repointed), image URL expansion, project REST API client. Browser screenshot capture + preview iframe/morph helpers live in `@workspace/landing-preview`.
 - `components.json`: shadcn project config targeting shared UI code in `packages/ui`.
 

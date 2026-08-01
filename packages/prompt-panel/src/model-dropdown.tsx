@@ -19,6 +19,7 @@ import { DeepseekIcon } from './deepseek-icon'
 import {
   formatTokenPrice,
   LANDING_MODEL_GROUPS,
+  type LandingModelPricing,
   type LandingModels,
   type LandingModelRole,
   modelPricingFor,
@@ -92,6 +93,8 @@ const PROVIDER_NAMES: Record<string, string> = {
 const ROLE_ORDER: LandingModelRole[] = ['text', 'image', 'vision']
 
 export interface ModelDropdownProps {
+  /** Live per-1M pricing map (from `/api/models`); static snapshot fallback. */
+  modelPricing?: Record<string, LandingModelPricing>
   models: LandingModels
   onModelsChange: (models: LandingModels) => void
 }
@@ -103,7 +106,11 @@ export interface ModelDropdownProps {
  * models as a menu on the right. Selecting a model keeps the popover open so
  * all three roles can be set in one session.
  */
-export function ModelDropdown({ models, onModelsChange }: ModelDropdownProps) {
+export function ModelDropdown({
+  modelPricing,
+  models,
+  onModelsChange,
+}: ModelDropdownProps) {
   const [open, setOpen] = useState(false)
   const [activeRole, setActiveRole] = useState<LandingModelRole>('text')
   const [activeProvider, setActiveProvider] = useState<null | string>(null)
@@ -247,7 +254,7 @@ export function ModelDropdown({ models, onModelsChange }: ModelDropdownProps) {
           >
             {visibleOptions.map((option) => {
               const Icon = MODEL_ICONS[option.id]
-              const pricing = modelPricingFor(option.id)
+              const pricing = modelPricingFor(option.id, modelPricing)
               const selected = models[activeRole] === option.id
               return (
                 <button

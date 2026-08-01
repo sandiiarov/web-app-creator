@@ -10,6 +10,7 @@ import { ArrowUp, MousePointerClick, Paperclip, Square, X } from 'lucide-react'
 import { type FormEvent, type KeyboardEvent, memo, useRef } from 'react'
 
 import type {
+  LandingModelPricing,
   LandingModels,
   LandingTurn,
   PromptAttachmentInput,
@@ -25,6 +26,7 @@ export const Composer = memo(function Composer({
   disabled,
   elementSelectionActive,
   isStreaming,
+  modelPricing,
   models,
   onAttachFiles,
   onChange,
@@ -42,6 +44,7 @@ export const Composer = memo(function Composer({
   disabled: boolean
   elementSelectionActive: boolean
   isStreaming: boolean
+  modelPricing?: Record<string, LandingModelPricing>
   models: LandingModels
   onAttachFiles: (files: FileList | null) => void
   onChange: (value: string) => void
@@ -158,7 +161,11 @@ export const Composer = memo(function Composer({
                 </span>
               </TooltipContent>
             </Tooltip>
-            <ModelDropdown models={models} onModelsChange={onModelsChange} />
+            <ModelDropdown
+              modelPricing={modelPricing}
+              models={models}
+              onModelsChange={onModelsChange}
+            />
             <SpendPopover turns={turns} />
           </div>
           <div>

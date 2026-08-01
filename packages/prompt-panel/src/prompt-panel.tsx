@@ -23,6 +23,7 @@ import type {
   ImageAttachmentInput,
   ImageAttachmentMediaType,
   LandingAgentSendInput,
+  LandingModelPricing,
   LandingModels,
   LandingTurn,
   PromptAttachmentInput,
@@ -63,6 +64,7 @@ export type PromptPanelProps = {
   canDownload: boolean
   elementSelectionActive: boolean
   isStreaming: boolean
+  modelPricing?: Record<string, LandingModelPricing>
   models: LandingModels
   onAllProjects: () => void
   onDownloadHtml: () => void
@@ -103,6 +105,7 @@ export function PromptPanel({
   canDownload,
   elementSelectionActive,
   isStreaming,
+  modelPricing,
   models,
   onAllProjects,
   onDownloadHtml,
@@ -600,6 +603,7 @@ export function PromptPanel({
                 }
                 elementSelectionActive={elementSelectionActive}
                 isStreaming={isStreaming}
+                modelPricing={modelPricing}
                 models={models}
                 onAttachFiles={handleAttachFiles}
                 onChange={setPrompt}

@@ -17,6 +17,7 @@ import { useTheme } from '#components/theme-provider'
 
 import { ErrorBanner } from './components/error-banner'
 import { useLandingPage } from './hooks/use-landing-page'
+import { useModelPricing } from './hooks/use-model-pricing'
 import { downloadProjectHtml } from './lib/projects-api'
 
 // Vite's accept() marks a boundary; it does not opt a React subtree out of
@@ -97,6 +98,7 @@ function useEditorPageRender({ projectId }: EditorPageProps) {
     onError: setErrorMessage,
     projectId,
   })
+  const modelPricing = useModelPricing()
 
   if (landing.missing) {
     return (
@@ -160,6 +162,7 @@ function useEditorPageRender({ projectId }: EditorPageProps) {
         canDownload={!!landing.html}
         elementSelectionActive={elementSelectionActive}
         isStreaming={landing.isStreaming}
+        modelPricing={modelPricing}
         models={landing.models}
         onAllProjects={() => navigate('/')}
         onDownloadHtml={() => downloadProjectHtml(projectId)}
