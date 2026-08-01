@@ -1,18 +1,16 @@
 import { Button } from '@workspace/ui/components/button'
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
-  DropdownMenuTrigger,
-} from '@workspace/ui/components/dropdown-menu'
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@workspace/ui/components/popover'
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from '@workspace/ui/components/tooltip'
 import { cn } from '@workspace/ui/lib/utils'
-import { ChevronDown } from 'lucide-react'
+import { Check, ChevronDown } from 'lucide-react'
 import { useState, type ComponentType } from 'react'
 
 import { BytedanceIcon } from './bytedance-icon'
@@ -63,18 +61,20 @@ export interface ModelDropdownProps {
 
 /**
  * A model picker with one trigger showing all three role selections (text,
- * image, vision) and an in-menu segmented toggle that switches which role's
- * model list is shown below.
+ * image, vision). Opens a popover with a left sidebar for switching roles and
+ * the active role's model list on the right. Selecting a model keeps the
+ * popover open so all three roles can be set in one session.
  */
 export function ModelDropdown({ models, onModelsChange }: ModelDropdownProps) {
+  const [open, setOpen] = useState(false)
   const [activeRole, setActiveRole] = useState<LandingModelRole>('text')
   const activeGroup = LANDING_MODEL_GROUPS.find(
     (entry) => entry.role === activeRole,
   )!
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
+    <Popover onOpenChange={setOpen} open={open}>
+      <PopoverTrigger asChild>
         <Button
           aria-label="Models"
           className="px-1"
@@ -87,7 +87,7 @@ export function ModelDropdown({ models, onModelsChange }: ModelDropdownProps) {
             const Logo = option ? MODEL_ICONS[option.id] : undefined
             const RoleIcon = MODEL_ROLE_META[role].Icon
             return (
-              <Tooltip key={role}>
+              <Tooltip key={role} open={open ? false : undefined}>
                 <TooltipTrigger asChild>
                   <span
                     className={cn(
@@ -110,53 +110,73 @@ export function ModelDropdown({ models, onModelsChange }: ModelDropdownProps) {
           })}
           <ChevronDown data-icon="inline-end" />
         </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="w-60" sideOffset={6}>
-        <div className="flex gap-0.5 p-1 pb-2">
-          {ROLE_ORDER.map((role) => {
-            const meta = MODEL_ROLE_META[role]
-            const active = role === activeRole
-            return (
-              <Button
-                aria-pressed={active}
-                className={cn(
-                  'flex-1 justify-center gap-1',
-                  active && 'bg-accent text-accent-foreground',
-                )}
-                key={role}
-                onClick={() => setActiveRole(role)}
-                size="xs"
-                type="button"
-                variant="ghost"
-              >
-                <meta.Icon className={cn('size-3.5', meta.color)} />
-                {meta.label}
-              </Button>
-            )
-          })}
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-96 gap-0 p-0" sideOffset={6}>
+        <div className="flex">
+          <div className="flex w-32 flex-col gap-0.5 border-r border-border p-2">
+            {ROLE_ORDER.map((role) => {
+              const meta = MODEL_ROLE_META[role]
+              const active = role === activeRole
+              const selected = optionFor(role, models[role])
+              const SelectedLogo = selected
+                ? MODEL_ICONS[selected.id]
+                : undefined
+              return (
+                <button
+                  aria-pressed={active}
+                  className={cn(
+                    'flex items-center gap-2 rounded-none px-2 py-1.5 text-left text-xs',
+                    active
+                      ? 'bg-accent text-accent-foreground'
+                      : 'text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground',
+                  )}
+                  key={role}
+                  onClick={() => setActiveRole(role)}
+                  type="button"
+                >
+                  <meta.Icon className={cn('size-3.5 shrink-0', meta.color)} />
+                  <span className="truncate">{meta.label}</span>
+                  {SelectedLogo ? (
+                    <SelectedLogo className="ml-auto size-3.5 shrink-0" />
+                  ) : null}
+                </button>
+              )
+            })}
+          </div>
+          <div
+            aria-label={activeGroup.title}
+            className="flex min-w-0 flex-1 flex-col gap-0.5 p-2"
+            role="radiogroup"
+          >
+            <div className="px-2 pt-1 pb-1.5 text-muted-foreground">
+              {activeGroup.title}
+            </div>
+            {activeGroup.options.map((option) => {
+              const Icon = MODEL_ICONS[option.id]
+              const selected = models[activeRole] === option.id
+              return (
+                <button
+                  aria-checked={selected}
+                  className="flex items-center gap-2 rounded-none px-2 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground"
+                  key={option.id}
+                  onClick={() =>
+                    onModelsChange({ ...models, [activeRole]: option.id })
+                  }
+                  role="radio"
+                  type="button"
+                >
+                  {Icon ? <Icon className="size-3.5 shrink-0" /> : null}
+                  <span className="truncate">{option.label}</span>
+                  {selected ? (
+                    <Check className="ml-auto size-3.5 shrink-0" />
+                  ) : null}
+                </button>
+              )
+            })}
+          </div>
         </div>
-        <DropdownMenuRadioGroup
-          onValueChange={(value) =>
-            onModelsChange({ ...models, [activeRole]: value })
-          }
-          value={models[activeRole]}
-        >
-          {activeGroup.options.map((option) => {
-            const Icon = MODEL_ICONS[option.id]
-            return (
-              <DropdownMenuRadioItem
-                key={option.id}
-                onSelect={(event) => event.preventDefault()}
-                value={option.id}
-              >
-                {Icon ? <Icon /> : null}
-                {option.label}
-              </DropdownMenuRadioItem>
-            )
-          })}
-        </DropdownMenuRadioGroup>
-      </DropdownMenuContent>
-    </DropdownMenu>
+      </PopoverContent>
+    </Popover>
   )
 }
 
