@@ -16,6 +16,13 @@ export type LandingModelOption = {
   label: string
 }
 
+/** Per-1M-token USD prices from the OpenRouter catalog (snapshot). */
+export type LandingModelPricing = {
+  cacheRead?: number
+  input: number
+  output: number
+}
+
 export type LandingModelRole = 'image' | 'text' | 'vision'
 
 // All model ids are OpenRouter slugs, verified live against the OpenRouter API.
@@ -68,6 +75,44 @@ export const VISION_MODEL_OPTIONS: LandingModelOption[] = [
   { id: 'openai/gpt-5.6-sol', label: 'GPT-5.6 Sol' },
   { id: 'openai/gpt-5.6-sol-pro', label: 'GPT-5.6 Sol Pro' },
 ]
+
+/**
+ * Per-1M-token USD prices keyed by base model id (no `:nitro` suffix),
+ * snapshotted from the OpenRouter catalog. Refresh when models are
+ * added/updated. Image-generation-only models (Seedream, GPT Image, Grok)
+ * are not in the chat catalog, so they have no entry.
+ */
+export const MODEL_PRICING: Record<string, LandingModelPricing> = {
+  'anthropic/claude-haiku-4.5': { cacheRead: 0.1, input: 1, output: 5 },
+  'anthropic/claude-opus-5': { cacheRead: 0.5, input: 5, output: 25 },
+  'anthropic/claude-sonnet-5': { cacheRead: 0.2, input: 2, output: 10 },
+  'bytedance-seed/seed-2.0-mini': { input: 0.1, output: 0.4 },
+  'deepseek/deepseek-v4-flash-0731': {
+    cacheRead: 0.018,
+    input: 0.09,
+    output: 0.18,
+  },
+  'google/gemini-3.1-flash-lite-image': { input: 0.25, output: 1.5 },
+  'minimax/minimax-m3': { cacheRead: 0.06, input: 0.3, output: 1.2 },
+  'moonshotai/kimi-k2.7-code': { cacheRead: 0.15, input: 0.73, output: 3.5 },
+  'moonshotai/kimi-k3': { cacheRead: 0.3, input: 3, output: 15 },
+  'nvidia/nemotron-3-ultra-550b-a55b': {
+    cacheRead: 0.2,
+    input: 0.6,
+    output: 3.6,
+  },
+  'openai/gpt-5.6-luna': { cacheRead: 0.01, input: 0.1, output: 0.6 },
+  'openai/gpt-5.6-luna-pro': { cacheRead: 0.01, input: 0.1, output: 0.6 },
+  'openai/gpt-5.6-sol': { cacheRead: 0.5, input: 5, output: 30 },
+  'openai/gpt-5.6-sol-pro': { cacheRead: 0.5, input: 5, output: 30 },
+  'openai/gpt-5.6-terra': { cacheRead: 0.1, input: 1, output: 6 },
+  'openai/gpt-5.6-terra-pro': { cacheRead: 0.1, input: 1, output: 6 },
+  'poolside/laguna-s-2.1': { cacheRead: 0.009, input: 0.09, output: 0.18 },
+  'tencent/hy3': { cacheRead: 0.033, input: 0.132, output: 0.528 },
+  'xiaomi/mimo-v2.5': { cacheRead: 0.0028, input: 0.14, output: 0.28 },
+  'z-ai/glm-5.2': { cacheRead: 0.078, input: 0.42, output: 1.32 },
+  'z-ai/glm-5v-turbo': { cacheRead: 0.24, input: 1.2, output: 4 },
+}
 
 export const LANDING_MODEL_GROUPS: LandingModelGroup[] = [
   { options: TEXT_MODEL_OPTIONS, role: 'text', title: 'Text (agent brain)' },
@@ -277,9 +322,29 @@ export function formatTokenCount(tokens: number | undefined) {
   return String(tokens)
 }
 
+/**
+ * Format a per-1M-token USD price compactly: two decimals at or above $1,
+ * two significant figures below.
+ */
+export function formatTokenPrice(perMillionUsd: number) {
+  const rounded =
+    perMillionUsd >= 1
+      ? Math.round(perMillionUsd * 100) / 100
+      : Number(perMillionUsd.toPrecision(2))
+  return `$${rounded}`
+}
+
 export function formatTokenUsage(usage: TokenUsage | undefined) {
   if (!usage) return null
   return formatTokenCount(usage.totalTokens)
+}
+
+/**
+ * Look up per-1M-token USD pricing for a model id, tolerating OpenRouter
+ * routing-variant suffixes like `:nitro`.
+ */
+export function modelPricingFor(modelId: string) {
+  return MODEL_PRICING[modelId.replace(/:(?:floor|free|nitro|online)$/, '')]
 }
 
 /**

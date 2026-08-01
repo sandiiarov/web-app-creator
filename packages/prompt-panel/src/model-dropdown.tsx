@@ -17,9 +17,11 @@ import { AnthropicIcon } from './anthropic-icon'
 import { BytedanceIcon } from './bytedance-icon'
 import { DeepseekIcon } from './deepseek-icon'
 import {
+  formatTokenPrice,
   LANDING_MODEL_GROUPS,
   type LandingModels,
   type LandingModelRole,
+  modelPricingFor,
 } from './domain'
 import { GeminiIcon } from './gemini-icon'
 import { GlmIcon } from './glm-icon'
@@ -245,6 +247,7 @@ export function ModelDropdown({ models, onModelsChange }: ModelDropdownProps) {
           >
             {visibleOptions.map((option) => {
               const Icon = MODEL_ICONS[option.id]
+              const pricing = modelPricingFor(option.id)
               const selected = models[activeRole] === option.id
               return (
                 <button
@@ -258,7 +261,18 @@ export function ModelDropdown({ models, onModelsChange }: ModelDropdownProps) {
                   type="button"
                 >
                   {Icon ? <Icon className="size-3.5 shrink-0" /> : null}
-                  <span className="truncate">{option.label}</span>
+                  <span className="flex min-w-0 flex-col">
+                    <span className="truncate">{option.label}</span>
+                    {pricing ? (
+                      <span className="truncate text-[10px] text-muted-foreground">
+                        {formatTokenPrice(pricing.input)} in ·{' '}
+                        {formatTokenPrice(pricing.output)} out
+                        {pricing.cacheRead == null
+                          ? ''
+                          : ` · ${formatTokenPrice(pricing.cacheRead)} cache`}
+                      </span>
+                    ) : null}
+                  </span>
                   {selected ? (
                     <Check className="ml-auto size-3.5 shrink-0" />
                   ) : null}
@@ -266,6 +280,9 @@ export function ModelDropdown({ models, onModelsChange }: ModelDropdownProps) {
               )
             })}
           </div>
+        </div>
+        <div className="border-t border-border px-2 py-1.5 text-[10px] text-muted-foreground">
+          Prices per 1M tokens
         </div>
       </PopoverContent>
     </Popover>
