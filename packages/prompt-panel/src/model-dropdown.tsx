@@ -37,8 +37,7 @@ import { XiaomiIcon } from './xiaomi-icon'
 const MODEL_ICONS: Record<string, ComponentType<{ className?: string }>> = {
   'bytedance-seed/seed-2.0-mini': BytedanceIcon,
   'bytedance-seed/seedream-4.5': BytedanceIcon,
-  'deepseek/deepseek-v4-flash:nitro': DeepseekIcon,
-  'deepseek/deepseek-v4-pro:nitro': DeepseekIcon,
+  'deepseek/deepseek-v4-flash-0731:nitro': DeepseekIcon,
   'google/gemini-3.1-flash-lite-image': GeminiIcon,
   'minimax/minimax-m3': MinimaxIcon,
   'moonshotai/kimi-k2.7-code': KimiIcon,
