@@ -52,6 +52,21 @@ const MODEL_ICONS: Record<string, ComponentType<{ className?: string }>> = {
   'z-ai/glm-5v-turbo': GlmIcon,
 }
 
+const PROVIDER_NAMES: Record<string, string> = {
+  'bytedance-seed': 'ByteDance',
+  deepseek: 'DeepSeek',
+  google: 'Google',
+  minimax: 'MiniMax',
+  moonshotai: 'Moonshot AI',
+  nvidia: 'NVIDIA',
+  openai: 'OpenAI',
+  poolside: 'Poolside',
+  tencent: 'Tencent',
+  'x-ai': 'xAI',
+  xiaomi: 'Xiaomi',
+  'z-ai': 'Z.AI',
+}
+
 const ROLE_ORDER: LandingModelRole[] = ['text', 'image', 'vision']
 
 export interface ModelDropdownProps {
@@ -61,16 +76,48 @@ export interface ModelDropdownProps {
 
 /**
  * A model picker with one trigger showing all three role selections (text,
- * image, vision). Opens a popover with a left sidebar for switching roles and
- * the active role's model list on the right. Selecting a model keeps the
- * popover open so all three roles can be set in one session.
+ * image, vision). Opens a popover with full-width role tabs across the top,
+ * an icon-only provider sidebar on the left, and the selected provider's
+ * models as a menu on the right. Selecting a model keeps the popover open so
+ * all three roles can be set in one session.
  */
 export function ModelDropdown({ models, onModelsChange }: ModelDropdownProps) {
   const [open, setOpen] = useState(false)
   const [activeRole, setActiveRole] = useState<LandingModelRole>('text')
+  const [activeProvider, setActiveProvider] = useState<null | string>(null)
   const activeGroup = LANDING_MODEL_GROUPS.find(
     (entry) => entry.role === activeRole,
   )!
+
+  // Providers available in the active role, in first-appearance order.
+  const providers: {
+    Icon?: ComponentType<{ className?: string }>
+    name: string
+    prefix: string
+  }[] = []
+  for (const option of activeGroup.options) {
+    const prefix = providerOf(option.id)
+    if (!providers.some((entry) => entry.prefix === prefix)) {
+      providers.push({
+        Icon: MODEL_ICONS[option.id],
+        name: PROVIDER_NAMES[prefix] ?? prefix,
+        prefix,
+      })
+    }
+  }
+
+  // Show the explicitly picked provider, else the provider of the role's
+  // currently selected model, else the first provider.
+  const selectedProvider = providerOf(models[activeRole])
+  const shownProvider =
+    activeProvider && providers.some((entry) => entry.prefix === activeProvider)
+      ? activeProvider
+      : providers.some((entry) => entry.prefix === selectedProvider)
+        ? selectedProvider
+        : providers[0]?.prefix
+  const visibleOptions = activeGroup.options.filter(
+    (option) => providerOf(option.id) === shownProvider,
+  )
 
   return (
     <Popover onOpenChange={setOpen} open={open}>
@@ -111,47 +158,72 @@ export function ModelDropdown({ models, onModelsChange }: ModelDropdownProps) {
           <ChevronDown data-icon="inline-end" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="start" className="w-96 gap-0 p-0" sideOffset={6}>
+      <PopoverContent align="start" className="w-80 gap-0 p-0" sideOffset={6}>
+        <div
+          aria-label="Model role"
+          className="flex border-b border-border"
+          role="tablist"
+        >
+          {ROLE_ORDER.map((role) => {
+            const meta = MODEL_ROLE_META[role]
+            const active = role === activeRole
+            return (
+              <button
+                aria-selected={active}
+                className={cn(
+                  '-mb-px flex flex-1 items-center justify-center gap-1.5 border-b-2 p-2 text-xs',
+                  active
+                    ? 'border-foreground text-foreground'
+                    : 'border-transparent text-muted-foreground hover:text-foreground',
+                )}
+                key={role}
+                onClick={() => {
+                  setActiveRole(role)
+                  setActiveProvider(null)
+                }}
+                role="tab"
+                type="button"
+              >
+                <meta.Icon className={cn('size-3.5', meta.color)} />
+                {meta.label}
+              </button>
+            )
+          })}
+        </div>
         <div className="flex">
-          <div className="flex w-32 flex-col gap-0.5 border-r border-border p-2">
-            {ROLE_ORDER.map((role) => {
-              const meta = MODEL_ROLE_META[role]
-              const active = role === activeRole
-              const selected = optionFor(role, models[role])
-              const SelectedLogo = selected
-                ? MODEL_ICONS[selected.id]
-                : undefined
-              return (
-                <button
-                  aria-pressed={active}
-                  className={cn(
-                    'flex items-center gap-2 rounded-none px-2 py-1.5 text-left text-xs',
-                    active
-                      ? 'bg-accent text-accent-foreground'
-                      : 'text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground',
-                  )}
-                  key={role}
-                  onClick={() => setActiveRole(role)}
-                  type="button"
-                >
-                  <meta.Icon className={cn('size-3.5 shrink-0', meta.color)} />
-                  <span className="truncate">{meta.label}</span>
-                  {SelectedLogo ? (
-                    <SelectedLogo className="ml-auto size-3.5 shrink-0" />
-                  ) : null}
-                </button>
-              )
-            })}
+          <div className="flex w-11 flex-col gap-0.5 border-r border-border p-1">
+            {providers.map((provider) => (
+              <Tooltip key={provider.prefix}>
+                <TooltipTrigger asChild>
+                  <button
+                    aria-label={provider.name}
+                    aria-pressed={provider.prefix === shownProvider}
+                    className={cn(
+                      'flex items-center justify-center rounded-none p-2',
+                      provider.prefix === shownProvider
+                        ? 'bg-accent text-accent-foreground'
+                        : 'text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground',
+                    )}
+                    onClick={() => setActiveProvider(provider.prefix)}
+                    type="button"
+                  >
+                    {provider.Icon ? (
+                      <provider.Icon className="size-4" />
+                    ) : (
+                      <span className="text-[10px]">{provider.name}</span>
+                    )}
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="right">{provider.name}</TooltipContent>
+              </Tooltip>
+            ))}
           </div>
           <div
             aria-label={activeGroup.title}
-            className="flex min-w-0 flex-1 flex-col gap-0.5 p-2"
+            className="flex min-w-0 flex-1 flex-col gap-0.5 p-1"
             role="radiogroup"
           >
-            <div className="px-2 pt-1 pb-1.5 text-muted-foreground">
-              {activeGroup.title}
-            </div>
-            {activeGroup.options.map((option) => {
+            {visibleOptions.map((option) => {
               const Icon = MODEL_ICONS[option.id]
               const selected = models[activeRole] === option.id
               return (
@@ -183,4 +255,8 @@ export function ModelDropdown({ models, onModelsChange }: ModelDropdownProps) {
 function optionFor(role: LandingModelRole, modelId: string) {
   const group = LANDING_MODEL_GROUPS.find((entry) => entry.role === role)
   return group?.options.find((option) => option.id === modelId)
+}
+
+function providerOf(modelId: string) {
+  return modelId.split('/')[0]!
 }
