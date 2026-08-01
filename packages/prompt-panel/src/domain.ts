@@ -33,6 +33,15 @@ export const TEXT_MODEL_OPTIONS: LandingModelOption[] = [
     label: 'Nemotron Ultra',
   },
   { id: 'poolside/laguna-s-2.1:nitro', label: 'Laguna S 2.1' },
+  { id: 'anthropic/claude-opus-5:nitro', label: 'Claude Opus 5' },
+  { id: 'anthropic/claude-sonnet-5:nitro', label: 'Claude Sonnet 5' },
+  { id: 'anthropic/claude-haiku-4.5:nitro', label: 'Claude Haiku 4.5' },
+  { id: 'openai/gpt-5.6-luna:nitro', label: 'GPT-5.6 Luna' },
+  { id: 'openai/gpt-5.6-luna-pro:nitro', label: 'GPT-5.6 Luna Pro' },
+  { id: 'openai/gpt-5.6-terra:nitro', label: 'GPT-5.6 Terra' },
+  { id: 'openai/gpt-5.6-terra-pro:nitro', label: 'GPT-5.6 Terra Pro' },
+  { id: 'openai/gpt-5.6-sol:nitro', label: 'GPT-5.6 Sol' },
+  { id: 'openai/gpt-5.6-sol-pro:nitro', label: 'GPT-5.6 Sol Pro' },
 ]
 
 export const IMAGE_MODEL_OPTIONS: LandingModelOption[] = [
@@ -49,6 +58,15 @@ export const VISION_MODEL_OPTIONS: LandingModelOption[] = [
   { id: 'moonshotai/kimi-k3', label: 'Kimi K3' },
   { id: 'minimax/minimax-m3', label: 'MiniMax M3' },
   { id: 'xiaomi/mimo-v2.5', label: 'MiMo V2.5' },
+  { id: 'anthropic/claude-opus-5', label: 'Claude Opus 5' },
+  { id: 'anthropic/claude-sonnet-5', label: 'Claude Sonnet 5' },
+  { id: 'anthropic/claude-haiku-4.5', label: 'Claude Haiku 4.5' },
+  { id: 'openai/gpt-5.6-luna', label: 'GPT-5.6 Luna' },
+  { id: 'openai/gpt-5.6-luna-pro', label: 'GPT-5.6 Luna Pro' },
+  { id: 'openai/gpt-5.6-terra', label: 'GPT-5.6 Terra' },
+  { id: 'openai/gpt-5.6-terra-pro', label: 'GPT-5.6 Terra Pro' },
+  { id: 'openai/gpt-5.6-sol', label: 'GPT-5.6 Sol' },
+  { id: 'openai/gpt-5.6-sol-pro', label: 'GPT-5.6 Sol Pro' },
 ]
 
 export const LANDING_MODEL_GROUPS: LandingModelGroup[] = [

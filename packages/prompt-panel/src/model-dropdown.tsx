@@ -13,6 +13,7 @@ import { cn } from '@workspace/ui/lib/utils'
 import { Check, ChevronDown } from 'lucide-react'
 import { useState, type ComponentType } from 'react'
 
+import { AnthropicIcon } from './anthropic-icon'
 import { BytedanceIcon } from './bytedance-icon'
 import { DeepseekIcon } from './deepseek-icon'
 import {
@@ -33,6 +34,12 @@ import { XaiIcon } from './xai-icon'
 import { XiaomiIcon } from './xiaomi-icon'
 
 const MODEL_ICONS: Record<string, ComponentType<{ className?: string }>> = {
+  'anthropic/claude-haiku-4.5': AnthropicIcon,
+  'anthropic/claude-haiku-4.5:nitro': AnthropicIcon,
+  'anthropic/claude-opus-5': AnthropicIcon,
+  'anthropic/claude-opus-5:nitro': AnthropicIcon,
+  'anthropic/claude-sonnet-5': AnthropicIcon,
+  'anthropic/claude-sonnet-5:nitro': AnthropicIcon,
   'bytedance-seed/seed-2.0-mini': BytedanceIcon,
   'bytedance-seed/seedream-4.5': BytedanceIcon,
   'deepseek/deepseek-v4-flash-0731:nitro': DeepseekIcon,
@@ -43,6 +50,18 @@ const MODEL_ICONS: Record<string, ComponentType<{ className?: string }>> = {
   'moonshotai/kimi-k3': KimiIcon,
   'moonshotai/kimi-k3:nitro': KimiIcon,
   'nvidia/nemotron-3-ultra-550b-a55b:nitro': NvidiaIcon,
+  'openai/gpt-5.6-luna': OpenaiIcon,
+  'openai/gpt-5.6-luna-pro': OpenaiIcon,
+  'openai/gpt-5.6-luna-pro:nitro': OpenaiIcon,
+  'openai/gpt-5.6-luna:nitro': OpenaiIcon,
+  'openai/gpt-5.6-sol': OpenaiIcon,
+  'openai/gpt-5.6-sol-pro': OpenaiIcon,
+  'openai/gpt-5.6-sol-pro:nitro': OpenaiIcon,
+  'openai/gpt-5.6-sol:nitro': OpenaiIcon,
+  'openai/gpt-5.6-terra': OpenaiIcon,
+  'openai/gpt-5.6-terra-pro': OpenaiIcon,
+  'openai/gpt-5.6-terra-pro:nitro': OpenaiIcon,
+  'openai/gpt-5.6-terra:nitro': OpenaiIcon,
   'openai/gpt-image-2': OpenaiIcon,
   'poolside/laguna-s-2.1:nitro': PoolsideIcon,
   'tencent/hy3:nitro': TencentIcon,
@@ -53,6 +72,7 @@ const MODEL_ICONS: Record<string, ComponentType<{ className?: string }>> = {
 }
 
 const PROVIDER_NAMES: Record<string, string> = {
+  anthropic: 'Anthropic',
   'bytedance-seed': 'ByteDance',
   deepseek: 'DeepSeek',
   google: 'Google',
