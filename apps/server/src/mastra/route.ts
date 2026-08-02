@@ -42,7 +42,7 @@ import {
   releaseRun,
   type RunEntry,
 } from './lib/run-bus.ts'
-import { finalizeRun } from './lib/run-finalize.ts'
+import { finalizeRun, sanitizeAgentMessages } from './lib/run-finalize.ts'
 import { createRunStatsTracker } from './lib/run-stats.ts'
 import { createStreamChunkHandler } from './lib/run-stream-loop.ts'
 import {
@@ -955,14 +955,6 @@ async function runLandingAgentBody(options: RunBodyOptions) {
   }
 }
 
-/** Sanitize Mastra messages before persisting to agent-messages.jsonl:
- *  strip reasoning parts + inline image bytes. */
-function sanitizeAgentMessages(messages: MastraDBMessage[]): MastraDBMessage[] {
-  return stripReasoning(messages).map(
-    (message) => stripInlineImageData(message) as MastraDBMessage,
-  )
-}
-
 function stripAttachmentData(
   attachment: AgentAttachmentInput,
 ): ProjectMessageAttachment {
@@ -976,43 +968,4 @@ function stripAttachmentData(
   }
   const { dataUrl: _dataUrl, ...metadata } = attachment
   return metadata
-}
-
-const OMITTED_INLINE_IMAGE = '[omitted inline image bytes]'
-
-/** Replace inline base64 image payloads (`data:image/...` strings, media
- *  parts) with a placeholder. Direct-mode screenshot tool results carry
- *  capture data URLs; base64 must never land in JSON logs (log bloat) — the
- *  persisted imageUrl stays as the durable pointer. */
-function stripInlineImageData<T>(value: T): T {
-  if (typeof value === 'string') {
-    return (value.startsWith('data:image/') ? OMITTED_INLINE_IMAGE : value) as T
-  }
-  if (Array.isArray(value)) {
-    return value.map((item) => stripInlineImageData(item)) as T
-  }
-  if (value && typeof value === 'object') {
-    return Object.fromEntries(
-      Object.entries(value as Record<string, unknown>).map(([key, item]) => [
-        key,
-        stripInlineImageData(item),
-      ]),
-    ) as T
-  }
-  return value
-}
-
-/** Strip `reasoning` parts (the model's private chain-of-thought) from Mastra
- *  messages before persisting them to agent-messages.jsonl. Every decision
- *  reasoning informed is already captured by the tool-invocation calls/results
- *  and text we keep, so replaying it only inflates the next turn's prompt
- *  (observed +73K input tokens on a 2-line edit) without aiding fidelity. */
-function stripReasoning(messages: MastraDBMessage[]): MastraDBMessage[] {
-  return messages.map((message) => {
-    const parts = message.content?.parts
-    if (!Array.isArray(parts)) return message
-    const kept = parts.filter((part) => part?.type !== 'reasoning')
-    if (kept.length === parts.length) return message
-    return { ...message, content: { ...message.content, parts: kept } }
-  })
 }

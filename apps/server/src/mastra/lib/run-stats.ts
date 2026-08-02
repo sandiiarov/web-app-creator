@@ -17,8 +17,6 @@ import type { ProjectMessageStatsPart } from './project-store.ts'
  * estimated from token/image counts.
  */
 
-export type RecordedStatsPayload = Omit<ProjectMessageStatsPart, 'type'>
-
 export interface RunStatsTracker {
   /** True when the cap tripped (fatal already escalated via `onFatal`). */
   checkCostCap(): boolean
@@ -65,6 +63,8 @@ interface ImageOcrUsage {
   completionTokens?: number
   promptTokens?: number
 }
+
+type RecordedStatsPayload = Omit<ProjectMessageStatsPart, 'type'>
 
 interface ResultImageOcr {
   cost?: number
