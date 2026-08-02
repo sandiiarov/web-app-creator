@@ -13,7 +13,7 @@ before starting, honor its STOP conditions, and update your row when done.
 | 008 | Stop leaking `error.message` in 500 responses | P1 | S | — | DONE (executed 2026-08-02) |
 | 007 | Derive `baseUrl` from config (Host-header hardening) | P1 | S | — | DONE (executed 2026-08-02) |
 | 002 | Surface `chainProjectWrite` log-write failures | P1 | S | — | DONE (executed 2026-08-02) |
-| 003 | Bound the `turnCache` Map with `LRUCache` | P2 | S | see notes | TODO (refreshed 2026-08-02) |
+| 003 | Bound the `turnCache` Map with `LRUCache` | P2 | S | see notes | DONE (executed 2026-08-02) |
 | 004 | Delete the dead `grep` tool and its search helper | P2 | S | 009 | TODO (refreshed 2026-08-02) |
 | 010 | Bound `/api/models?ids=` to stop upstream fetch amplification | P2 | S | — | TODO |
 | 013 | End-to-end verification of direct-mode image delivery | P2 | M | — | TODO |

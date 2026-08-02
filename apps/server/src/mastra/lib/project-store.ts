@@ -39,6 +39,7 @@ import {
   type ConversationToolCallPart as ProjectMessageToolCallPart,
   type ConversationTurn as ProjectMessageTurn,
 } from '@workspace/conversation'
+import { LRUCache } from 'lru-cache'
 
 export type {
   ClientMessageEntry,
@@ -544,10 +545,19 @@ function slugifyTitle(title: string): string {
 
 const projectWriteChains = new Map<string, Promise<void>>()
 
+/** Upper bound on the number of projects whose replayed turn cache is
+ *  held in memory. Long-lived servers see one entry per recently-viewed
+ *  project; LRU evicts the least-recently-used when the bound is hit. */
+const TURN_CACHE_MAX_PROJECTS = 64
+
 /** In-memory cache of the replayed/legacy message turns for `getProject`, so a
  *  reload doesn't re-read + re-replay the whole client log on every call.
- *  Invalidated whenever the client log or legacy messages.json changes. */
-const turnCache = new Map<string, ProjectMessageTurn[]>()
+ *  Invalidated whenever the client log or legacy messages.json changes;
+ *  bounded to `TURN_CACHE_MAX_PROJECTS` entries via LRU eviction so a
+ *  long-lived server doesn't accumulate one entry per project ever viewed. */
+const turnCache = new LRUCache<string, ProjectMessageTurn[]>({
+  max: TURN_CACHE_MAX_PROJECTS,
+})
 
 /** Append one per-step Mastra message snapshot to `agent-messages.jsonl`. */
 export function appendAgentMessages(

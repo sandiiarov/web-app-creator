@@ -7,8 +7,8 @@
 > in `plans/README.md` — unless a reviewer dispatched you and told you they
 > maintain the index.
 >
-> **Drift check (run first)**: `git diff --stat 5daf56ef..HEAD -- apps/server/src/mastra/lib/project-store.ts apps/server/src/mastra/lib/project-store.test.ts`
-> If any in-scope file changed since this plan was written, compare the
+> **Drift check (run first)**: `git diff --stat 09236e63 -- apps/server/src/mastra/lib/project-store.ts apps/server/src/mastra/lib/project-store.test.ts apps/server/package.json`
+> If any in-scope file changed since this plan was refreshed, compare the
 > "Current state" excerpts against the live code before proceeding; on a
 > mismatch, treat it as a STOP condition.
 
@@ -20,7 +20,8 @@
 - **Depends on**: none (independent of plans 001, 002, but operates on the
   same file — see Git workflow for sequencing guidance)
 - **Category**: perf (memory leak)
-- **Planned at**: commit `5daf56ef`, 2026-07-19
+- **Planned at**: commit `5daf56ef`, 2026-07-19; refreshed at commit `09236e63`, 2026-08-02
+- **Depends on**: none (but see Step 0 note about plan 009)
 - **Issue**: (only when published via `--issues`)
 
 ## Why this matters
@@ -38,13 +39,16 @@ bound**. Steady-state streaming invalidates only the active project's
 entry; every project ever viewed retains an entry holding its full
 `ProjectMessageTurn[]` array. A long-lived server accumulates entries
 indefinitely — classic unbounded Map leak. The catalog already pins
-`lru-cache@^11.5.1` (it's a declared `@workspace/server` dependency in
-`apps/server/package.json`), so bounding the cache is a one-line swap with
-no new dep.
+`lru-cache@^11.5.1`. NOTE: plan 009 removes the **unused** `lru-cache`
+declaration from `apps/server/package.json` to green the fallow gate —
+so depending on execution order, the dep may need re-adding here (one
+line, `"lru-cache": "catalog:"`, alphabetically under `"dependencies"`;
+the catalog entry in `pnpm-workspace.yaml` stays). Either way the swap
+below is the real work.
 
 ## Current state
 
-In `apps/server/src/mastra/lib/project-store.ts` (~line 496):
+In `apps/server/src/mastra/lib/project-store.ts` (line 550):
 
 ```ts
 /** In-memory cache of the replayed/legacy message turns for `getProject`, so a
@@ -55,11 +59,11 @@ const turnCache = new Map<string, ProjectMessageTurn[]>()
 
 Used in three places, all API-compatible with `LRUCache`:
 
-- `getProject` (~line 257): `let messages = turnCache.get(id)` …
+- `getProject` (~line 287): `let messages = turnCache.get(id)` …
   `turnCache.set(id, messages)` — `LRUCache.get`/`.set` have the same call
   signature for this use (`get` returns `V | undefined`; `set` takes
   `(K, V)`).
-- `invalidateTurnCache` (~line 686): `turnCache.delete(id)` — `LRUCache`
+- `invalidateTurnCache` (~line 847): `turnCache.delete(id)` — `LRUCache`
   has `.delete(k): boolean` (returns whether the entry existed; the
   existing call site discards the return value, so the slight difference
   in return type vs `Map.delete` is harmless).
@@ -70,16 +74,18 @@ No callers use iteration (`keys`, `values`, `entries`, `forEach`) — only
 
 ### Repo conventions to match
 
-- `lru-cache` is already listed in `apps/server/package.json`
-  `"dependencies"` (`"lru-cache": "catalog:"`) — no manifest change
-  needed.
+- If `lru-cache` is no longer in `apps/server/package.json`
+  `"dependencies"` (plan 009 removed it as unused), re-add
+  `"lru-cache": "catalog:"` there (alphabetical) and run
+  `pnpm install` once — the catalog entry in `pnpm-workspace.yaml`
+  (`lru-cache: ^11.5.1`) persists either way, so no catalog edit.
 - `import { LRUCache } from 'lru-cache'` is the standard named export for
-  v11 (verified against the catalog pin during recon). Add it to the
+  v11 (verified at refresh: resolved version is exactly 11.5.1). Add it to the
   existing runtime-import block at the top of `project-store.ts`, sorted
   per Oxlint's perfectionist rules (the file uses `oxlint --fix` to
   enforce ordering — run lint:fix after editing).
 - The module's existing const declarations follow `UPPER_SNAKE_CASE` for
-  tuning constants (e.g. `MAX_SCREENSHOTS_PER_PROJECT`); match that for
+  tuning constants (e.g. `MAX_SCREENSHOTS_PER_PROJECT` at line 768); match that for
   the new max-size constant.
 
 ## Commands you will need
@@ -88,7 +94,7 @@ No callers use iteration (`keys`, `values`, `entries`, `forEach`) — only
 |------------|------------------------------------------------------|---------------------|
 | Typecheck  | `pnpm --filter @workspace/server typecheck`          | exit 0, no errors   |
 | Lint       | `pnpm --filter @workspace/server lint`               | exit 0              |
-| Tests      | `pnpm --filter @workspace/server test`               | all pass; coverage ≥ 90% |
+| Tests      | `pnpm --filter @workspace/server test`               | all pass (no coverage gate is configured) |
 | Focused    | `pnpm --filter @workspace/server test -- --run project-store 2>&1 \| tail -15` | project-store tests pass |
 
 ## Scope
@@ -98,7 +104,6 @@ No callers use iteration (`keys`, `values`, `entries`, `forEach`) — only
   with a bounded `max`; add the import; add the size constant.
 
 **Out of scope** (do NOT touch):
-- `apps/server/package.json` — `lru-cache` is already a dep.
 - `pnpm-workspace.yaml` — catalog entry already present.
 - `getProject`, `invalidateTurnCache`, `deleteProject` behavior — the
   contract (invalidate on write/delete) must not change. Only the storage
@@ -174,15 +179,16 @@ version is older, STOP and report — the API may differ.
 - `pnpm --filter @workspace/server lint` → exit 0. (Run `lint:fix` if
   perfectionist complains about import or const placement.)
 - `pnpm --filter @workspace/server test` → exit 0; **same test count** as
-  baseline; coverage ≥ 90%. The
+  baseline;  The
   `'getProject reflects new client-log appends (turn cache invalidates)'`
   test must still pass — that proves invalidation semantics survived the
   swap.
 
 ### Step 4: Confirm scope
 
-**Verify**: `git diff --stat 5daf56ef..HEAD -- apps/server/src/mastra/lib/project-store.ts`
-shows the file modified; `git status --short` lists ONLY that file.
+**Verify**: `git diff --stat 09236e63 -- apps/server/src/mastra/lib/project-store.ts`
+shows the file modified; `git status --short` lists ONLY that file (plus
+`apps/server/package.json` if the dep re-add was needed).
 
 ## Test plan
 
@@ -204,12 +210,13 @@ Machine-checkable. ALL must hold:
 - [ ] `pnpm --filter @workspace/server typecheck` exits 0
 - [ ] `pnpm --filter @workspace/server lint` exits 0
 - [ ] `pnpm --filter @workspace/server test` exits 0 with the **same test
-      count** as baseline; coverage ≥ 90%
+      count** as baseline; 
 - [ ] `grep -nE 'new Map<string, ProjectMessageTurn' apps/server/src/mastra/lib/project-store.ts`
       returns no matches
 - [ ] `grep -nE "new LRUCache<string, ProjectMessageTurn" apps/server/src/mastra/lib/project-store.ts`
       returns one match
 - [ ] `git status --short` lists ONLY `apps/server/src/mastra/lib/project-store.ts`
+      (plus `apps/server/package.json` if the dep re-add was needed)
 - [ ] `plans/README.md` status row updated
 
 ## STOP conditions

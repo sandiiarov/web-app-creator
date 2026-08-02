@@ -57,6 +57,9 @@ catalogs:
     happy-dom:
       specifier: ^20.10.6
       version: 20.10.6
+    lru-cache:
+      specifier: ^11.5.1
+      version: 11.5.1
     lucide-react:
       specifier: ^1.17.0
       version: 1.17.0
@@ -240,6 +243,9 @@ importers:
       firecrawl:
         specifier: 'catalog:'
         version: 4.28.3
+      lru-cache:
+        specifier: 'catalog:'
+        version: 11.5.1
       playwright-core:
         specifier: 'catalog:'
         version: 1.61.1
