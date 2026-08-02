@@ -52,7 +52,13 @@ const MODEL_ICONS: Record<string, ComponentType<{ className?: string }>> = {
   'bytedance-seed/seed-2.0-mini': BytedanceIcon,
   'bytedance-seed/seedream-4.5': BytedanceIcon,
   'deepseek/deepseek-v4-flash-0731:nitro': DeepseekIcon,
+  'google/gemini-3.1-flash-image': GeminiIcon,
   'google/gemini-3.1-flash-lite-image': GeminiIcon,
+  'google/gemini-3.1-pro-preview': GeminiIcon,
+  'google/gemini-3.1-pro-preview:nitro': GeminiIcon,
+  'google/gemini-3.5-flash-lite': GeminiIcon,
+  'google/gemini-3.6-flash': GeminiIcon,
+  'google/gemini-3.6-flash:nitro': GeminiIcon,
   'minimax/minimax-m3': MinimaxIcon,
   'moonshotai/kimi-k2.7-code': KimiIcon,
   'moonshotai/kimi-k2.7-code:nitro': KimiIcon,
@@ -68,6 +74,7 @@ const MODEL_ICONS: Record<string, ComponentType<{ className?: string }>> = {
   'openai/gpt-image-2': OpenaiIcon,
   'poolside/laguna-s-2.1:nitro': PoolsideIcon,
   'tencent/hy3:nitro': TencentIcon,
+  'x-ai/grok-4.5:nitro': XaiIcon,
   'x-ai/grok-imagine-image-quality': XaiIcon,
   'xiaomi/mimo-v2.5': XiaomiIcon,
   'z-ai/glm-5.2:nitro': GlmIcon,
@@ -278,11 +285,11 @@ export function ModelDropdown({
               <button
                 aria-selected={active}
                 className={cn(
-                  '-mb-px flex flex-1 items-center justify-center gap-1.5 border-b-2 p-2 text-xs',
+                  'flex flex-1 items-center justify-center gap-1.5 p-2 text-xs',
                   'outline-none focus-visible:bg-accent focus-visible:ring-1 focus-visible:ring-ring/50 focus-visible:ring-inset',
                   active
-                    ? 'border-foreground text-foreground'
-                    : 'border-transparent text-muted-foreground hover:text-foreground',
+                    ? 'text-foreground shadow-[inset_0_-2px_0_0_currentColor]'
+                    : 'text-muted-foreground hover:text-foreground',
                 )}
                 key={role}
                 onClick={() => {
