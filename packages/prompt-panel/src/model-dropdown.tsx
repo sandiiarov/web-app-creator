@@ -375,11 +375,11 @@ export function ModelDropdown({
                       <span className="truncate">{option.label}</span>
                       {pricing ? (
                         <span className="truncate text-[10px] text-muted-foreground">
-                          {formatTokenPrice(pricing.input)} in ·{' '}
-                          {formatTokenPrice(pricing.output)} out
+                          {formatTokenPrice(pricing.input)}/M in ·{' '}
+                          {formatTokenPrice(pricing.output)}/M out
                           {pricing.cacheRead == null
                             ? ''
-                            : ` · ${formatTokenPrice(pricing.cacheRead)} cache`}
+                            : ` · ${formatTokenPrice(pricing.cacheRead)}/M cache`}
                         </span>
                       ) : null}
                     </span>
@@ -391,9 +391,6 @@ export function ModelDropdown({
               })}
             </div>
           ))}
-        </div>
-        <div className="border-t border-border px-2 py-1.5 text-[10px] text-muted-foreground">
-          Prices per 1M tokens
         </div>
       </PopoverContent>
     </Popover>
