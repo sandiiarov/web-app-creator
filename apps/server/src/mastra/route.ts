@@ -7,7 +7,7 @@ import type { MastraDBMessage } from '@mastra/core/agent/message-list'
 import { config } from '../config.ts'
 import { createLandingPageAgent } from './agents/landing-page-agent.ts'
 import { mastra } from './index.ts'
-import { providerReportedCost, visionCost } from './lib/cost.ts'
+import { visionCost } from './lib/cost.ts'
 import { ocrImageInputs, type ImageOcrResult } from './lib/image-ocr.ts'
 import { supportsImageInput } from './lib/model-capabilities.ts'
 import {
@@ -43,30 +43,18 @@ import {
   releaseRun,
   type RunEntry,
 } from './lib/run-bus.ts'
+import { createRunStatsTracker, type UsageSnapshot } from './lib/run-stats.ts'
+import { createStreamChunkHandler } from './lib/run-stream-loop.ts'
 import {
-  createRunStatsTracker,
-  type UsageSnapshot,
-} from './lib/run-stats.ts'
-import {
-  asToolArgs,
   compactLines,
-  defaultToolAction,
   expandScreenshotUrl,
-  summarizeToolArgs,
   summarizeToolError,
-  summarizeToolResult,
-  stringValue,
-  toolCallImages,
-  toolResultIndicatesFailure,
-  type ToolArgs,
   type ToolCallDisplay,
 } from './lib/tool-display.ts'
 
 const ATTACHMENT_OCR_PROMPT =
   'Analyze the attached image for landing-page generation. Extract all visible text exactly, then describe layout, hierarchy, colors, typography, UI components, imagery, brand cues, and any details the landing-page agent should use. If the image is a screenshot or mockup, call out sections, navigation, CTAs, spacing, and visual style.'
-const MAX_EDIT_FAILURES = 10
 const MAX_STEPS = 30
-const REPEATED_EDIT_FAILURE_MESSAGE = `Edit failed ${MAX_EDIT_FAILURES} times in this turn. Stopping so the agent does not keep making blind edit attempts. Read/find the current project HTML and try again.`
 const NO_GENERATED_HTML_MESSAGE =
   'Agent finished without generating project HTML. The draft still has no content because no successful edit changed the page.'
 
@@ -644,26 +632,6 @@ function createRecordedTurn(
   }
 }
 
-function getToolCallDisplay(
-  displayByProviderId: Map<string, ToolCallDisplay>,
-  providerId: string,
-  tool: string,
-  args: ToolArgs,
-  nextDisplaySeq: number,
-): ToolCallDisplay {
-  return (
-    displayByProviderId.get(providerId) ??
-    startToolCallDisplay(
-      displayByProviderId,
-      new Set<string>(),
-      nextDisplaySeq,
-      providerId,
-      tool,
-      args,
-    )
-  )
-}
-
 function hashHtml(html: string): string {
   return createHash('sha256').update(html).digest('hex')
 }
@@ -773,8 +741,6 @@ async function runAgentStream({
   // absent), so we can echo it on the done/error states too.
   const callAction = new Map<string, null | string>()
   let toolCallSeq = 0
-  // Stop repeated blind edit attempts after MAX_EDIT_FAILURES consecutive failures.
-  let editFailures = 0
   let fatalRunError: null | string = null
   // Fatal run errors are emitted once and abort the run; both the cost cap
   // (run-stats tracker) and the edit-failure circuit breaker escalate here.
@@ -896,238 +862,35 @@ async function runAgentStream({
     })
     agentMessageList = stream.messageList
 
+    const handleChunk = createStreamChunkHandler({
+      baseUrl,
+      callAction,
+      callDisplay,
+      completedCallIds,
+      emit,
+      nextToolSeq: () => ++toolCallSeq,
+      onEditSuccess: () => {
+        const nextHtml = store.get()
+        if (nextHtml === lastHtmlUpdate) return
+        htmlUpdateSequence += 1
+        emit(
+          'html_update',
+          createHtmlUpdatePayload({
+            html: nextHtml,
+            previousHtml: lastHtmlUpdate,
+            projectId,
+            sequence: htmlUpdateSequence,
+          }),
+        )
+        lastHtmlUpdate = nextHtml
+      },
+      onFatal: fatal,
+      persistImage: (imageId, ext) =>
+        persistGeneratedImage(projectId, imageId, ext),
+      stats,
+    })
     streamLoop: for await (const chunk of stream.fullStream) {
-      switch (chunk.type) {
-        case 'error': {
-          const message =
-            chunk.payload.error instanceof Error
-              ? chunk.payload.error.message
-              : String(chunk.payload.error)
-          emit('error', { message })
-          break
-        }
-        case 'raw': {
-          stats.recordRawProviderCost(providerReportedCost(chunk.payload))
-          if (stats.checkCostCap()) break streamLoop
-          break
-        }
-        case 'reasoning-delta': {
-          emit('thinking', { delta: chunk.payload.text })
-          break
-        }
-        case 'step-finish': {
-          stats.recordStepUsage(chunk.payload)
-          break
-        }
-        case 'text-delta': {
-          emit('text', { delta: chunk.payload.text })
-          break
-        }
-        case 'tool-call': {
-          const args = asToolArgs(chunk.payload.args)
-          const display = startToolCallDisplay(
-            callDisplay,
-            completedCallIds,
-            ++toolCallSeq,
-            chunk.payload.toolCallId,
-            chunk.payload.toolName,
-            args,
-          )
-          callAction.set(chunk.payload.toolCallId, display.action)
-
-          const toolPayload: RecordedToolPayload = {
-            action: display.action,
-            detail: display.detail,
-            id: display.id,
-            providerId: chunk.payload.toolCallId,
-            state: 'running',
-            tool: chunk.payload.toolName,
-          }
-          emit('tool_call', toolPayload)
-          break
-        }
-        case 'tool-call-input-streaming-start': {
-          const display = startToolCallDisplay(
-            callDisplay,
-            completedCallIds,
-            ++toolCallSeq,
-            chunk.payload.toolCallId,
-            chunk.payload.toolName,
-          )
-
-          const toolPayload: RecordedToolPayload = {
-            action: display.action,
-            detail: display.detail,
-            id: display.id,
-            providerId: chunk.payload.toolCallId,
-            state: 'start',
-            tool: chunk.payload.toolName,
-          }
-          emit('tool_call', toolPayload)
-          break
-        }
-        case 'tool-error': {
-          const args = asToolArgs(chunk.payload.args)
-          const display = getToolCallDisplay(
-            callDisplay,
-            chunk.payload.toolCallId,
-            chunk.payload.toolName,
-            args,
-            ++toolCallSeq,
-          )
-          const action =
-            callAction.get(chunk.payload.toolCallId) ?? display.action
-          const toolPayload: RecordedToolPayload = {
-            action,
-            detail: display.detail,
-            id: display.id,
-            providerId: chunk.payload.toolCallId,
-            result: summarizeToolError(chunk.payload.error),
-            state: 'error',
-            tool: chunk.payload.toolName,
-          }
-          emit('tool_call', toolPayload)
-          completedCallIds.add(chunk.payload.toolCallId)
-          stats.emitStats()
-          if (chunk.payload.toolName === 'edit') {
-            editFailures += 1
-            if (editFailures >= MAX_EDIT_FAILURES) {
-              fatal(REPEATED_EDIT_FAILURE_MESSAGE)
-              break streamLoop
-            }
-          }
-          break
-        }
-        case 'tool-result': {
-          const isError =
-            chunk.payload.isError === true ||
-            toolResultIndicatesFailure(
-              chunk.payload.toolName,
-              chunk.payload.result,
-            )
-          const args = asToolArgs(chunk.payload.args)
-          const display = getToolCallDisplay(
-            callDisplay,
-            chunk.payload.toolCallId,
-            chunk.payload.toolName,
-            args,
-            ++toolCallSeq,
-          )
-          const action =
-            callAction.get(chunk.payload.toolCallId) ?? display.action
-          const result = summarizeToolResult(
-            chunk.payload.toolName,
-            chunk.payload.result,
-            isError,
-          )
-          const images = toolCallImages(
-            chunk.payload.toolName,
-            chunk.payload.result,
-            baseUrl,
-          )
-          const toolPayload: RecordedToolPayload = {
-            action,
-            detail: display.detail,
-            id: display.id,
-            ...(images.length > 0 ? { images } : {}),
-            providerId: chunk.payload.toolCallId,
-            result,
-            state: isError ? 'error' : 'done',
-            tool: chunk.payload.toolName,
-          }
-          emit('tool_call', toolPayload)
-          completedCallIds.add(chunk.payload.toolCallId)
-          if (chunk.payload.toolName === 'edit') {
-            if (isError) {
-              editFailures += 1
-              if (editFailures >= MAX_EDIT_FAILURES) {
-                fatal(REPEATED_EDIT_FAILURE_MESSAGE)
-                break streamLoop
-              }
-            } else {
-              const nextHtml = store.get()
-              if (nextHtml !== lastHtmlUpdate) {
-                htmlUpdateSequence += 1
-                const htmlUpdate = createHtmlUpdatePayload({
-                  html: nextHtml,
-                  previousHtml: lastHtmlUpdate,
-                  projectId,
-                  sequence: htmlUpdateSequence,
-                })
-                emit('html_update', htmlUpdate)
-                lastHtmlUpdate = nextHtml
-              }
-            }
-          }
-          // The agent's `edit` tool writes the project file directly (the file
-          // is the source of truth). The UI morphs `html_update` events after
-          // successful changed edits instead of pulling HTML on every edit-done.
-          // Track Firecrawl usage and bundled OpenRouter OCR metadata from successful scrape calls.
-          if (chunk.payload.toolName === 'scrape' && !isError) {
-            stats.recordScrapeResult(
-              chunk.payload.result as {
-                creditsUsed?: number
-                imageOcr?: {
-                  cost?: number
-                  imagesAnalyzed?: number
-                  ok?: boolean
-                  usage?: null | {
-                    cachedTokens?: number
-                    completionTokens?: number
-                    promptTokens?: number
-                  }
-                }
-              },
-            )
-          }
-          let checkToolCostCap = false
-          // Accumulate image-generation cost from successful generate_image calls.
-          if (chunk.payload.toolName === 'generate_image' && !isError) {
-            const result = chunk.payload.result as {
-              cost?: number
-              imagesGenerated?: number
-              url?: null | string
-            }
-            if (stats.recordGenerateImage(result)) {
-              checkToolCostCap = true
-            }
-            // Persist generated image bytes to the project folder at
-            // generation time so they are durable even if a later edit fails
-            // (the edit path otherwise never runs persistProjectImagesSync).
-            const imgUrl = typeof result.url === 'string' ? result.url : null
-            const match = imgUrl?.match(/\/images\/(img-\d+)(\.[a-z0-9]+)?$/i)
-            if (match) {
-              persistGeneratedImage(projectId, match[1]!, match[2] ?? '')
-            }
-          }
-          // Accumulate screenshot OCR usage from successful screenshot calls.
-          if (chunk.payload.toolName === 'screenshot' && !isError) {
-            const result = chunk.payload.result as {
-              imageOcr?: {
-                cost?: number
-                imagesAnalyzed?: number
-                ok?: boolean
-                usage?: null | {
-                  cachedTokens?: number
-                  completionTokens?: number
-                  promptTokens?: number
-                }
-              }
-            }
-            if (stats.recordScreenshotOcr(result)) {
-              checkToolCostCap = true
-            }
-          }
-          stats.emitStats()
-          if (checkToolCostCap && stats.checkCostCap()) break streamLoop
-          break
-        }
-        default:
-          // start, step-start, text-start/end, reasoning-start/end,
-          // tool-call-delta, tool-call-input-streaming-end, finish — not
-          // surfaced individually in the custom protocol.
-          break
-      }
+      if (handleChunk(chunk) === 'break') break streamLoop
     }
   } catch (error) {
     // Capture (don't emit yet) so `finally` can run cost/stats accounting
@@ -1263,36 +1026,6 @@ function sanitizeAgentMessages(messages: MastraDBMessage[]): MastraDBMessage[] {
   return stripReasoning(messages).map(
     (message) => stripInlineImageData(message) as MastraDBMessage,
   )
-}
-
-function startToolCallDisplay(
-  displayByProviderId: Map<string, ToolCallDisplay>,
-  completedProviderIds: Set<string>,
-  nextDisplaySeq: number,
-  providerId: string,
-  tool: string,
-  args: ToolArgs = {},
-): ToolCallDisplay {
-  let display = displayByProviderId.get(providerId)
-
-  if (!display || completedProviderIds.has(providerId)) {
-    display = {
-      action: null,
-      detail: null,
-      id: `tool-${nextDisplaySeq}-${tool}`,
-      tool,
-    }
-    displayByProviderId.set(providerId, display)
-    completedProviderIds.delete(providerId)
-  }
-
-  const action = stringValue(args.action) ?? defaultToolAction(tool, args)
-  if (action) display.action = action
-
-  const detail = summarizeToolArgs(tool, args)
-  if (detail) display.detail = detail
-
-  return display
 }
 
 function stripAttachmentData(
