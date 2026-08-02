@@ -23,9 +23,7 @@
     "@mastra/observability": "catalog:",
     "@workspace/agent-skills": "workspace:*",
     "@workspace/conversation": "workspace:*",
-    "diff": "catalog:",
     "firecrawl": "catalog:",
-    "lru-cache": "catalog:",
     "playwright-core": "catalog:",
     "xxhash-wasm": "catalog:",
     "zod": "catalog:"

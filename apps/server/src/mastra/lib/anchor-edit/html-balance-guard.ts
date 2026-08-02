@@ -1,14 +1,14 @@
+export interface HtmlBalanceResult {
+  issues: string[]
+  ok: boolean
+}
+
 /** Per-tag open/close counts for one container tag. */
-export interface BalanceDetail {
+interface BalanceDetail {
   closes: number
   /** Opens minus self-closing opens (`<tag ... />`). */
   netOpen: number
   tag: string
-}
-
-export interface HtmlBalanceResult {
-  issues: string[]
-  ok: boolean
 }
 
 /**
@@ -16,7 +16,7 @@ export interface HtmlBalanceResult {
  * Void elements (br, img, meta, input, …) are intentionally excluded — they
  * never need a closer.
  */
-export const CONTAINER_TAGS = [
+const CONTAINER_TAGS = [
   'html',
   'head',
   'body',
@@ -99,7 +99,7 @@ export function checkHtmlBalance(html: string): HtmlBalanceResult {
  * Count literal open/close occurrences for every container tag. Used by
  * `checkHtmlBalance` (which turns imbalances into human-readable messages).
  */
-export function computeTagBalance(html: string): BalanceDetail[] {
+function computeTagBalance(html: string): BalanceDetail[] {
   const details: BalanceDetail[] = []
   for (const tag of CONTAINER_TAGS) {
     const t = escapeRegex(tag)

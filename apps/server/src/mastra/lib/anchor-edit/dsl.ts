@@ -22,14 +22,14 @@ export function formatAnchorRead(document: HtmlDocumentJsonV1): string {
   return head + document.lines.map((l) => formatLabeledLine(l)).join('\n')
 }
 
-/** `<anchor> <text>`; a literal ` ` always separates them. */
-export function formatLabeledLine([anchor, text]: HtmlLine): string {
-  return `${anchor} ${text}`
-}
-
 function checksum4(document: HtmlDocumentJsonV1): null | string {
   const c = document.checksum
   if (!c || c === 'sha256:') return null
   const hex = c.slice('sha256:'.length)
   return hex.slice(0, 4).toUpperCase()
+}
+
+/** `<anchor> <text>`; a literal ` ` always separates them. */
+function formatLabeledLine([anchor, text]: HtmlLine): string {
+  return `${anchor} ${text}`
 }

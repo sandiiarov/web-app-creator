@@ -51,18 +51,12 @@ catalogs:
     cmdk:
       specifier: ^1.1.1
       version: 1.1.1
-    diff:
-      specifier: ^9.0.0
-      version: 9.0.0
     firecrawl:
       specifier: ^4.28.3
       version: 4.28.3
     happy-dom:
       specifier: ^20.10.6
       version: 20.10.6
-    lru-cache:
-      specifier: ^11.5.1
-      version: 11.5.1
     lucide-react:
       specifier: ^1.17.0
       version: 1.17.0
@@ -125,7 +119,7 @@ catalogs:
       version: 4.4.3
 
 patchedDependencies:
-  '@mastra/core@1.47.0': f988177cc52e9e7826ceda39c055386087b7494a58c6416f9001af5818a0d0f6
+  '@mastra/core@1.47.0': 1f5ace625406773b7d992b0484d9298fb3ada54a6f537a8a0f3a8f717b1fdbec
 
 importers:
 
@@ -224,34 +218,28 @@ importers:
     dependencies:
       '@mastra/core':
         specifier: 'catalog:'
-        version: 1.47.0(patch_hash=f988177cc52e9e7826ceda39c055386087b7494a58c6416f9001af5818a0d0f6)(express@5.2.1)(zod@4.4.3)
+        version: 1.47.0(patch_hash=1f5ace625406773b7d992b0484d9298fb3ada54a6f537a8a0f3a8f717b1fdbec)(express@5.2.1)(zod@4.4.3)
       '@mastra/duckdb':
         specifier: 'catalog:'
-        version: 1.5.0(@mastra/core@1.47.0(patch_hash=f988177cc52e9e7826ceda39c055386087b7494a58c6416f9001af5818a0d0f6)(express@5.2.1)(zod@4.4.3))
+        version: 1.5.0(@mastra/core@1.47.0(patch_hash=1f5ace625406773b7d992b0484d9298fb3ada54a6f537a8a0f3a8f717b1fdbec)(express@5.2.1)(zod@4.4.3))
       '@mastra/libsql':
         specifier: 'catalog:'
-        version: 1.14.2(@mastra/core@1.47.0(patch_hash=f988177cc52e9e7826ceda39c055386087b7494a58c6416f9001af5818a0d0f6)(express@5.2.1)(zod@4.4.3))
+        version: 1.14.2(@mastra/core@1.47.0(patch_hash=1f5ace625406773b7d992b0484d9298fb3ada54a6f537a8a0f3a8f717b1fdbec)(express@5.2.1)(zod@4.4.3))
       '@mastra/loggers':
         specifier: 'catalog:'
-        version: 1.2.0(@mastra/core@1.47.0(patch_hash=f988177cc52e9e7826ceda39c055386087b7494a58c6416f9001af5818a0d0f6)(express@5.2.1)(zod@4.4.3))
+        version: 1.2.0(@mastra/core@1.47.0(patch_hash=1f5ace625406773b7d992b0484d9298fb3ada54a6f537a8a0f3a8f717b1fdbec)(express@5.2.1)(zod@4.4.3))
       '@mastra/observability':
         specifier: 'catalog:'
-        version: 1.15.2(@mastra/core@1.47.0(patch_hash=f988177cc52e9e7826ceda39c055386087b7494a58c6416f9001af5818a0d0f6)(express@5.2.1)(zod@4.4.3))(zod@4.4.3)
+        version: 1.15.2(@mastra/core@1.47.0(patch_hash=1f5ace625406773b7d992b0484d9298fb3ada54a6f537a8a0f3a8f717b1fdbec)(express@5.2.1)(zod@4.4.3))(zod@4.4.3)
       '@workspace/agent-skills':
         specifier: workspace:*
         version: link:../../packages/agent-skills
       '@workspace/conversation':
         specifier: workspace:*
         version: link:../../packages/conversation
-      diff:
-        specifier: 'catalog:'
-        version: 9.0.0
       firecrawl:
         specifier: 'catalog:'
         version: 4.28.3
-      lru-cache:
-        specifier: 'catalog:'
-        version: 11.5.1
       playwright-core:
         specifier: 'catalog:'
         version: 1.61.1
@@ -297,7 +285,7 @@ importers:
     dependencies:
       '@mastra/core':
         specifier: 'catalog:'
-        version: 1.47.0(patch_hash=f988177cc52e9e7826ceda39c055386087b7494a58c6416f9001af5818a0d0f6)(express@5.2.1)(zod@4.4.3)
+        version: 1.47.0(patch_hash=1f5ace625406773b7d992b0484d9298fb3ada54a6f537a8a0f3a8f717b1fdbec)(express@5.2.1)(zod@4.4.3)
     devDependencies:
       '@types/node':
         specifier: 'catalog:'
@@ -3433,10 +3421,6 @@ packages:
     resolution: {integrity: sha512-DPi0FmjiSU5EvQV0++GFDOJ9ASQUVFh5kD+OzOnYdi7n3Wpm9hWWGfB/O2blfHcMVTL5WkQXSnRiK9makhrcnw==}
     engines: {node: '>=0.3.1'}
 
-  diff@9.0.0:
-    resolution: {integrity: sha512-svtcdpS8CgJyqAjEQIXdb3OjhFVVYjzGAPO8WGCmRbrml64SPw/jJD4GoE98aR7r25A0XcgrK3F02yw9R/vhQw==}
-    engines: {node: '>=0.3.1'}
-
   dompurify@3.4.11:
     resolution: {integrity: sha512-zhlUV12GsaRzMsf9q5M254YhA4+VuF0fG+QFqu6aYpoGlKtz+w8//jBcGVYBgQkR5GHjUomejY84AV+/uPbWdw==}
 
@@ -6126,7 +6110,7 @@ snapshots:
     dependencies:
       '@lukeed/csprng': 1.1.0
 
-  '@mastra/core@1.47.0(patch_hash=f988177cc52e9e7826ceda39c055386087b7494a58c6416f9001af5818a0d0f6)(express@5.2.1)(zod@4.4.3)':
+  '@mastra/core@1.47.0(patch_hash=1f5ace625406773b7d992b0484d9298fb3ada54a6f537a8a0f3a8f717b1fdbec)(express@5.2.1)(zod@4.4.3)':
     dependencies:
       '@a2a-js/sdk': 0.3.13(express@5.2.1)
       '@ai-sdk/provider-utils-v5': '@ai-sdk/provider-utils@3.0.25(zod@4.4.3)'
@@ -6172,28 +6156,28 @@ snapshots:
       - supports-color
       - utf-8-validate
 
-  '@mastra/duckdb@1.5.0(@mastra/core@1.47.0(patch_hash=f988177cc52e9e7826ceda39c055386087b7494a58c6416f9001af5818a0d0f6)(express@5.2.1)(zod@4.4.3))':
+  '@mastra/duckdb@1.5.0(@mastra/core@1.47.0(patch_hash=1f5ace625406773b7d992b0484d9298fb3ada54a6f537a8a0f3a8f717b1fdbec)(express@5.2.1)(zod@4.4.3))':
     dependencies:
       '@duckdb/node-api': 1.5.2-r.2
-      '@mastra/core': 1.47.0(patch_hash=f988177cc52e9e7826ceda39c055386087b7494a58c6416f9001af5818a0d0f6)(express@5.2.1)(zod@4.4.3)
+      '@mastra/core': 1.47.0(patch_hash=1f5ace625406773b7d992b0484d9298fb3ada54a6f537a8a0f3a8f717b1fdbec)(express@5.2.1)(zod@4.4.3)
 
-  '@mastra/libsql@1.14.2(@mastra/core@1.47.0(patch_hash=f988177cc52e9e7826ceda39c055386087b7494a58c6416f9001af5818a0d0f6)(express@5.2.1)(zod@4.4.3))':
+  '@mastra/libsql@1.14.2(@mastra/core@1.47.0(patch_hash=1f5ace625406773b7d992b0484d9298fb3ada54a6f537a8a0f3a8f717b1fdbec)(express@5.2.1)(zod@4.4.3))':
     dependencies:
       '@libsql/client': 0.17.4
-      '@mastra/core': 1.47.0(patch_hash=f988177cc52e9e7826ceda39c055386087b7494a58c6416f9001af5818a0d0f6)(express@5.2.1)(zod@4.4.3)
+      '@mastra/core': 1.47.0(patch_hash=1f5ace625406773b7d992b0484d9298fb3ada54a6f537a8a0f3a8f717b1fdbec)(express@5.2.1)(zod@4.4.3)
     transitivePeerDependencies:
       - bufferutil
       - utf-8-validate
 
-  '@mastra/loggers@1.2.0(@mastra/core@1.47.0(patch_hash=f988177cc52e9e7826ceda39c055386087b7494a58c6416f9001af5818a0d0f6)(express@5.2.1)(zod@4.4.3))':
+  '@mastra/loggers@1.2.0(@mastra/core@1.47.0(patch_hash=1f5ace625406773b7d992b0484d9298fb3ada54a6f537a8a0f3a8f717b1fdbec)(express@5.2.1)(zod@4.4.3))':
     dependencies:
-      '@mastra/core': 1.47.0(patch_hash=f988177cc52e9e7826ceda39c055386087b7494a58c6416f9001af5818a0d0f6)(express@5.2.1)(zod@4.4.3)
+      '@mastra/core': 1.47.0(patch_hash=1f5ace625406773b7d992b0484d9298fb3ada54a6f537a8a0f3a8f717b1fdbec)(express@5.2.1)(zod@4.4.3)
       pino: 10.3.1
       pino-pretty: 13.1.3
 
-  '@mastra/observability@1.15.2(@mastra/core@1.47.0(patch_hash=f988177cc52e9e7826ceda39c055386087b7494a58c6416f9001af5818a0d0f6)(express@5.2.1)(zod@4.4.3))(zod@4.4.3)':
+  '@mastra/observability@1.15.2(@mastra/core@1.47.0(patch_hash=1f5ace625406773b7d992b0484d9298fb3ada54a6f537a8a0f3a8f717b1fdbec)(express@5.2.1)(zod@4.4.3))(zod@4.4.3)':
     dependencies:
-      '@mastra/core': 1.47.0(patch_hash=f988177cc52e9e7826ceda39c055386087b7494a58c6416f9001af5818a0d0f6)(express@5.2.1)(zod@4.4.3)
+      '@mastra/core': 1.47.0(patch_hash=1f5ace625406773b7d992b0484d9298fb3ada54a6f537a8a0f3a8f717b1fdbec)(express@5.2.1)(zod@4.4.3)
       zod: 4.4.3
 
   '@mastra/schema-compat@1.3.1(zod@4.4.3)':
@@ -8255,8 +8239,6 @@ snapshots:
       dequal: 2.0.3
 
   diff@8.0.4: {}
-
-  diff@9.0.0: {}
 
   dompurify@3.4.11:
     optionalDependencies:
