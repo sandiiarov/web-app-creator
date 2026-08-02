@@ -16,7 +16,7 @@ before starting, honor its STOP conditions, and update your row when done.
 | 003 | Bound the `turnCache` Map with `LRUCache` | P2 | S | see notes | DONE (executed 2026-08-02) |
 | 004 | Delete the dead `grep` tool and its search helper | P2 | S | 009 | DONE (executed 2026-08-02) |
 | 010 | Bound `/api/models?ids=` to stop upstream fetch amplification | P2 | S | — | DONE (executed 2026-08-02) |
-| 013 | End-to-end verification of direct-mode image delivery | P2 | M | — | TODO |
+| 013 | End-to-end verification of direct-mode image delivery | P2 | M | — | DONE (executed 2026-08-02, see plans/013-report.md) |
 | 011 | Extract `runAgentStream` into composable units | P2 | L | 009 (soft) | TODO |
 | 012 | Drive the picker's vision-sync from live OpenRouter modalities | P3 | M | — | TODO |
 | 001 | Delete the dead legacy turn writers | — | — | — | DONE (moot — only read-only legacy fallback remains, by design) |
