@@ -33,7 +33,6 @@ import {
   type ProjectMessageToolCallPart,
   type ProjectMessageTurn,
   type ProjectRawMessage,
-  type RunStatus,
 } from './lib/project-store.ts'
 import { createLandingAgentErrorProcessors } from './lib/retry.ts'
 import {
@@ -43,7 +42,8 @@ import {
   releaseRun,
   type RunEntry,
 } from './lib/run-bus.ts'
-import { createRunStatsTracker, type UsageSnapshot } from './lib/run-stats.ts'
+import { finalizeRun } from './lib/run-finalize.ts'
+import { createRunStatsTracker } from './lib/run-stats.ts'
 import { createStreamChunkHandler } from './lib/run-stream-loop.ts'
 import {
   compactLines,
@@ -55,8 +55,6 @@ import {
 const ATTACHMENT_OCR_PROMPT =
   'Analyze the attached image for landing-page generation. Extract all visible text exactly, then describe layout, hierarchy, colors, typography, UI components, imagery, brand cues, and any details the landing-page agent should use. If the image is a screenshot or mockup, call out sections, navigation, CTAs, spacing, and visual style.'
 const MAX_STEPS = 30
-const NO_GENERATED_HTML_MESSAGE =
-  'Agent finished without generating project HTML. The draft still has no content because no successful edit changed the page.'
 
 export type AgentAttachmentInput =
   | AgentElementAttachmentInput
@@ -907,81 +905,18 @@ async function runAgentStream({
     }
   } finally {
     try {
-      // Cost/stats accounting runs here (not in the try body) so it executes
-      // even when the stream loop THREW (graceful stop / mid-stream error), not
-      // only on the clean/break path. `stream.usage`/`finishReason` may reject
-      // on an aborted stream; fall back so accounting (image/scrape/vision cost
-      // accumulated during the run, plus provider-reported LLM cost) records.
-      // A stream setup failure still emits zero-token stats plus any costs that
-      // were already accumulated before `agent.stream` rejected.
-      let usage: UsageSnapshot = stats.usage
-      const wasStopped = controller.signal.aborted && !fatalRunError
-      let finishReason = wasStopped ? 'stopped' : 'stop'
-      if (streamError && !controller.signal.aborted) finishReason = 'error'
-      if (stream) {
-        try {
-          usage = await stream.usage
-          const resolvedFinishReason = await stream.finishReason
-          if (!wasStopped && resolvedFinishReason) {
-            finishReason = resolvedFinishReason
-          }
-        } catch {
-          // Retain the stop/error fallback while preserving costs accumulated by
-          // image, scrape, vision, or raw provider chunks before termination.
-        }
-      }
-      stats.usage = usage
-      stats.emitStats(finishReason)
-
-      // Final agent-message snapshot at run end (the last per-step snapshot via
-      // onStepFinish may not fire for every stream shape, so this guarantees the
-      // turn's Mastra messages are captured for replay). `dir: 'step'` with the
-      // next step number; replay takes the last snapshot per turn.
-      const finalAgentMessages = stream?.messageList?.get?.response?.db?.()
-      if (finalAgentMessages && finalAgentMessages.length > 0) {
-        agentStep += 1
-        void appendAgentMessages(projectId, {
-          dir: 'step',
-          messages: sanitizeAgentMessages(
-            finalAgentMessages,
-          ) as ProjectRawMessage[],
-          step: agentStep,
-          ts: new Date().toISOString(),
-          turnId: recordedTurn.id,
-        })
-      }
-
-      // Terminal error: any controller-aborted non-fatal run is `stopped`, even
-      // when Mastra ends its iterator cleanly instead of throwing. This keeps a
-      // user stop from falling through to the unrelated empty-draft error. A
-      // fatal run error was already emitted during the loop.
-      if (!fatalRunError) {
-        const terminalError = controller.signal.aborted
-          ? 'stopped'
-          : streamError
-        if (terminalError) {
-          emit('error', { message: terminalError })
-        } else if (!project.hasHtml && htmlUpdateSequence === 0) {
-          emit('error', { message: NO_GENERATED_HTML_MESSAGE })
-        }
-      }
-      // Persist terminal run-lifecycle status so the project list + editor
-      // views reflect completion/stop/error (drives the list SSE badge + the
-      // editor subscribe `state` snapshot). `idle` = cleanly finished, ready
-      // for the next run.
-      const terminalStatus: RunStatus = fatalRunError
-        ? 'error'
-        : controller.signal.aborted
-          ? 'stopped'
-          : streamError
-            ? 'error'
-            : 'idle'
-      setRunStatusSync(projectId, {
-        error:
-          fatalRunError ??
-          (controller.signal.aborted ? null : (streamError ?? null)),
-        finishedAt: new Date().toISOString(),
-        status: terminalStatus,
+      agentStep = await finalizeRun({
+        agentStep,
+        controller,
+        emit,
+        fatalRunError,
+        htmlUpdateSequence,
+        project,
+        projectId,
+        recordedTurn,
+        stats,
+        stream,
+        streamError,
       })
     } finally {
       emit('done', {})
