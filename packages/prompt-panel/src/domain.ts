@@ -44,11 +44,8 @@ export const TEXT_MODEL_OPTIONS: LandingModelOption[] = [
   { id: 'anthropic/claude-sonnet-5:nitro', label: 'Claude Sonnet 5' },
   { id: 'anthropic/claude-haiku-4.5:nitro', label: 'Claude Haiku 4.5' },
   { id: 'openai/gpt-5.6-luna:nitro', label: 'GPT-5.6 Luna' },
-  { id: 'openai/gpt-5.6-luna-pro:nitro', label: 'GPT-5.6 Luna Pro' },
   { id: 'openai/gpt-5.6-terra:nitro', label: 'GPT-5.6 Terra' },
-  { id: 'openai/gpt-5.6-terra-pro:nitro', label: 'GPT-5.6 Terra Pro' },
   { id: 'openai/gpt-5.6-sol:nitro', label: 'GPT-5.6 Sol' },
-  { id: 'openai/gpt-5.6-sol-pro:nitro', label: 'GPT-5.6 Sol Pro' },
 ]
 
 export const IMAGE_MODEL_OPTIONS: LandingModelOption[] = [
@@ -69,11 +66,8 @@ export const VISION_MODEL_OPTIONS: LandingModelOption[] = [
   { id: 'anthropic/claude-sonnet-5', label: 'Claude Sonnet 5' },
   { id: 'anthropic/claude-haiku-4.5', label: 'Claude Haiku 4.5' },
   { id: 'openai/gpt-5.6-luna', label: 'GPT-5.6 Luna' },
-  { id: 'openai/gpt-5.6-luna-pro', label: 'GPT-5.6 Luna Pro' },
   { id: 'openai/gpt-5.6-terra', label: 'GPT-5.6 Terra' },
-  { id: 'openai/gpt-5.6-terra-pro', label: 'GPT-5.6 Terra Pro' },
   { id: 'openai/gpt-5.6-sol', label: 'GPT-5.6 Sol' },
-  { id: 'openai/gpt-5.6-sol-pro', label: 'GPT-5.6 Sol Pro' },
 ]
 
 /**
@@ -102,11 +96,8 @@ export const MODEL_PRICING: Record<string, LandingModelPricing> = {
     output: 3.6,
   },
   'openai/gpt-5.6-luna': { cacheRead: 0.01, input: 0.1, output: 0.6 },
-  'openai/gpt-5.6-luna-pro': { cacheRead: 0.01, input: 0.1, output: 0.6 },
   'openai/gpt-5.6-sol': { cacheRead: 0.5, input: 5, output: 30 },
-  'openai/gpt-5.6-sol-pro': { cacheRead: 0.5, input: 5, output: 30 },
   'openai/gpt-5.6-terra': { cacheRead: 0.1, input: 1, output: 6 },
-  'openai/gpt-5.6-terra-pro': { cacheRead: 0.1, input: 1, output: 6 },
   'poolside/laguna-s-2.1': { cacheRead: 0.009, input: 0.09, output: 0.18 },
   'tencent/hy3': { cacheRead: 0.033, input: 0.132, output: 0.528 },
   'xiaomi/mimo-v2.5': { cacheRead: 0.0028, input: 0.14, output: 0.28 },
