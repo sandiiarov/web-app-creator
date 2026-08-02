@@ -26,6 +26,7 @@ afterEach(async () => {
   vi.doUnmock('./mastra/lib/project-store.ts')
   vi.doUnmock('./mastra/route.ts')
   vi.unstubAllEnvs()
+  vi.unstubAllGlobals()
   vi.resetModules()
   vi.restoreAllMocks()
 
@@ -34,6 +35,67 @@ afterEach(async () => {
 })
 
 describe('server HTTP routes', () => {
+  it('bounds /api/models ids to stop upstream fetch amplification', async () => {
+    await withServer(async ({ baseUrl }) => {
+      const tooMany = Array.from({ length: 65 }, (_, i) => `m/${i}`).join(',')
+      const overflow = await fetch(`${baseUrl}/api/models?ids=${tooMany}`, {
+        headers: { origin: 'https://client.test' },
+      })
+      expect(overflow.status).toBe(400)
+      await expect(overflow.json()).resolves.toEqual({
+        error: 'Too many model ids (max 64).',
+        ok: false,
+      })
+
+      const realFetch = globalThis.fetch
+      const fetchStub = vi.fn<typeof globalThis.fetch>(async (input, init) => {
+        const url = String(input)
+        if (url.startsWith(baseUrl)) return realFetch(input, init)
+        if (url.includes('/images/models/')) {
+          return new Response(
+            JSON.stringify({
+              endpoints: [
+                {
+                  pricing: [
+                    { billable: 'output_image', cost_usd: 0.04, unit: 'image' },
+                  ],
+                },
+              ],
+            }),
+            { headers: { 'content-type': 'application/json' }, status: 200 },
+          )
+        }
+        return new Response(
+          JSON.stringify({
+            data: [
+              {
+                id: 'z-ai/glm-5.2',
+                pricing: { completion: '0.00000132', prompt: '0.00000042' },
+              },
+            ],
+          }),
+          { headers: { 'content-type': 'application/json' }, status: 200 },
+        )
+      })
+      vi.stubGlobal('fetch', fetchStub)
+
+      const { resetModelPricingCache } = await import('./model-catalog.ts')
+      resetModelPricingCache()
+      const fine = await fetch(
+        `${baseUrl}/api/models?ids=z-ai/glm-5.2,bytedance-seed/seedream-4.5`,
+        { headers: { origin: 'https://client.test' } },
+      )
+      expect(fine.status).toBe(200)
+      const body = (await fine.json()) as {
+        models: Record<string, { image?: number; input: number }>
+      }
+      expect(body.models['z-ai/glm-5.2']).toMatchObject({ input: 0.42 })
+      expect(body.models['bytedance-seed/seedream-4.5']).toMatchObject({
+        image: 0.04,
+      })
+    })
+  })
+
   it('returns a generic 500 body and logs the real error server-side', async () => {
     vi.resetModules()
     vi.stubEnv('OPENROUTER_API_KEY', 'test-openrouter-key')

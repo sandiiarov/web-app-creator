@@ -51,6 +51,10 @@ const MAX_ATTACHMENT_SIZE = 8 * 1024 * 1024
 const MAX_ATTACHMENT_TOTAL_SIZE = 16 * 1024 * 1024
 const MAX_MEDIA_JSON_BODY_SIZE = 24 * 1024 * 1024
 const MAX_PROJECT_JSON_BODY_SIZE = 64 * 1024
+/** Upper bound on `/api/models?ids=` entries — each chat-catalog-absent id
+ *  triggers one upstream images-API fetch, so an unbounded list is a
+ *  request-amplification vector. The first-party client sends ~25. */
+const MAX_MODEL_IDS = 64
 
 type AgentRequestBody = {
   attachments?: unknown
@@ -358,6 +362,13 @@ async function handleModelCatalog(
     ?.split(',')
     .map((id) => id.trim())
     .filter(Boolean)
+  if (ids && ids.length > MAX_MODEL_IDS) {
+    sendJson(response, 400, {
+      error: `Too many model ids (max ${MAX_MODEL_IDS}).`,
+      ok: false,
+    })
+    return
+  }
   try {
     const catalog = await getModelPricing()
     const models: ModelPricingCatalog = ids?.length
