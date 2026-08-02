@@ -10,7 +10,7 @@ import {
   TooltipTrigger,
 } from '@workspace/ui/components/tooltip'
 import { cn } from '@workspace/ui/lib/utils'
-import { Check, ChevronDown } from 'lucide-react'
+import { Check, ChevronDown, Search } from 'lucide-react'
 import {
   useEffect,
   useRef,
@@ -114,6 +114,8 @@ export function ModelDropdown({
 }: ModelDropdownProps) {
   const [open, setOpen] = useState(false)
   const [activeRole, setActiveRole] = useState<LandingModelRole>('text')
+  const [query, setQuery] = useState('')
+  const inputRef = useRef<HTMLInputElement | null>(null)
   const activeGroup = LANDING_MODEL_GROUPS.find(
     (entry) => entry.role === activeRole,
   )!
@@ -146,6 +148,30 @@ export function ModelDropdown({
   useEffect(() => {
     setFocusId(selectedId)
   }, [selectedId])
+
+  // Filter model rows by name, id, or provider; empty groups drop out.
+  const normalizedQuery = query.trim().toLowerCase()
+  const filteredProviders = normalizedQuery
+    ? providers
+        .map((provider) => ({
+          ...provider,
+          options: provider.options.filter(
+            (option) =>
+              option.label.toLowerCase().includes(normalizedQuery) ||
+              option.id.toLowerCase().includes(normalizedQuery) ||
+              provider.name.toLowerCase().includes(normalizedQuery),
+          ),
+        }))
+        .filter((provider) => provider.options.length > 0)
+    : providers
+
+  // Roving tab stop must always land on a visible row.
+  const visibleIds = filteredProviders.flatMap((provider) =>
+    provider.options.map((option) => option.id),
+  )
+  const effectiveFocusId = visibleIds.includes(focusId)
+    ? focusId
+    : visibleIds[0]
 
   const listRef = useRef<HTMLDivElement | null>(null)
 
@@ -187,7 +213,13 @@ export function ModelDropdown({
   }
 
   return (
-    <Popover onOpenChange={setOpen} open={open}>
+    <Popover
+      onOpenChange={(nextOpen) => {
+        setOpen(nextOpen)
+        if (!nextOpen) setQuery('')
+      }}
+      open={open}
+    >
       <PopoverTrigger asChild>
         <Button
           aria-label="Models"
@@ -225,7 +257,15 @@ export function ModelDropdown({
           <ChevronDown data-icon="inline-end" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="start" className="w-80 gap-0 p-0" sideOffset={6}>
+      <PopoverContent
+        align="start"
+        className="w-80 gap-0 p-0"
+        onOpenAutoFocus={(event) => {
+          event.preventDefault()
+          inputRef.current?.focus()
+        }}
+        sideOffset={6}
+      >
         <div
           aria-label="Model role"
           className="flex border-b border-border"
@@ -245,7 +285,10 @@ export function ModelDropdown({
                     : 'border-transparent text-muted-foreground hover:text-foreground',
                 )}
                 key={role}
-                onClick={() => setActiveRole(role)}
+                onClick={() => {
+                  setActiveRole(role)
+                  setQuery('')
+                }}
                 role="tab"
                 type="button"
               >
@@ -255,6 +298,28 @@ export function ModelDropdown({
             )
           })}
         </div>
+        <div className="flex items-center gap-2 border-b border-border px-2 py-1.5">
+          <Search className="size-3.5 shrink-0 text-muted-foreground" />
+          <input
+            aria-label="Search models"
+            className="min-w-0 flex-1 bg-transparent text-xs outline-none placeholder:text-muted-foreground"
+            onChange={(event) => setQuery(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'ArrowDown') {
+                event.preventDefault()
+                const first =
+                  listRef.current?.querySelector<HTMLElement>('[role="radio"]')
+                first?.focus()
+                const id = first?.dataset.modelId
+                if (id) setFocusId(id)
+              }
+            }}
+            placeholder="Search models"
+            ref={inputRef}
+            type="text"
+            value={query}
+          />
+        </div>
         <div
           aria-label={activeGroup.title}
           className="max-h-80 overflow-y-auto p-1"
@@ -262,7 +327,12 @@ export function ModelDropdown({
           ref={listRef}
           role="radiogroup"
         >
-          {providers.map((provider, groupIndex) => (
+          {filteredProviders.length === 0 ? (
+            <div className="px-2 py-3 text-xs text-muted-foreground">
+              No models match &quot;{query.trim()}&quot;
+            </div>
+          ) : null}
+          {filteredProviders.map((provider, groupIndex) => (
             <div aria-label={provider.name} key={provider.prefix} role="group">
               <div
                 className={cn(
@@ -290,7 +360,7 @@ export function ModelDropdown({
                       onModelsChange({ ...models, [activeRole]: option.id })
                     }
                     role="radio"
-                    tabIndex={option.id === focusId ? 0 : -1}
+                    tabIndex={option.id === effectiveFocusId ? 0 : -1}
                     type="button"
                   >
                     {Icon ? <Icon className="size-3.5 shrink-0" /> : null}
