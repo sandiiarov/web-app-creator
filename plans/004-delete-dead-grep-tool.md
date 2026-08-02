@@ -7,8 +7,8 @@
 > in `plans/README.md` — unless a reviewer dispatched you and told you they
 > maintain the index.
 >
-> **Drift check (run first)**: `git diff --stat 5daf56ef..HEAD -- apps/server/src/mastra/tools/grep.ts apps/server/src/mastra/lib/grep-search.ts apps/server/src/mastra/tools/external-tools.test.ts apps/server/src/mastra/tools/landing-tools.ts`
-> If any in-scope file changed since this plan was written, compare the
+> **Drift check (run first)**: `git diff --stat 09236e63 -- apps/server/src/mastra/tools/grep.ts apps/server/src/mastra/lib/grep-search.ts apps/server/src/mastra/tools/external-tools.test.ts apps/server/src/mastra/tools/landing-tools.ts`
+> If any in-scope file changed since this plan was refreshed, compare the
 > "Current state" excerpts against the live code before proceeding; on a
 > mismatch, treat it as a STOP condition.
 
@@ -19,14 +19,17 @@
 - **Risk**: LOW
 - **Depends on**: none
 - **Category**: tech-debt (dead-code removal)
-- **Planned at**: commit `5daf56ef`, 2026-07-19
+- **Planned at**: commit `5daf56ef`, 2026-07-19; refreshed at commit `09236e63`, 2026-08-02
+- **Depends on**: none (soft link: plan 009 owns the fallow gate; run 004 after 009 so the Step-5 gate expectation holds)
 - **Issue**: (only when published via `--issues`)
 
 ## Why this matters
 
-The landing-page agent moved to the hashline edit DSL (`read`/`find`/`edit`
-with `[#TAG]` snapshot headers). The older `grep` tool — a pre-hashline
-line search that returns `rawMatches` for an `oldText`-style edit DSL — is
+The landing-page agent moved to the anchor-label edit engine (`read`/`find`/`edit`
+over `<anchor> <text>` labeled lines with structured `edits: [{ start, end,
+content }]` ranges — see `apps/server/src/mastra/AGENTS.md`). The older
+`grep` tool — a pre-anchor line search that returns `rawMatches` for an
+`oldText`-style edit DSL — is
 **not registered** in `apps/server/src/mastra/tools/landing-tools.ts`
 (verified: the registry contains `scrape`, `read`, `find`, `edit`,
 `screenshot`, `generate_image` only). So `createGrepTool` and its helper
@@ -44,10 +47,10 @@ commit `5daf56ef`.
 
 1. `apps/server/src/mastra/tools/grep.ts` (73 lines) — exports
    `createGrepTool(store: HtmlStore)`. Builds a Mastra `createTool` whose
-   `id: 'grep'` and whose description references "edit.oldText" (the
-   pre-hashline edit DSL — the current `edit` tool takes `{ action, diff }`
-   hashline DSL, no `oldText`). Imports `grepHtml` from
-   `'../lib/grep-search.ts'`.
+   `id: 'grep'` and whose description references `edit.oldText` (a
+   long-removed edit DSL — the current `edit` tool takes `{ action,
+   edits: [{ start, end, content }] }` anchor ranges, no `oldText`).
+   Imports `grepHtml` from `'../lib/grep-search.ts'`.
 2. `apps/server/src/mastra/lib/grep-search.ts` (152 lines) — exports
    `grepHtml(content, pattern, options)` plus types `GrepMatch`,
    `GrepOptions`, `GrepResult`. Pure line-based regex/literal search with
@@ -75,10 +78,8 @@ the drift check — should return no matches.)
 - ESM with explicit `.ts` extensions on relative imports
   (`verbatimModuleSyntax`).
 - Vitest tests use `describe`/`it`/`expect` from `vitest`.
-- The server test script enforces 90% line coverage — deleting tested
-  code can drop coverage of the deleted file to 0%, which is fine (the
-  file is gone), but the **project-wide** coverage must stay ≥90%.
-  Confirm in Step 4.
+- The server test suite has no coverage gate — deleting tested code is
+  safe as long as the remaining suite passes.
 
 ## Commands you will need
 
@@ -86,7 +87,7 @@ the drift check — should return no matches.)
 |------------|------------------------------------------------------|---------------------|
 | Typecheck  | `pnpm --filter @workspace/server typecheck`          | exit 0, no errors   |
 | Lint       | `pnpm --filter @workspace/server lint`               | exit 0              |
-| Tests      | `pnpm --filter @workspace/server test`               | all pass; coverage ≥ 90% |
+| Tests      | `pnpm --filter @workspace/server test`               | all pass (no coverage gate is configured) |
 | Dead code  | `pnpm run fallow:dead-code`                          | exit 0 (CI gate) |
 
 ## Scope
@@ -201,11 +202,10 @@ matches (the word shouldn't appear anywhere else in that doc).
   continuing.)
 - `pnpm --filter @workspace/server lint` → exit 0.
 - `pnpm --filter @workspace/server test` → exit 0; test count drops by
-  exactly 3 from baseline (the three deleted `grepHtml` tests); coverage
-  ≥ 90%.
-- `pnpm run fallow:dead-code` → exit 0 (or fails ONLY on the
-  pre-existing `@workspace/agent-skills` dormant-dep flag already in the
-  README rejected list — record in NOTES but do not chase).
+  exactly 3 from baseline (the three deleted `grepHtml` tests).
+- `pnpm run fallow:dead-code` → exit 0 (plan 009 has landed by now —
+  if it has not, the pre-existing flags listed in `plans/README.md`
+  may still fail it; record in NOTES but do not chase).
 
 ### Step 6: Confirm scope
 
@@ -231,7 +231,7 @@ Machine-checkable. ALL must hold:
 - [ ] `pnpm --filter @workspace/server typecheck` exits 0
 - [ ] `pnpm --filter @workspace/server lint` exits 0
 - [ ] `pnpm --filter @workspace/server test` exits 0; test count is
-      baseline − 3; coverage ≥ 90%
+      baseline − 3; 
 - [ ] `pnpm run fallow:dead-code` exits 0 (or only the pre-existing
       `@workspace/agent-skills` flag)
 - [ ] The two source files are deleted (Step 3 `ls` returns "No such
@@ -251,9 +251,9 @@ Stop and report back (do not improvise) if:
   decide whether to register grep properly or proceed with deletion.
 - `typecheck` after Step 3 reports a missing import. You missed a
   caller; find and remove it (do NOT re-add the deleted file).
-- Project-wide coverage drops below 90% after deletion. That would mean
-  grep was loading coverage for some neighboring module — unlikely, but
-  if it happens, report which file's coverage dropped.
+- Project-wide test failures after deletion. That would mean grep was
+  covering some neighboring module — unlikely, but if it happens, report
+  which file broke.
 
 ## Maintenance notes
 

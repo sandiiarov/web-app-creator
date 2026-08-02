@@ -1,10 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { grepHtml } from '../lib/grep-search.ts'
-import { createHtmlStore } from '../lib/html-store.ts'
 import { getImage, saveImage } from '../lib/image-store.ts'
 import type { ProjectScreenshotViewport } from '../lib/project-screenshot.ts'
-import { createGrepTool } from './grep.ts'
 import { createScreenshotTool } from './screenshot.ts'
 
 type FetchMock = typeof globalThis.fetch
@@ -16,57 +13,6 @@ afterEach(() => {
   vi.unstubAllGlobals()
   vi.resetModules()
   vi.restoreAllMocks()
-})
-
-describe('grepHtml', () => {
-  it('searches literal text with context, limits, and truncation notices', async () => {
-    const longLine = 'x'.repeat(520)
-    const result = grepHtml(
-      `alpha\n<button>Buy now</button>\n${longLine} Buy now\nBuy now again`,
-      'Buy now',
-      { context: 1, limit: 2, literal: true },
-    )
-
-    expect(result).toMatchObject({
-      matchCount: 2,
-      matchLimitReached: true,
-      truncatedLines: true,
-    })
-    expect(result.output).toContain('1- alpha')
-    expect(result.output).toContain('2: <button>Buy now</button>')
-    expect(result.output).toContain('matches limit reached')
-    expect(result.output).toContain('Some lines truncated')
-  })
-
-  it('reports invalid regexes and no-match searches', () => {
-    expect(grepHtml('hello', '[')).toMatchObject({
-      matchCount: 0,
-      notices: [expect.stringContaining('Invalid regex')],
-      output: '',
-    })
-    expect(grepHtml('hello', 'missing', { ignoreCase: true })).toMatchObject({
-      matchCount: 0,
-      output: 'No matches found',
-    })
-  })
-
-  it('wraps grep results in the Mastra tool response shape', async () => {
-    const tool = createGrepTool(createHtmlStore('<main>Launch</main>\n'))
-    const result = await tool.execute?.(
-      {
-        action: 'Find launch copy',
-        literal: true,
-        pattern: 'Launch',
-      },
-      undefined as never,
-    )
-
-    expect(result).toMatchObject({
-      matchCount: 1,
-      rawMatches: [{ lineNumber: 1, text: '<main>Launch</main>' }],
-      text: expect.stringContaining('Use rawMatches/read rawText'),
-    })
-  })
 })
 
 describe('image-store', () => {
