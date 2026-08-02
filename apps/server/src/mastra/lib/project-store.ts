@@ -767,6 +767,8 @@ export async function updateProjectModel(
 /** Bound the debug `screenshots/` dir per project (debug-only; not replay-critical). */
 const MAX_SCREENSHOTS_PER_PROJECT = 50
 
+export type ProjectWriteFailureLogger = (id: string, error: unknown) => void
+
 export function writeProjectScreenshotSync(
   id: string,
   requestId: string,
@@ -793,7 +795,12 @@ export function writeProjectScreenshotSync(
 /** Serialize a project's debug-log writes on one per-project chain. The chain
  *  is registered SYNCHRONOUSLY (before any await) so `flushProjectLogs` always
  *  sees the latest pending write — fire-and-forget callers from the stream
- *  loop can't race project cleanup. */
+ *  loop can't race project cleanup. A rejected `run` (or a rejected previous
+ *  chain link) is logged via the project write-failure logger
+ *  (`setProjectWriteFailureLogger`, default `console.error`) and then
+ *  swallowed — the chain never rejects, so fire-and-forget callers in
+ *  `route.ts` keep working, but operators get a stderr line per failure
+ *  instead of silent data loss. */
 function chainProjectWrite(
   id: string,
   run: () => Promise<unknown>,
@@ -801,13 +808,49 @@ function chainProjectWrite(
   const prev = projectWriteChains.get(id) ?? Promise.resolve()
   const next = prev.then(run, run).then(
     () => undefined,
-    () => undefined,
+    (error: unknown) => {
+      projectWriteFailureLogger(id, error)
+      return undefined // never-reject contract preserved
+    },
   )
   projectWriteChains.set(id, next)
   void next.finally(() => {
     if (projectWriteChains.get(id) === next) projectWriteChains.delete(id)
   })
   return next
+}
+
+const defaultProjectWriteFailureLogger: ProjectWriteFailureLogger = (
+  id,
+  error,
+) => {
+  // Default: stderr so operators see dropped log lines without coupling
+  // this leaf module to the Mastra logger. The server entrypoint may
+  // override via `setProjectWriteFailureLogger` to route through
+  // PinoLogger instead.
+  console.error(
+    `[project-store] append-only log write failed (project=${id}):`,
+    error,
+  )
+}
+
+let projectWriteFailureLogger: ProjectWriteFailureLogger =
+  defaultProjectWriteFailureLogger
+
+/** Restore the default `console.error` write-failure logger. */
+export function resetProjectWriteFailureLogger(): void {
+  projectWriteFailureLogger = defaultProjectWriteFailureLogger
+}
+
+/** Override the per-project write-failure logger. Pass a no-op to silence,
+ *  or a PinoLogger-backed sink to route failures through the server's
+ *  observability stack. The sink MUST NOT throw — `chainProjectWrite` calls
+ *  it from a promise-rejection handler where a throw becomes an unhandled
+ *  rejection. */
+export function setProjectWriteFailureLogger(
+  sink: ProjectWriteFailureLogger,
+): void {
+  projectWriteFailureLogger = sink
 }
 
 /** Serialize appends to one JSONL file so concurrent calls never interleave

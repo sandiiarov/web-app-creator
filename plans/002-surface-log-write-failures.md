@@ -7,8 +7,8 @@
 > in `plans/README.md` — unless a reviewer dispatched you and told you they
 > maintain the index.
 >
-> **Drift check (run first)**: `git diff --stat 5daf56ef..HEAD -- apps/server/src/mastra/lib/project-store.ts apps/server/src/mastra/lib/project-store.test.ts`
-> If any in-scope file changed since this plan was written, compare the
+> **Drift check (run first)**: `git diff --stat 09236e63 -- apps/server/src/mastra/lib/project-store.ts apps/server/src/mastra/lib/project-store.test.ts`
+> If any in-scope file changed since this plan was refreshed, compare the
 > "Current state" excerpts against the live code before proceeding; on a
 > mismatch, treat it as a STOP condition.
 
@@ -19,7 +19,7 @@
 - **Risk**: MED (touches the central write-chain used by every log append — must not change the never-reject contract that callers depend on)
 - **Depends on**: none
 - **Category**: dx / correctness (silent failure visibility)
-- **Planned at**: commit `5daf56ef`, 2026-07-19
+- **Planned at**: commit `5daf56ef`, 2026-07-19; refreshed at commit `09236e63`, 2026-08-02
 - **Issue**: (only when published via `--issues`)
 
 ## Why this matters
@@ -51,8 +51,8 @@ failure; tests can inject a capturing sink to assert the behavior.
 
 ## Current state
 
-The chain lives in `apps/server/src/mastra/lib/project-store.ts` (around
-lines 695-715, named `chainProjectWrite`). Verbatim:
+The chain lives in `apps/server/src/mastra/lib/project-store.ts`
+(lines 794-811, named `chainProjectWrite`). Verbatim:
 
 ```ts
 /** Serialize a project's debug-log writes on one per-project chain. The chain
@@ -82,14 +82,14 @@ The bug is the final `.then(() => undefined, () => undefined)` — the
 rejection-handler returns `undefined` and discards the error with no
 signal.
 
-### Callers (do not change — verified at recon)
+### Callers (do not change — verified at refresh)
 
-- `route.ts:275` — `void appendClientMessage(projectId, { dir: 'out', ... })`
-- `route.ts:309` — `void appendClientMessage(projectId, { dir: 'in', ... })`
-- `route.ts:509, 844` — `void appendAgentMessages(projectId, { ... })`
-- `route.ts:989` — `void appendVisionMessage(projectId, { ... })`
+- `route.ts:747` — `void appendClientMessage(projectId, { dir: 'out', ... })`
+- `route.ts:792` — `void appendClientMessage(projectId, { dir: 'in', ... })`
+- `route.ts:994, 1329` — `void appendAgentMessages(projectId, { ... })`
+- `route.ts:424` — `void appendVisionMessage(projectId, { ... })`
 - `tools/scrape.ts:163` — `void appendVisionMessage(projectId, { ... })`
-- `route.ts:240` — `await flushProjectLogs(projectId)` (in the `finally`
+- `route.ts:1401` — `await flushProjectLogs(projectId)` (in the `finally`
   block; resolves regardless).
 
 All callers must keep working unchanged.
@@ -116,7 +116,7 @@ All callers must keep working unchanged.
 |------------|------------------------------------------------------|---------------------|
 | Typecheck  | `pnpm --filter @workspace/server typecheck`          | exit 0, no errors   |
 | Lint       | `pnpm --filter @workspace/server lint`               | exit 0              |
-| Tests      | `pnpm --filter @workspace/server test`               | all pass; coverage ≥ 90% |
+| Tests      | `pnpm --filter @workspace/server test`               | all pass (no coverage gate is configured) |
 | Focused    | `pnpm --filter @workspace/server test -- --run project-store 2>&1 \| tail -15` | project-store tests pass |
 
 ## Scope
@@ -310,7 +310,7 @@ Then the test's `afterEach` (or the file's existing `afterEach`) calls
   may want the new symbols in a specific order — run `pnpm --filter
   @workspace/server lint:fix` if needed; confirm only formatting moved.)
 - `pnpm --filter @workspace/server test` → exit 0; baseline test count + 1
-  new test; coverage ≥ 90%.
+  new test; 
 
 ### Step 5: Confirm scope
 
@@ -341,7 +341,7 @@ Machine-checkable. ALL must hold:
 - [ ] `pnpm --filter @workspace/server typecheck` exits 0
 - [ ] `pnpm --filter @workspace/server lint` exits 0
 - [ ] `pnpm --filter @workspace/server test` exits 0; test count is
-      baseline + 1; coverage ≥ 90%
+      baseline + 1; 
 - [ ] `grep -nE 'setProjectWriteFailureLogger|resetProjectWriteFailureLogger|projectWriteFailureLogger' apps/server/src/mastra/lib/project-store.ts`
       shows all three symbols present
 - [ ] `git status --short` lists ONLY the two in-scope files

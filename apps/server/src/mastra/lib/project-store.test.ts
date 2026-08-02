@@ -1,8 +1,15 @@
-import { mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises'
+import {
+  chmod,
+  mkdir,
+  readFile,
+  readdir,
+  rm,
+  writeFile,
+} from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { saveImage } from './image-store.ts'
 import {
@@ -13,6 +20,7 @@ import {
   createProject,
   createProjectHtmlStore,
   deleteProject,
+  flushProjectLogs,
   getProject,
   inlineProjectImagesForCapture,
   listProjects,
@@ -23,8 +31,10 @@ import {
   readProjectRawMessages,
   readVisionMessages,
   reconcileInterruptedRuns,
+  resetProjectWriteFailureLogger,
   saveProjectMessageTurn,
   saveProjectRawMessages,
+  setProjectWriteFailureLogger,
   setRunStatusSync,
   setTitleIfUntitled,
   updateProjectModel,
@@ -38,6 +48,7 @@ const PROJECTS_DIR = join(MODULE_DIR, '..', '..', '..', '.data', 'projects')
 const createdProjectIds: string[] = []
 
 afterEach(async () => {
+  resetProjectWriteFailureLogger()
   await Promise.all(createdProjectIds.splice(0).map((id) => deleteProject(id)))
 })
 
@@ -671,6 +682,30 @@ describe('append-only debug logs', () => {
     await appendVisionMessage(project.id, entry)
 
     await expect(readVisionMessages(project.id)).resolves.toEqual([entry])
+  })
+
+  it('routes a failed append-log write through the write-failure logger', async () => {
+    const sink = vi.fn<(id: string, error: unknown) => void>()
+    setProjectWriteFailureLogger(sink)
+
+    const project = await createProject()
+    createdProjectIds.push(project.id)
+    const projectDir = join(PROJECTS_DIR, project.id)
+
+    try {
+      await chmod(projectDir, 0o555)
+      await appendClientMessage(project.id, {
+        dir: 'out',
+        event: 'text',
+        payload: { delta: 'hi' },
+        ts: 't-fail',
+      })
+      await flushProjectLogs(project.id)
+      expect(sink).toHaveBeenCalledTimes(1)
+      expect(sink).toHaveBeenCalledWith(project.id, expect.anything())
+    } finally {
+      await chmod(projectDir, 0o755)
+    }
   })
 
   it('serializes concurrent client appends without interleaving lines', async () => {
