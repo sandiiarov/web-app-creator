@@ -11,7 +11,13 @@ import {
 } from '@workspace/ui/components/tooltip'
 import { cn } from '@workspace/ui/lib/utils'
 import { Check, ChevronDown } from 'lucide-react'
-import { useState, type ComponentType } from 'react'
+import {
+  useEffect,
+  useRef,
+  useState,
+  type ComponentType,
+  type KeyboardEvent,
+} from 'react'
 
 import { AnthropicIcon } from './anthropic-icon'
 import { BytedanceIcon } from './bytedance-icon'
@@ -95,10 +101,11 @@ export interface ModelDropdownProps {
 
 /**
  * A model picker with one trigger showing all three role selections (text,
- * image, vision). Opens a popover with full-width role tabs across the top,
- * an icon-only provider sidebar on the left, and the selected provider's
- * models as a menu on the right. Selecting a model keeps the popover open so
- * all three roles can be set in one session.
+ * image, vision). Opens a popover with full-width role tabs across the top
+ * and one scrollable menu of every model in the active role, grouped under
+ * provider headers, with per-1M pricing under each name. Arrow keys rove
+ * between models; the selected model is scrolled into view on open. Selecting
+ * a model keeps the popover open so all three roles can be set in one session.
  */
 export function ModelDropdown({
   modelPricing,
@@ -107,40 +114,77 @@ export function ModelDropdown({
 }: ModelDropdownProps) {
   const [open, setOpen] = useState(false)
   const [activeRole, setActiveRole] = useState<LandingModelRole>('text')
-  const [activeProvider, setActiveProvider] = useState<null | string>(null)
   const activeGroup = LANDING_MODEL_GROUPS.find(
     (entry) => entry.role === activeRole,
   )!
 
-  // Providers available in the active role, in first-appearance order.
+  // Providers available in the active role with their models, in
+  // first-appearance order — rendered as group headers over flat model rows.
   const providers: {
     Icon?: ComponentType<{ className?: string }>
     name: string
+    options: typeof activeGroup.options
     prefix: string
   }[] = []
   for (const option of activeGroup.options) {
     const prefix = providerOf(option.id)
-    if (!providers.some((entry) => entry.prefix === prefix)) {
-      providers.push({
+    let provider = providers.find((entry) => entry.prefix === prefix)
+    if (!provider) {
+      provider = {
         Icon: MODEL_ICONS[option.id],
         name: PROVIDER_NAMES[prefix] ?? prefix,
+        options: [],
         prefix,
-      })
+      }
+      providers.push(provider)
     }
+    provider.options.push(option)
   }
 
-  // Show the explicitly picked provider, else the provider of the role's
-  // currently selected model, else the first provider.
-  const selectedProvider = providerOf(models[activeRole])
-  const shownProvider =
-    activeProvider && providers.some((entry) => entry.prefix === activeProvider)
-      ? activeProvider
-      : providers.some((entry) => entry.prefix === selectedProvider)
-        ? selectedProvider
-        : providers[0]?.prefix
-  const visibleOptions = activeGroup.options.filter(
-    (option) => providerOf(option.id) === shownProvider,
-  )
+  const selectedId = models[activeRole]
+  const [focusId, setFocusId] = useState(selectedId)
+  useEffect(() => {
+    setFocusId(selectedId)
+  }, [selectedId])
+
+  const listRef = useRef<HTMLDivElement | null>(null)
+
+  // Bring the selected model into view when the popover opens or the role
+  // tab changes, so the current choice is visible without hunting.
+  useEffect(() => {
+    if (!open) return
+    listRef.current
+      ?.querySelector('[aria-checked="true"]')
+      ?.scrollIntoView({ block: 'nearest' })
+  }, [open, activeRole])
+
+  function onListKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+    const rows = Array.from(
+      listRef.current?.querySelectorAll<HTMLElement>('[role="radio"]') ?? [],
+    )
+    if (rows.length === 0) return
+    const current = rows.indexOf(document.activeElement as HTMLElement)
+    let next: number
+    if (event.key === 'Home') {
+      next = 0
+    } else if (event.key === 'End') {
+      next = rows.length - 1
+    } else if (event.key === 'ArrowDown') {
+      next = current < 0 ? 0 : (current + 1) % rows.length
+    } else if (event.key === 'ArrowUp') {
+      next =
+        current < 0
+          ? rows.length - 1
+          : (current - 1 + rows.length) % rows.length
+    } else {
+      return
+    }
+    event.preventDefault()
+    const row = rows[next]
+    row?.focus()
+    const id = row?.dataset.modelId
+    if (id) setFocusId(id)
+  }
 
   return (
     <Popover onOpenChange={setOpen} open={open}>
@@ -195,15 +239,13 @@ export function ModelDropdown({
                 aria-selected={active}
                 className={cn(
                   '-mb-px flex flex-1 items-center justify-center gap-1.5 border-b-2 p-2 text-xs',
+                  'outline-none focus-visible:bg-accent focus-visible:ring-1 focus-visible:ring-ring/50 focus-visible:ring-inset',
                   active
                     ? 'border-foreground text-foreground'
                     : 'border-transparent text-muted-foreground hover:text-foreground',
                 )}
                 key={role}
-                onClick={() => {
-                  setActiveRole(role)
-                  setActiveProvider(null)
-                }}
+                onClick={() => setActiveRole(role)}
                 role="tab"
                 type="button"
               >
@@ -213,74 +255,65 @@ export function ModelDropdown({
             )
           })}
         </div>
-        <div className="flex">
-          <div className="flex w-11 flex-col gap-0.5 border-r border-border p-1">
-            {providers.map((provider) => (
-              <Tooltip key={provider.prefix}>
-                <TooltipTrigger asChild>
+        <div
+          aria-label={activeGroup.title}
+          className="max-h-80 overflow-y-auto p-1"
+          onKeyDown={onListKeyDown}
+          ref={listRef}
+          role="radiogroup"
+        >
+          {providers.map((provider, groupIndex) => (
+            <div aria-label={provider.name} key={provider.prefix} role="group">
+              <div
+                className={cn(
+                  'flex items-center gap-1.5 px-2 pb-1 text-[10px] font-medium text-muted-foreground',
+                  groupIndex === 0 ? 'pt-1' : 'pt-2',
+                )}
+              >
+                {provider.Icon ? <provider.Icon className="size-3" /> : null}
+                {provider.name}
+              </div>
+              {provider.options.map((option) => {
+                const Icon = MODEL_ICONS[option.id]
+                const pricing = modelPricingFor(option.id, modelPricing)
+                const selected = models[activeRole] === option.id
+                return (
                   <button
-                    aria-label={provider.name}
-                    aria-pressed={provider.prefix === shownProvider}
+                    aria-checked={selected}
                     className={cn(
-                      'flex items-center justify-center rounded-none p-2',
-                      provider.prefix === shownProvider
-                        ? 'bg-accent text-accent-foreground'
-                        : 'text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground',
+                      'flex w-full items-center gap-2 rounded-none px-2 py-1.5 text-left text-xs',
+                      'outline-none hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground focus-visible:ring-1 focus-visible:ring-ring/50 focus-visible:ring-inset',
                     )}
-                    onClick={() => setActiveProvider(provider.prefix)}
+                    data-model-id={option.id}
+                    key={option.id}
+                    onClick={() =>
+                      onModelsChange({ ...models, [activeRole]: option.id })
+                    }
+                    role="radio"
+                    tabIndex={option.id === focusId ? 0 : -1}
                     type="button"
                   >
-                    {provider.Icon ? (
-                      <provider.Icon className="size-4" />
-                    ) : (
-                      <span className="text-[10px]">{provider.name}</span>
-                    )}
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent side="right">{provider.name}</TooltipContent>
-              </Tooltip>
-            ))}
-          </div>
-          <div
-            aria-label={activeGroup.title}
-            className="flex min-w-0 flex-1 flex-col gap-0.5 p-1"
-            role="radiogroup"
-          >
-            {visibleOptions.map((option) => {
-              const Icon = MODEL_ICONS[option.id]
-              const pricing = modelPricingFor(option.id, modelPricing)
-              const selected = models[activeRole] === option.id
-              return (
-                <button
-                  aria-checked={selected}
-                  className="flex items-center gap-2 rounded-none px-2 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground"
-                  key={option.id}
-                  onClick={() =>
-                    onModelsChange({ ...models, [activeRole]: option.id })
-                  }
-                  role="radio"
-                  type="button"
-                >
-                  {Icon ? <Icon className="size-3.5 shrink-0" /> : null}
-                  <span className="flex min-w-0 flex-col">
-                    <span className="truncate">{option.label}</span>
-                    {pricing ? (
-                      <span className="truncate text-[10px] text-muted-foreground">
-                        {formatTokenPrice(pricing.input)} in ·{' '}
-                        {formatTokenPrice(pricing.output)} out
-                        {pricing.cacheRead == null
-                          ? ''
-                          : ` · ${formatTokenPrice(pricing.cacheRead)} cache`}
-                      </span>
+                    {Icon ? <Icon className="size-3.5 shrink-0" /> : null}
+                    <span className="flex min-w-0 flex-col">
+                      <span className="truncate">{option.label}</span>
+                      {pricing ? (
+                        <span className="truncate text-[10px] text-muted-foreground">
+                          {formatTokenPrice(pricing.input)} in ·{' '}
+                          {formatTokenPrice(pricing.output)} out
+                          {pricing.cacheRead == null
+                            ? ''
+                            : ` · ${formatTokenPrice(pricing.cacheRead)} cache`}
+                        </span>
+                      ) : null}
+                    </span>
+                    {selected ? (
+                      <Check className="ml-auto size-3.5 shrink-0" />
                     ) : null}
-                  </span>
-                  {selected ? (
-                    <Check className="ml-auto size-3.5 shrink-0" />
-                  ) : null}
-                </button>
-              )
-            })}
-          </div>
+                  </button>
+                )
+              })}
+            </div>
+          ))}
         </div>
         <div className="border-t border-border px-2 py-1.5 text-[10px] text-muted-foreground">
           Prices per 1M tokens
