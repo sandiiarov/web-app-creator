@@ -7,13 +7,7 @@ import type { MastraDBMessage } from '@mastra/core/agent/message-list'
 import { config } from '../config.ts'
 import { createLandingPageAgent } from './agents/landing-page-agent.ts'
 import { mastra } from './index.ts'
-import {
-  calculateLlmCost,
-  firecrawlCost,
-  imageGenCost,
-  providerReportedCost,
-  visionCost,
-} from './lib/cost.ts'
+import { providerReportedCost, visionCost } from './lib/cost.ts'
 import { ocrImageInputs, type ImageOcrResult } from './lib/image-ocr.ts'
 import { supportsImageInput } from './lib/model-capabilities.ts'
 import {
@@ -36,7 +30,6 @@ import {
   type ClientMessageEntry,
   type Project,
   type ProjectMessageAttachment,
-  type ProjectMessageStatsPart,
   type ProjectMessageToolCallPart,
   type ProjectMessageTurn,
   type ProjectRawMessage,
@@ -50,6 +43,10 @@ import {
   releaseRun,
   type RunEntry,
 } from './lib/run-bus.ts'
+import {
+  createRunStatsTracker,
+  type UsageSnapshot,
+} from './lib/run-stats.ts'
 import {
   asToolArgs,
   compactLines,
@@ -133,7 +130,6 @@ interface HtmlUpdatePayload {
   sequence: number
 }
 
-type RecordedStatsPayload = Omit<ProjectMessageStatsPart, 'type'>
 type RecordedToolPayload = Omit<ProjectMessageToolCallPart, 'type'>
 
 interface RunBodyOptions {
@@ -160,15 +156,6 @@ interface StartAgentOptions {
   textModel: string
   turnId?: string
   visionModel?: string
-}
-
-interface UsageSnapshot {
-  cachedInputTokens?: number
-  inputTokens?: number
-  outputTokens?: number
-  raw?: unknown
-  reasoningTokens?: number
-  totalTokens?: number
 }
 
 export function resolveModelId(model?: string): string {
@@ -253,28 +240,6 @@ export function stopLandingAgent(projectId: string): boolean {
   if (!entry) return false
   entry.controller.abort()
   return true
-}
-
-function addUsageSnapshots(
-  current: UsageSnapshot,
-  next: UsageSnapshot,
-): UsageSnapshot {
-  const sum = (key: keyof Omit<UsageSnapshot, 'raw'>) => {
-    const currentValue = current[key]
-    const nextValue = next[key]
-    if (typeof currentValue !== 'number') return nextValue
-    if (typeof nextValue !== 'number') return currentValue
-    return currentValue + nextValue
-  }
-
-  return {
-    cachedInputTokens: sum('cachedInputTokens'),
-    inputTokens: sum('inputTokens'),
-    outputTokens: sum('outputTokens'),
-    raw: next.raw ?? current.raw,
-    reasoningTokens: sum('reasoningTokens'),
-    totalTokens: sum('totalTokens'),
-  }
 }
 
 async function analyzePromptAttachments({
@@ -808,98 +773,25 @@ async function runAgentStream({
   // absent), so we can echo it on the done/error states too.
   const callAction = new Map<string, null | string>()
   let toolCallSeq = 0
-  // Track Firecrawl credits and calculate scrape cost from the configured rate.
-  let scrapeCredits = 0
-  let scrapeCalls = 0
-  // Accumulate image-generation count and OpenRouter-reported cost.
-  let imageCostUsd = 0
-  let imageCount = 0
-  // Accumulate prompt-attachment/screenshot vision OCR metadata.
-  let visionCalls = 0
-  let visionCostUsd = 0
-  let visionImages = 0
-  // Sum the final provider-reported cost chunk from every LLM step. OpenRouter
-  // reports usage/cost once at the end of each SSE generation, while Mastra's
-  // aggregate usage.raw retains only the latest step.
-  let llmProviderCostUsd = 0
-  // Accumulate bundled image-OCR OpenRouter-reported cost inside scrape cost.
-  let scrapeOcrCalls = 0
-  let scrapeOcrCostUsd = 0
-  let scrapeOcrImages = 0
   // Stop repeated blind edit attempts after MAX_EDIT_FAILURES consecutive failures.
   let editFailures = 0
   let fatalRunError: null | string = null
-  // Optional per-run USD cap (config.agentMaxCostUsd). 0/undefined disables it.
-  // Checked after each LLM/image/vision cost accrual; aborts the run if exceeded.
-  const costCapUsd = config.agentMaxCostUsd
-  const checkCostCap = (): boolean => {
-    if (costCapUsd <= 0) return false
-    const runCostUsd = llmProviderCostUsd + imageCostUsd + visionCostUsd
-    if (runCostUsd < costCapUsd) return false
-    fatalRunError = `Run exceeded the $${costCapUsd.toFixed(2)} cost cap.`
-    emit('error', { message: fatalRunError })
+  // Fatal run errors are emitted once and abort the run; both the cost cap
+  // (run-stats tracker) and the edit-failure circuit breaker escalate here.
+  const fatal = (message: string) => {
+    fatalRunError = message
+    emit('error', { message })
     controller.abort()
-    return true
   }
-  let liveUsage: UsageSnapshot = {}
-  const createStatsPayload = (
-    usage: UsageSnapshot,
-    finishReason: string,
-  ): RecordedStatsPayload => {
-    const llmCost = calculateLlmCost(textModel, {
-      cachedInputTokens: usage.cachedInputTokens,
-      inputTokens: usage.inputTokens,
-      outputTokens: usage.outputTokens,
-      raw: llmProviderCostUsd > 0 ? llmProviderCostUsd : usage.raw,
-      reasoningTokens: usage.reasoningTokens,
-      totalTokens: usage.totalTokens,
-    })
-    const firecrawlCostUsd = firecrawlCost(
-      scrapeCredits,
-      config.firecrawl.creditUsd,
-    )
-    const scrapeCostUsd = firecrawlCostUsd + scrapeOcrCostUsd
-    const totalCost = llmCost + scrapeCostUsd + imageCostUsd + visionCostUsd
-
-    return {
-      cost: totalCost,
-      costBreakdown: {
-        image: {
-          cost: imageCostUsd,
-          count: imageCount,
-        },
-        llm: llmCost,
-        scrape: {
-          calls: scrapeCalls,
-          cost: scrapeCostUsd,
-          credits: scrapeCredits,
-          firecrawlCost: firecrawlCostUsd,
-          ocrCalls: scrapeOcrCalls,
-          ocrCost: scrapeOcrCostUsd,
-          ocrImages: scrapeOcrImages,
-        },
-        total: totalCost,
-        vision: {
-          calls: visionCalls,
-          cost: visionCostUsd,
-          images: visionImages,
-        },
-      },
-      durationMs: Date.now() - startedAt,
-      finishReason,
-      model: textModel,
-      usage: {
-        cachedInputTokens: usage.cachedInputTokens,
-        inputTokens: usage.inputTokens,
-        outputTokens: usage.outputTokens,
-        reasoningTokens: usage.reasoningTokens,
-        totalTokens: usage.totalTokens,
-      },
-    }
-  }
-  const emitStats = (finishReason = 'in-progress') => {
-    emit('stats', createStatsPayload(liveUsage, finishReason))
-  }
+  // Per-run cost/stats accounting (provider-reported values only) — see
+  // lib/run-stats.ts. Emits rolling `stats` snapshots; `checkCostCap`
+  // escalates to `fatal` when the optional USD cap trips.
+  const stats = createRunStatsTracker({
+    emit,
+    onFatal: fatal,
+    startedAt,
+    textModel,
+  })
 
   // Hoisted above the try so both rolling snapshots and final accounting can
   // read the stream state when the loop throws (graceful stop / mid-stream
@@ -931,11 +823,12 @@ async function runAgentStream({
       emit('attachments_update', { attachments: recordedTurn.attachments })
     }
     if (attachmentAnalysis.visionImages > 0) {
-      visionImages += attachmentAnalysis.visionImages
-      visionCostUsd += attachmentAnalysis.cost
-      if (attachmentAnalysis.ok) visionCalls += 1
-      emitStats()
-      if (checkCostCap()) controller.signal.throwIfAborted()
+      stats.recordAttachmentVision({
+        cost: attachmentAnalysis.cost,
+        ok: attachmentAnalysis.ok,
+        visionImages: attachmentAnalysis.visionImages,
+      })
+      if (stats.checkCostCap()) controller.signal.throwIfAborted()
     }
 
     const agentPrompt = attachmentAnalysis.contextBlock
@@ -1014,12 +907,8 @@ async function runAgentStream({
           break
         }
         case 'raw': {
-          const providerCost = providerReportedCost(chunk.payload)
-          if (providerCost > 0) {
-            llmProviderCostUsd += providerCost
-            emitStats()
-          }
-          if (checkCostCap()) break streamLoop
+          stats.recordRawProviderCost(providerReportedCost(chunk.payload))
+          if (stats.checkCostCap()) break streamLoop
           break
         }
         case 'reasoning-delta': {
@@ -1027,13 +916,7 @@ async function runAgentStream({
           break
         }
         case 'step-finish': {
-          liveUsage = chunk.payload.totalUsage
-            ? toUsageSnapshot(chunk.payload.totalUsage)
-            : addUsageSnapshots(
-                liveUsage,
-                toUsageSnapshot(chunk.payload.output.usage),
-              )
-          emitStats()
+          stats.recordStepUsage(chunk.payload)
           break
         }
         case 'text-delta': {
@@ -1105,13 +988,11 @@ async function runAgentStream({
           }
           emit('tool_call', toolPayload)
           completedCallIds.add(chunk.payload.toolCallId)
-          emitStats()
+          stats.emitStats()
           if (chunk.payload.toolName === 'edit') {
             editFailures += 1
             if (editFailures >= MAX_EDIT_FAILURES) {
-              fatalRunError = REPEATED_EDIT_FAILURE_MESSAGE
-              emit('error', { message: fatalRunError })
-              controller.abort()
+              fatal(REPEATED_EDIT_FAILURE_MESSAGE)
               break streamLoop
             }
           }
@@ -1160,9 +1041,7 @@ async function runAgentStream({
             if (isError) {
               editFailures += 1
               if (editFailures >= MAX_EDIT_FAILURES) {
-                fatalRunError = REPEATED_EDIT_FAILURE_MESSAGE
-                emit('error', { message: fatalRunError })
-                controller.abort()
+                fatal(REPEATED_EDIT_FAILURE_MESSAGE)
                 break streamLoop
               }
             } else {
@@ -1185,36 +1064,21 @@ async function runAgentStream({
           // successful changed edits instead of pulling HTML on every edit-done.
           // Track Firecrawl usage and bundled OpenRouter OCR metadata from successful scrape calls.
           if (chunk.payload.toolName === 'scrape' && !isError) {
-            const result = chunk.payload.result as {
-              creditsUsed?: number
-              imageOcr?: {
-                cost?: number
-                imagesAnalyzed?: number
-                ok?: boolean
-                usage?: null | {
-                  cachedTokens?: number
-                  completionTokens?: number
-                  promptTokens?: number
+            stats.recordScrapeResult(
+              chunk.payload.result as {
+                creditsUsed?: number
+                imageOcr?: {
+                  cost?: number
+                  imagesAnalyzed?: number
+                  ok?: boolean
+                  usage?: null | {
+                    cachedTokens?: number
+                    completionTokens?: number
+                    promptTokens?: number
+                  }
                 }
-              }
-            }
-            scrapeCalls += 1
-            if (typeof result.creditsUsed === 'number') {
-              scrapeCredits += result.creditsUsed
-            }
-            const imageOcr = result.imageOcr
-            if (imageOcr?.ok && (imageOcr.imagesAnalyzed ?? 0) > 0) {
-              scrapeOcrCalls += 1
-              scrapeOcrImages += imageOcr.imagesAnalyzed ?? 0
-              scrapeOcrCostUsd += visionCost(
-                {
-                  cachedTokens: imageOcr.usage?.cachedTokens,
-                  completionTokens: imageOcr.usage?.completionTokens,
-                  promptTokens: imageOcr.usage?.promptTokens,
-                },
-                imageOcr.cost,
-              )
-            }
+              },
+            )
           }
           let checkToolCostCap = false
           // Accumulate image-generation cost from successful generate_image calls.
@@ -1224,9 +1088,7 @@ async function runAgentStream({
               imagesGenerated?: number
               url?: null | string
             }
-            if (typeof result.imagesGenerated === 'number') {
-              imageCount += result.imagesGenerated
-              imageCostUsd += imageGenCost(result.imagesGenerated, result.cost)
+            if (stats.recordGenerateImage(result)) {
               checkToolCostCap = true
             }
             // Persist generated image bytes to the project folder at
@@ -1252,23 +1114,12 @@ async function runAgentStream({
                 }
               }
             }
-            const imageOcr = result.imageOcr
-            if (imageOcr?.ok && (imageOcr.imagesAnalyzed ?? 0) > 0) {
-              visionCalls += 1
-              visionImages += imageOcr.imagesAnalyzed ?? 0
-              visionCostUsd += visionCost(
-                {
-                  cachedTokens: imageOcr.usage?.cachedTokens,
-                  completionTokens: imageOcr.usage?.completionTokens,
-                  promptTokens: imageOcr.usage?.promptTokens,
-                },
-                imageOcr.cost,
-              )
+            if (stats.recordScreenshotOcr(result)) {
               checkToolCostCap = true
             }
           }
-          emitStats()
-          if (checkToolCostCap && checkCostCap()) break streamLoop
+          stats.emitStats()
+          if (checkToolCostCap && stats.checkCostCap()) break streamLoop
           break
         }
         default:
@@ -1300,7 +1151,7 @@ async function runAgentStream({
       // accumulated during the run, plus provider-reported LLM cost) records.
       // A stream setup failure still emits zero-token stats plus any costs that
       // were already accumulated before `agent.stream` rejected.
-      let usage: UsageSnapshot = liveUsage
+      let usage: UsageSnapshot = stats.usage
       const wasStopped = controller.signal.aborted && !fatalRunError
       let finishReason = wasStopped ? 'stopped' : 'stop'
       if (streamError && !controller.signal.aborted) finishReason = 'error'
@@ -1316,8 +1167,8 @@ async function runAgentStream({
           // image, scrape, vision, or raw provider chunks before termination.
         }
       }
-      liveUsage = usage
-      emitStats(finishReason)
+      stats.usage = usage
+      stats.emitStats(finishReason)
 
       // Final agent-message snapshot at run end (the last per-step snapshot via
       // onStepFinish may not fire for every stream shape, so this guarantees the
@@ -1496,15 +1347,4 @@ function stripReasoning(messages: MastraDBMessage[]): MastraDBMessage[] {
     if (kept.length === parts.length) return message
     return { ...message, content: { ...message.content, parts: kept } }
   })
-}
-
-function toUsageSnapshot(usage: UsageSnapshot): UsageSnapshot {
-  return {
-    cachedInputTokens: usage.cachedInputTokens,
-    inputTokens: usage.inputTokens,
-    outputTokens: usage.outputTokens,
-    raw: usage.raw,
-    reasoningTokens: usage.reasoningTokens,
-    totalTokens: usage.totalTokens,
-  }
 }
