@@ -33,7 +33,12 @@ import {
   type AgentElementAttachmentInput,
   type AgentImageAttachmentInput,
 } from './mastra/route.ts'
-import { filterModelPricing, getModelPricing } from './model-catalog.ts'
+import {
+  filterModelPricing,
+  getImageModelPricing,
+  getModelPricing,
+  type ModelPricingCatalog,
+} from './model-catalog.ts'
 
 const ACCEPTED_ATTACHMENT_MEDIA_TYPES = new Set([
   'image/gif',
@@ -74,7 +79,12 @@ const server = createServer(async (request, response) => {
           ok: false,
         })
       } else {
-        sendJson(response, 500, { error: errorMessage(error), ok: false })
+        // Log the full error server-side for operator debuggability; return a
+        // generic message to the client so internal details (fs paths, provider
+        // error bodies, stack strings) don't leak when the server is exposed
+        // on a non-loopback interface.
+        console.error('[server] unhandled error:', error)
+        sendJson(response, 500, { error: 'Internal server error.', ok: false })
       }
     } else {
       response.end()
@@ -350,7 +360,19 @@ async function handleModelCatalog(
     .filter(Boolean)
   try {
     const catalog = await getModelPricing()
-    const models = ids?.length ? filterModelPricing(catalog, ids) : catalog
+    const models: ModelPricingCatalog = ids?.length
+      ? filterModelPricing(catalog, ids)
+      : catalog
+    // Image-generation-only models (Seedream, GPT Image, Grok Imagine) are
+    // absent from the chat catalog — enrich them from the images API so the
+    // picker can price every image option. Failures skip the id silently.
+    const chatAbsent = (ids ?? []).filter((id) => !(id in models))
+    if (chatAbsent.length > 0) {
+      const imagePricing = await getImageModelPricing(chatAbsent)
+      for (const [id, pricing] of Object.entries(imagePricing)) {
+        models[id] = { input: 0, output: 0, ...pricing }
+      }
+    }
     sendJson(response, 200, { models, ok: true })
   } catch (error) {
     sendJson(response, 502, { error: errorMessage(error), ok: false })

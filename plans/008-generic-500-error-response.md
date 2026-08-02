@@ -7,8 +7,8 @@
 > in `plans/README.md` — unless a reviewer dispatched you and told you they
 > maintain the index.
 >
-> **Drift check (run first)**: `git diff --stat 5daf56ef..HEAD -- apps/server/src/index.ts apps/server/src/index.test.ts`
-> If any in-scope file changed since this plan was written, compare the
+> **Drift check (run first)**: `git diff --stat 09236e63 -- apps/server/src/index.ts apps/server/src/index.test.ts`
+> If any in-scope file changed since this plan was refreshed, compare the
 > "Current state" excerpts against the live code before proceeding; on a
 > mismatch, treat it as a STOP condition.
 
@@ -19,7 +19,7 @@
 - **Risk**: LOW
 - **Depends on**: none
 - **Category**: security (info-disclosure hardening)
-- **Planned at**: commit `5daf56ef`, 2026-07-19
+- **Planned at**: commit `5daf56ef`, 2026-07-19; refreshed at commit `09236e63`, 2026-08-02
 - **Issue**: (only when published via `--issues`)
 
 ## Why this matters
@@ -76,7 +76,7 @@ const server = createServer(async (request, response) => {
 })
 ```
 
-The `errorMessage` helper at the bottom of the file:
+The `errorMessage` helper at the bottom of the file (line 119):
 
 ```ts
 function errorMessage(error: unknown) {
@@ -84,9 +84,13 @@ function errorMessage(error: unknown) {
 }
 ```
 
-A grep for `errorMessage` across `apps/server/src` at recon returned only
-this one call site and the definition — so once the 500 path stops using
-it, the helper is dead and should be deleted.
+The helper has TWO callers today — the 500 branch (line 82, in scope)
+and the `/api/models` 502 branch (line 373,
+`sendJson(response, 502, { error: errorMessage(error), ok: false })`).
+The 502 message carries only upstream fetch-failure text (e.g. "OpenRouter
+model catalog returned 503") — acceptable, and OUT of this plan's scope.
+Because of that second caller, **the helper must NOT be deleted** (this
+changes the original plan's Step 2 — see there).
 
 The 413 path stays unchanged — `'Request body exceeds the allowed
 size.'` is a fixed, safe string. The 403 path is already a fixed string.
@@ -110,7 +114,7 @@ The new 500 path matches that pattern.
 |------------|------------------------------------------------------|---------------------|
 | Typecheck  | `pnpm --filter @workspace/server typecheck`          | exit 0, no errors   |
 | Lint       | `pnpm --filter @workspace/server lint`               | exit 0              |
-| Tests      | `pnpm --filter @workspace/server test`               | all pass; coverage ≥ 90% |
+| Tests      | `pnpm --filter @workspace/server test`               | all pass (no coverage gate is configured) |
 | Focused    | `pnpm --filter @workspace/server test -- --run index 2>&1 \| tail -15` | index tests pass |
 
 ## Scope
@@ -167,25 +171,16 @@ with:
 }
 ```
 
-### Step 2: Delete the dead `errorMessage` helper (if confirmed unused)
+### Step 2: Keep the `errorMessage` helper (its 502 caller remains)
 
-Re-verify no other caller exists:
+The original version of this plan deleted `errorMessage` as dead code.
+At refresh it has a second caller — the `/api/models` 502 branch
+(line 373) — so the helper STAYS. Nothing to do in this step beyond
+confirming the 500 branch no longer calls it:
 
-**Verify**: `grep -nE '\berrorMessage\(' apps/server/src --include="*.ts" -r`
-→ only matches the definition itself (one match, in `index.ts`).
-
-If confirmed, delete the helper and its leading JSDoc (if any):
-
-```ts
-function errorMessage(error: unknown) {
-  return error instanceof Error ? error.message : 'Unknown error'
-}
-```
-
-If the grep returns ANY other caller, leave the helper in place and note
-it in the reviewer NOTES.
-
-**Verify**: `pnpm --filter @workspace/server typecheck` → exit 0.
+**Verify**: `grep -nE '\berrorMessage\(' apps/server/src/index.ts`
+→ exactly two matches: the definition (~line 119) and the 502 call
+(~line 373). If the 500 branch still appears, Step 1 was not applied.
 
 ### Step 3: Add a regression test in `index.test.ts`
 
@@ -239,9 +234,10 @@ error does NOT reach the body, and the original error DOES reach
 - `pnpm --filter @workspace/server typecheck` → exit 0.
 - `pnpm --filter @workspace/server lint` → exit 0.
 - `pnpm --filter @workspace/server test` → exit 0; baseline + 1 new test;
-  coverage ≥ 90%.
-- `pnpm run fallow:dead-code` → exit 0 (or only the pre-existing
-  `@workspace/agent-skills` flag — record in NOTES, do not chase).
+  
+- `pnpm run fallow:dead-code` → exit 0 (plan 009 has landed by now —
+  if it has not, the pre-existing flags listed in `plans/README.md`
+  may still fail it; record in NOTES but do not chase).
 
 ### Step 5: Confirm scope
 
@@ -270,7 +266,7 @@ Machine-checkable. ALL must hold:
 - [ ] `pnpm --filter @workspace/server typecheck` exits 0
 - [ ] `pnpm --filter @workspace/server lint` exits 0
 - [ ] `pnpm --filter @workspace/server test` exits 0; test count is
-      baseline + 1; coverage ≥ 90%
+      baseline + 1; 
 - [ ] `grep -nE 'error: errorMessage\(error\)' apps/server/src/index.ts`
       returns no matches (the leak is closed)
 - [ ] `grep -nE 'error: .Internal server error..' apps/server/src/index.ts`
@@ -285,9 +281,9 @@ Stop and report back (do not improvise) if:
 - The drift check is non-empty AND the live `index.ts` catch block does
   not match the excerpt (someone reworked the error path since
   planning).
-- `errorMessage` has another caller in `apps/server/src` besides the
-  500 branch — leave the helper in place and note the caller in NOTES;
-  do not delete blindly.
+- `errorMessage` gains ANOTHER caller beyond the 502 branch — the
+  helper still stays, but note the new caller in the reviewer NOTES so
+  the leak audit covers it.
 - The existing `index.test.ts` `withServer` helper does not support the
   `vi.doMock` flow needed to inject a throwing `listProjects` (the file
   has drifted from recon). Report the actual helper shape and pick the
@@ -312,6 +308,6 @@ Stop and report back (do not improvise) if:
   pulling in Mastra types at the HTTP layer, and `console.error` is
   captured by standard process supervision (systemd, pm2, Docker logs)
   anyway. Don't bundle that wiring here.
-- Reviewer: the diff should change one `else` branch, delete one helper
-  (if confirmed dead), and add one test. Reject any change to the 413
-  path, the CORS logic, or other handlers.
+- Reviewer: the diff should change one `else` branch and add one test
+  (the helper stays — it still has the 502 caller). Reject any change
+  to the 413 path, the CORS logic, or other handlers.

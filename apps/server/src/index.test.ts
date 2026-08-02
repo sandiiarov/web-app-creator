@@ -23,6 +23,7 @@ const ELEMENT_ATTACHMENT = {
 const createdProjectIds: string[] = []
 
 afterEach(async () => {
+  vi.doUnmock('./mastra/lib/project-store.ts')
   vi.doUnmock('./mastra/route.ts')
   vi.unstubAllEnvs()
   vi.resetModules()
@@ -33,6 +34,45 @@ afterEach(async () => {
 })
 
 describe('server HTTP routes', () => {
+  it('returns a generic 500 body and logs the real error server-side', async () => {
+    vi.resetModules()
+    vi.stubEnv('OPENROUTER_API_KEY', 'test-openrouter-key')
+    vi.stubEnv('CLIENT_ORIGIN', 'https://client.test')
+    const boom = new Error('SENSITIVE internal filesystem detail')
+    vi.doMock('./mastra/route.ts', () => ({
+      resolveModelId: (model?: string) => model ?? 'default-model',
+      startLandingAgent: vi.fn<() => Promise<unknown>>(),
+      stopLandingAgent: vi.fn<() => boolean>(),
+    }))
+    vi.doMock('./mastra/lib/project-store.ts', async (importOriginal) => {
+      const actual =
+        await importOriginal<typeof import('./mastra/lib/project-store.ts')>()
+      return {
+        ...actual,
+        listProjects: vi.fn<() => Promise<never[]>>(async () => {
+          throw boom
+        }),
+      }
+    })
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    const { server } = await import('./index.ts')
+    await listen(server)
+    const { port } = server.address() as AddressInfo
+    try {
+      const response = await fetch(`http://127.0.0.1:${port}/api/projects`, {
+        headers: { origin: 'https://client.test' },
+      })
+      expect(response.status).toBe(500)
+      const body = (await response.json()) as { error: string; ok: boolean }
+      expect(body).toEqual({ error: 'Internal server error.', ok: false })
+      expect(JSON.stringify(body)).not.toContain('SENSITIVE')
+      expect(errorSpy).toHaveBeenCalledWith('[server] unhandled error:', boom)
+    } finally {
+      await close(server)
+    }
+  })
+
   it('handles CORS preflight and not found responses', async () => {
     await withServer(async ({ baseUrl }) => {
       const options = await fetch(`${baseUrl}/agent`, {
