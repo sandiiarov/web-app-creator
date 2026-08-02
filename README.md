@@ -32,7 +32,7 @@ Root files are workspace/orchestration only. TS, Vite, Oxlint, and Oxfmt config 
 
 - `POST /agent` — SSE stream. Body `{ prompt: string, projectId: string, turnId?: string, textModel?: string, imageModel?: string, visionModel?: string, attachments?: attachment[] }`. The first-party client supplies `turnId` so local state, append-only logs, hydration, and transport-loss reconciliation address the same turn. Emits `text`, `thinking`, `tool_call`, `tool_call_drop`, `html_update`, `stats`, `screenshot_request`, `retry`, `error`, and `done` events.
 - `POST /api/screenshot-responses/:requestId` — browser POST-back that resolves a pending `screenshot_request` (bytes persisted once to disk; only metadata is logged).
-- `GET /api/models` — slim per-1M-token pricing map (`{ ok, models: Record<id, { input, output, cacheRead? }> }`) for the model picker; server-proxied OpenRouter `/models` catalog w/ in-process TTL cache (5 min, matches upstream), stale-on-error, `502` when no snapshot so the client falls back to bundled static pricing.
+- `GET /api/models` — slim per-1M-token pricing map (`{ ok, models: Record<id, { input, output, cacheRead? }> }`) for the model picker; server-proxied OpenRouter `/models` catalog w/ in-process TTL cache (5 min, matches upstream), stale-on-error, `502` when no snapshot so the client falls back to bundled static pricing. `?ids=a/b,c/d` scopes the response to the app's supported models (client sends its picker option ids).
 - `GET /api/projects` — list projects with generated HTML.
 - `POST /api/projects` — create a project. Body `{ textModel?: string, title?: string }`.
 - `GET /api/projects/:id` — get a project (HTML + hydrated message turns).

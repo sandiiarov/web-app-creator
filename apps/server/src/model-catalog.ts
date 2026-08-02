@@ -39,6 +39,23 @@ let snapshot: undefined | { data: ModelPricingCatalog; fetchedAt: number }
 let inflight: Promise<ModelPricingCatalog> | undefined
 
 /**
+ * Return the catalog subset for the given model ids (the app's supported
+ * models, as declared by the client's picker options). Unknown ids are
+ * ignored; a model absent from the upstream catalog simply does not appear.
+ */
+export function filterModelPricing(
+  catalog: ModelPricingCatalog,
+  ids: readonly string[],
+): ModelPricingCatalog {
+  const filtered: ModelPricingCatalog = {}
+  for (const id of ids) {
+    const entry = catalog[id]
+    if (entry) filtered[id] = entry
+  }
+  return filtered
+}
+
+/**
  * Return the slim pricing catalog, served from the in-process TTL cache when
  * fresh. Concurrent callers share one upstream refresh.
  */

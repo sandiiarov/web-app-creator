@@ -33,7 +33,7 @@ import {
   type AgentElementAttachmentInput,
   type AgentImageAttachmentInput,
 } from './mastra/route.ts'
-import { getModelPricing } from './model-catalog.ts'
+import { filterModelPricing, getModelPricing } from './model-catalog.ts'
 
 const ACCEPTED_ATTACHMENT_MEDIA_TYPES = new Set([
   'image/gif',
@@ -272,7 +272,7 @@ async function routeRequest(
   }
 
   if (request.method === 'GET' && pathname === '/api/models') {
-    await handleModelCatalog(response)
+    await handleModelCatalog(request, response)
     return
   }
 
@@ -334,9 +334,23 @@ async function handleListProjects(response: ServerResponse) {
   sendJson(response, 200, { ok: true, projects })
 }
 
-async function handleModelCatalog(response: ServerResponse) {
+async function handleModelCatalog(
+  request: IncomingMessage,
+  response: ServerResponse,
+) {
+  // `?ids=a/b,c/d` scopes the response to the app's supported models (the
+  // picker's option ids); without it the full slim catalog is returned.
+  const idsParam = new URL(
+    request.url ?? '/',
+    `http://${request.headers.host}`,
+  ).searchParams.get('ids')
+  const ids = idsParam
+    ?.split(',')
+    .map((id) => id.trim())
+    .filter(Boolean)
   try {
-    const models = await getModelPricing()
+    const catalog = await getModelPricing()
+    const models = ids?.length ? filterModelPricing(catalog, ids) : catalog
     sendJson(response, 200, { models, ok: true })
   } catch (error) {
     sendJson(response, 502, { error: errorMessage(error), ok: false })

@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import {
+  filterModelPricing,
   getModelPricing,
   parseModelPricing,
   resetModelPricingCache,
@@ -56,6 +57,25 @@ describe('parseModelPricing', () => {
       }),
     ).toEqual({})
     expect(parseModelPricing({})).toEqual({})
+  })
+})
+
+describe('filterModelPricing', () => {
+  const catalog = {
+    'a/b': { input: 1, output: 2 },
+    'c/d': { cacheRead: 0.1, input: 3, output: 4 },
+    'e/f': { input: 5, output: 6 },
+  }
+
+  it('returns only the requested ids, ignoring unknown ones', () => {
+    expect(filterModelPricing(catalog, ['c/d', 'unknown/model'])).toEqual({
+      'c/d': { cacheRead: 0.1, input: 3, output: 4 },
+    })
+  })
+
+  it('returns an empty map when nothing matches', () => {
+    expect(filterModelPricing(catalog, [])).toEqual({})
+    expect(filterModelPricing(catalog, ['x/y'])).toEqual({})
   })
 })
 
