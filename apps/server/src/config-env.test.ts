@@ -7,6 +7,32 @@ function createEnv(overrides: ConfigEnvironment = {}): ConfigEnvironment {
 }
 
 describe('createConfigFromEnv', () => {
+  it('derives serverBaseUrl from HOST/PORT by default', () => {
+    expect(createConfigFromEnv(createEnv()).serverBaseUrl).toBe(
+      'http://127.0.0.1:3001',
+    )
+    expect(
+      createConfigFromEnv(createEnv({ HOST: '0.0.0.0', PORT: '4000' }))
+        .serverBaseUrl,
+    ).toBe('http://0.0.0.0:4000')
+  })
+
+  it('honors an explicit SERVER_BASE_URL and normalizes trailing slash', () => {
+    expect(
+      createConfigFromEnv(
+        createEnv({ SERVER_BASE_URL: 'https://example.com/' }),
+      ).serverBaseUrl,
+    ).toBe('https://example.com')
+  })
+
+  it('rejects invalid SERVER_BASE_URL values', () => {
+    for (const value of ['*', 'null', 'ftp://x', 'https://x/path']) {
+      expect(() =>
+        createConfigFromEnv(createEnv({ SERVER_BASE_URL: value })),
+      ).toThrow('Invalid SERVER_BASE_URL value')
+    }
+  })
+
   it('parses openrouter config with defaults', () => {
     const config = createConfigFromEnv(createEnv())
 

@@ -6,6 +6,7 @@ const ALLOWED_CLIENT_ORIGIN_PROTOCOLS = new Set(['http:', 'https:'])
 const DEFAULT_CLIENT_ORIGIN = 'http://localhost:5173'
 const DEFAULT_HOST = '127.0.0.1'
 const INVALID_CLIENT_ORIGIN_VALUES = new Set(['*', 'null'])
+const INVALID_SERVER_BASE_URL_VALUES = new Set(['*', 'null'])
 const DEFAULT_OPENROUTER_CHAT_MODEL = 'z-ai/glm-5.2:nitro'
 const DEFAULT_OPENROUTER_IMAGE_MODEL = 'bytedance-seed/seedream-4.5'
 const DEFAULT_OPENROUTER_VISION_MODEL = 'bytedance-seed/seed-2.0-mini'
@@ -85,6 +86,10 @@ export function createConfigFromEnv(source: ConfigEnvironment) {
       imageApiUrl: 'https://openrouter.ai/api/v1/images',
     },
     port: parsePort(optionalEnv(source, 'PORT') ?? '3001'),
+    serverBaseUrl: parseServerBaseUrl(
+      optionalEnv(source, 'SERVER_BASE_URL') ??
+        `http://${optionalEnv(source, 'HOST') ?? DEFAULT_HOST}:${parsePort(optionalEnv(source, 'PORT') ?? '3001')}`,
+    ),
   } as const
 }
 
@@ -160,4 +165,31 @@ function parsePort(value: string) {
   }
 
   return port
+}
+
+function parseServerBaseUrl(value: string) {
+  if (INVALID_SERVER_BASE_URL_VALUES.has(value) || value.includes(',')) {
+    throw new Error('Invalid SERVER_BASE_URL value')
+  }
+  if (!URL.canParse(value)) {
+    throw new Error('Invalid SERVER_BASE_URL value')
+  }
+
+  const url = new URL(value)
+  if (!ALLOWED_CLIENT_ORIGIN_PROTOCOLS.has(url.protocol)) {
+    throw new Error('Invalid SERVER_BASE_URL value')
+  }
+  const hasUnsupportedParts = [
+    url.username,
+    url.password,
+    url.pathname === '/' ? '' : url.pathname,
+    url.search,
+    url.hash,
+  ].some(Boolean)
+
+  if (hasUnsupportedParts) {
+    throw new Error('Invalid SERVER_BASE_URL value')
+  }
+
+  return url.origin
 }

@@ -86,6 +86,7 @@ The server reads `apps/server/.env` (package-local; do not create a root `.env`)
 | `MASTRA_PROJECT_ID` / `MASTRA_PLATFORM_ACCESS_TOKEN` | — | optional Mastra platform telemetry |
 | `CLIENT_ORIGIN` | `http://localhost:5173` | exact allowed browser origin; other `Origin` values receive `403` |
 | `HOST` / `PORT` | `127.0.0.1` / `3001` | bind address |
+| `SERVER_BASE_URL` | `http://${HOST}:${PORT}` | server origin used to build absolute image/screenshot URLs the agent embeds in HTML; override when behind a proxy |
 | `AGENT_MODEL_MAX_RETRIES` | `0` | per-call model retries |
 | `AGENT_RETRY_BASE_DELAY_MS` / `AGENT_RETRY_MAX_DELAY_MS` | `1000` / `10000` | retry backoff |
 | `AGENT_STREAM_ERROR_MAX_RETRIES` | `10` | mid-stream error retries |

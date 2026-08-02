@@ -7,8 +7,8 @@
 > in `plans/README.md` — unless a reviewer dispatched you and told you they
 > maintain the index.
 >
-> **Drift check (run first)**: `git diff --stat 5daf56ef..HEAD -- apps/server/src/mastra/route.ts apps/server/src/config-env.ts apps/server/src/config-env.test.ts apps/server/AGENTS.md README.md`
-> If any in-scope file changed since this plan was written, compare the
+> **Drift check (run first)**: `git diff --stat 09236e63 -- apps/server/src/index.ts apps/server/src/config-env.ts apps/server/src/config-env.test.ts apps/server/AGENTS.md README.md`
+> If any in-scope file changed since this plan was refreshed, compare the
 > "Current state" excerpts against the live code before proceeding; on a
 > mismatch, treat it as a STOP condition.
 
@@ -19,27 +19,31 @@
 - **Risk**: LOW
 - **Depends on**: none
 - **Category**: security / correctness (Host-header hardening)
-- **Planned at**: commit `5daf56ef`, 2026-07-19
+- **Planned at**: commit `5daf56ef`, 2026-07-19; refreshed at commit `09236e63`, 2026-08-02
 - **Issue**: (only when published via `--issues`)
 
 ## Why this matters
 
-`apps/server/src/mastra/route.ts` builds the server's own base URL from
-the client-controlled `Host` header:
+`apps/server/src/index.ts` builds the server's own base URL from
+the client-controlled `Host` header in `handleAgent` (the `POST /agent`
+handler, line 206):
 
 ```ts
 const baseUrl = `http://${request.headers.host ?? `localhost:${config.port}`}`
 ```
 
-That `baseUrl` flows into `createLandingPageAgent` →
+That `baseUrl` is passed to `startLandingAgent({ ..., baseUrl, ... })`,
+which threads it into the detached run: `runAgentStream` →
+`createLandingPageAgent(store, mastra, baseUrl, ...)` →
 `createGenerateImageTool(baseUrl, ...)` → the tool returns
 `` `${baseUrl}/images/${id}.${ext}` `` to the agent, and the agent embeds
 that URL into the persisted project HTML via `edit`. It also flows into
 `expandScreenshotUrl(..., baseUrl)` for screenshot URLs sent to the
-client. A poisoned `Host: evil.example` request therefore produces image
-URLs like `http://evil.example/images/img-1.jpg` that get written into
-`html.json` and served back on subsequent reads — a Host-header injection
-that persists into project content.
+client (both prompt-attachment element captures and terminal screenshot
+tool previews). A poisoned `Host: evil.example` request therefore
+produces image URLs like `http://evil.example/images/img-1.jpg` that get
+written into `html.json` and served back on subsequent reads — a
+Host-header injection that persists into project content.
 
 Practical risk in the **default loopback deployment** is LOW (the
 first-party browser sends the correct Host; CORS blocks cross-origin
@@ -55,18 +59,22 @@ shape persisted content.
 
 ## Current state
 
-- `apps/server/src/mastra/route.ts:287` (inside `activeStreamLandingAgent`):
+- `apps/server/src/index.ts:206` (inside `handleAgent`):
   ```ts
   const baseUrl = `http://${request.headers.host ?? `localhost:${config.port}`}`
+  const result = await startLandingAgent({
+    attachments,
+    baseUrl,
+    ...
   ```
-  Used downstream in the same function:
-  - Passed into `createLandingPageAgent(store, mastra, baseUrl, ...)`
-    (route.ts:289-313), which forwards it to `createLandingTools` and on
-    to `createGenerateImageTool(baseUrl, ...)`.
-  - Passed into `analyzePromptAttachments({ ..., baseUrl, ... })`
-    (route.ts:434).
-  - Passed to `expandScreenshotUrl(viewport.imageUrl, baseUrl)`
-    (route.ts:1029).
+  Downstream flow (all signatures stay `baseUrl: string`; only the
+  source changes):
+  - `startLandingAgent({ baseUrl, ... })` → `runLandingAgentBody` →
+    `runAgentStream` (`apps/server/src/mastra/route.ts`).
+  - `createLandingPageAgent(store, mastra, baseUrl, ...)` — forwarded to
+    `createLandingTools` and on to `createGenerateImageTool(baseUrl, ...)`.
+  - `analyzePromptAttachments({ ..., baseUrl, ... })`.
+  - `expandScreenshotUrl(viewport.imageUrl, baseUrl)`.
 
 - `apps/server/src/config-env.ts` exports `createConfigFromEnv(source)`:
   the returned object has `host`, `port`, `clientOrigin`,
@@ -78,13 +86,16 @@ shape persisted content.
   pattern to follow for the new test.
 - `apps/server/AGENTS.md` "Optional env" list mentions `HOST`, `PORT`,
   `CLIENT_ORIGIN` and the rest, but no `SERVER_BASE_URL`.
-- `README.md` "Other" env table lists `HOST` / `PORT` / `CLIENT_ORIGIN`
-  with defaults.
+- `README.md` "Other" env table (lines ~79-95) lists `HOST` / `PORT` /
+  `CLIENT_ORIGIN` with defaults.
 
-The Host header is also read in `apps/server/src/index.ts:228` —
-`new URL(request.url ?? '/', \`http://${request.headers.host}\`).pathname`
-— but ONLY for parsing the request pathname (the host half is discarded).
-That use is safe; do not change it.
+Two other `request.headers.host` reads exist and are SAFE — do not
+change them:
+- `apps/server/src/index.ts:260` and `:350` —
+  `new URL(request.url ?? '/', \`http://${request.headers.host}\`)` is used
+  ONLY to parse the request pathname/search (the host half is discarded).
+- `apps/server/src/mastra/route.test.ts:59` — a test-only shim that
+  mimics the client; not production code.
 
 ### Repo conventions to match
 
@@ -106,7 +117,7 @@ That use is safe; do not change it.
 |------------|------------------------------------------------------|---------------------|
 | Typecheck  | `pnpm --filter @workspace/server typecheck`          | exit 0, no errors   |
 | Lint       | `pnpm --filter @workspace/server lint`               | exit 0              |
-| Tests      | `pnpm --filter @workspace/server test`               | all pass; coverage ≥ 90% |
+| Tests      | `pnpm --filter @workspace/server test`               | all pass (no coverage gate is configured) |
 | Focused    | `pnpm --filter @workspace/server test -- --run config-env 2>&1 \| tail -15` | new + existing config-env tests pass |
 
 ## Scope
@@ -116,15 +127,17 @@ That use is safe; do not change it.
   `serverBaseUrl` field on the returned config.
 - `apps/server/src/config-env.test.ts` — add tests for default,
   override, trailing-slash normalization, and invalid-value rejection.
-- `apps/server/src/mastra/route.ts` — replace the `baseUrl` line (line
-  287) with `const baseUrl = config.serverBaseUrl`.
+- `apps/server/src/index.ts` — replace the `baseUrl` line (line 206)
+  with `const baseUrl = config.serverBaseUrl`.
 - `apps/server/AGENTS.md` — add `SERVER_BASE_URL` to the optional-env
   list with a one-line default/purpose.
 - `README.md` — add `SERVER_BASE_URL` to the "Other" env table.
 
 **Out of scope** (do NOT touch):
-- `apps/server/src/index.ts:228` — its `request.headers.host` use is
-  pathname-only and safe.
+- `apps/server/src/index.ts:260` and `:350` — their `request.headers.host`
+  use is pathname/search-only and safe.
+- `apps/server/src/mastra/route.ts` and `route.test.ts` — the baseUrl
+  arrives as a parameter; the test shim's Host use is test-only.
 - Any caller of `createLandingPageAgent`, `analyzePromptAttachments`, or
   `expandScreenshotUrl` — the signature stays `baseUrl: string`; only
   the source of the string changes.
@@ -234,9 +247,9 @@ Match the file's existing assertion style (`expect(...).toBe(...)` or
 **Verify**: `pnpm --filter @workspace/server test -- --run config-env 2>&1 | tail -15`
 → all new tests pass.
 
-### Step 3: Use `config.serverBaseUrl` in `route.ts`
+### Step 3: Use `config.serverBaseUrl` in `index.ts`
 
-In `apps/server/src/mastra/route.ts` line 287, replace:
+In `apps/server/src/index.ts` line 206 (inside `handleAgent`), replace:
 
 ```ts
 const baseUrl = `http://${request.headers.host ?? `localhost:${config.port}`}`
@@ -248,10 +261,11 @@ with:
 const baseUrl = config.serverBaseUrl
 ```
 
-The downstream uses (`createLandingPageAgent`, `analyzePromptAttachments`,
-`expandScreenshotUrl`) all accept a `baseUrl: string` — they keep working
-unchanged. The `request` parameter stays in the `activeStreamLandingAgent`
-destructure (it's still used elsewhere in the function).
+`config` is already imported in this file (`import { config } from
+'./config.ts'`). The downstream flow (`startLandingAgent` →
+`createLandingPageAgent` / `analyzePromptAttachments` /
+`expandScreenshotUrl`) all accepts a `baseUrl: string` — it keeps
+working unchanged.
 
 **Verify**: `pnpm --filter @workspace/server typecheck` → exit 0.
 
@@ -280,16 +294,17 @@ Also add `SERVER_BASE_URL` to `README.md` "Other" env table:
 - `pnpm --filter @workspace/server lint` → exit 0. (Run `lint:fix` if
   perfectionist sort wants the new config field in a specific spot.)
 - `pnpm --filter @workspace/server test` → exit 0; baseline + 5 new
-  tests; coverage ≥ 90%.
-- `pnpm run fallow:dead-code` → exit 0 (or only the pre-existing
-  `@workspace/agent-skills` flag — record in NOTES, do not chase).
+  tests; 
+- `pnpm run fallow:dead-code` → exit 0 (plan 009 has landed by now —
+  if it has not, the pre-existing flags listed in `plans/README.md`
+  may still fail it; record in NOTES, do not chase).
 
 ### Step 6: Confirm scope
 
 **Verify**: `git status --short` lists ONLY:
 - `M apps/server/src/config-env.ts`
 - `M apps/server/src/config-env.test.ts`
-- `M apps/server/src/mastra/route.ts`
+- `M apps/server/src/index.ts`
 - `M apps/server/AGENTS.md`
 - `M README.md`
 
@@ -308,7 +323,7 @@ pin:
   throw at config-build time, so a misconfigured deploy fails fast
   instead of producing malformed URLs at runtime.
 
-No new tests needed in `route.test.ts` — the `baseUrl` value flows
+No new tests needed in `route.test.ts`/`index.test.ts` — the `baseUrl` value flows
 unchanged through downstream code; the existing integration tests prove
 the wiring. (The behavior change is "no longer honors Host header,"
 which is what we want — there's no positive test for "ignored
@@ -321,8 +336,8 @@ Machine-checkable. ALL must hold:
 - [ ] `pnpm --filter @workspace/server typecheck` exits 0
 - [ ] `pnpm --filter @workspace/server lint` exits 0
 - [ ] `pnpm --filter @workspace/server test` exits 0; test count is
-      baseline + 5; coverage ≥ 90%
-- [ ] `grep -nE 'request\.headers\.host.*localhost.:config\.port' apps/server/src/mastra/route.ts`
+      baseline + 5; 
+- [ ] `grep -nE 'request\.headers\.host.*localhost.:config\.port' apps/server/src/index.ts`
       returns no matches (the Host-derived line is gone)
 - [ ] `grep -n 'serverBaseUrl' apps/server/src/config-env.ts` returns
       matches for both the type field and the parse helper
@@ -333,13 +348,15 @@ Machine-checkable. ALL must hold:
 
 Stop and report back (do not improvise) if:
 
-- The drift check is non-empty AND the live `route.ts:287` line does not
-  match the excerpt (someone already reworked `baseUrl`).
-- Any other site in `route.ts` or `tools/*.ts` reads
+- The drift check is non-empty AND the live `index.ts` `handleAgent`
+  `baseUrl` line does not match the excerpt (someone already reworked
+  `baseUrl`).
+- Any other site in `index.ts`, `route.ts`, or `tools/*.ts` reads
   `request.headers.host` for content that gets persisted (re-run
   `grep -rn 'headers.host' apps/server/src --include='*.ts'` and
-  reconcile). If a new persistence path appeared, the plan needs to
-  cover it too — STOP and report.
+  reconcile; the known-safe uses are listed in "Current state"). If a
+  new persistence path appeared, the plan needs to cover it too — STOP
+  and report.
 - `URL.canParse` is not available in the target Node version. (Node 22
   has it; the engines field requires `>=22.19`.) If somehow the
   resolved runtime is older, fall back to `try { new URL(value) } catch

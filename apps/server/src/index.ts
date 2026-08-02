@@ -208,7 +208,7 @@ async function handleAgent(request: IncomingMessage, response: ServerResponse) {
   // applies their own role-specific defaults (image / vision models). Routing
   // them through `resolveModelId` would silently substitute the chat model,
   // which is neither an image nor a vision model and 404s at the provider.
-  const baseUrl = `http://${request.headers.host ?? `localhost:${config.port}`}`
+  const baseUrl = config.serverBaseUrl
   const result = await startLandingAgent({
     attachments,
     baseUrl,
