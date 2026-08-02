@@ -19,6 +19,10 @@ export type LandingModelOption = {
 /** Per-1M-token USD prices from the OpenRouter catalog (snapshot). */
 export type LandingModelPricing = {
   cacheRead?: number
+  /** USD per generated image (image models billed per image). */
+  image?: number
+  /** USD per 1M image-output tokens (image models billed per image token). */
+  imageOutput?: number
   input: number
   output: number
 }
@@ -39,7 +43,11 @@ export const TEXT_MODEL_OPTIONS: LandingModelOption[] = [
     id: 'nvidia/nemotron-3-ultra-550b-a55b:nitro',
     label: 'Nemotron Ultra',
   },
+  { id: 'google/gemini-3.1-pro-preview:nitro', label: 'Gemini 3.1 Pro' },
+  { id: 'google/gemini-3.6-flash:nitro', label: 'Gemini 3.6 Flash' },
+  { id: 'x-ai/grok-4.5:nitro', label: 'Grok 4.5' },
   { id: 'poolside/laguna-s-2.1:nitro', label: 'Laguna S 2.1' },
+  { id: 'anthropic/claude-fable-5:nitro', label: 'Claude Fable 5' },
   { id: 'anthropic/claude-opus-5:nitro', label: 'Claude Opus 5' },
   { id: 'anthropic/claude-sonnet-5:nitro', label: 'Claude Sonnet 5' },
   { id: 'anthropic/claude-haiku-4.5:nitro', label: 'Claude Haiku 4.5' },
@@ -50,9 +58,13 @@ export const TEXT_MODEL_OPTIONS: LandingModelOption[] = [
 
 export const IMAGE_MODEL_OPTIONS: LandingModelOption[] = [
   { id: 'bytedance-seed/seedream-4.5', label: 'Seedream 4.5' },
-  { id: 'google/gemini-3.1-flash-lite-image', label: 'Gemini 3.1 Flash Lite' },
+  { id: 'google/gemini-3.1-flash-image', label: 'Nano Banana 2' },
+  { id: 'google/gemini-3.1-flash-lite-image', label: 'Nano Banana 2 Lite' },
   { id: 'openai/gpt-image-2', label: 'GPT Image 2' },
-  { id: 'x-ai/grok-imagine-image-quality', label: 'Grok Imagine' },
+  {
+    id: 'x-ai/grok-imagine-image-quality',
+    label: 'Grok Imagine Image Quality',
+  },
 ]
 
 export const VISION_MODEL_OPTIONS: LandingModelOption[] = [
@@ -62,31 +74,51 @@ export const VISION_MODEL_OPTIONS: LandingModelOption[] = [
   { id: 'moonshotai/kimi-k3', label: 'Kimi K3' },
   { id: 'minimax/minimax-m3', label: 'MiniMax M3' },
   { id: 'xiaomi/mimo-v2.5', label: 'MiMo V2.5' },
+  { id: 'google/gemini-3.1-pro-preview', label: 'Gemini 3.1 Pro' },
+  { id: 'google/gemini-3.6-flash', label: 'Gemini 3.6 Flash' },
+  { id: 'google/gemini-3.5-flash-lite', label: 'Gemini 3.5 Flash Lite' },
+  { id: 'anthropic/claude-fable-5', label: 'Claude Fable 5' },
   { id: 'anthropic/claude-opus-5', label: 'Claude Opus 5' },
   { id: 'anthropic/claude-sonnet-5', label: 'Claude Sonnet 5' },
   { id: 'anthropic/claude-haiku-4.5', label: 'Claude Haiku 4.5' },
   { id: 'openai/gpt-5.6-luna', label: 'GPT-5.6 Luna' },
   { id: 'openai/gpt-5.6-terra', label: 'GPT-5.6 Terra' },
   { id: 'openai/gpt-5.6-sol', label: 'GPT-5.6 Sol' },
+  { id: 'x-ai/grok-4.5', label: 'Grok 4.5' },
 ]
 
 /**
  * Per-1M-token USD prices keyed by base model id (no `:nitro` suffix),
  * snapshotted from the OpenRouter catalog. Refresh when models are
- * added/updated. Image-generation-only models (Seedream, GPT Image, Grok)
- * are not in the chat catalog, so they have no entry.
+ * added/updated. Image models also carry per-image (`image`) or
+ * per-1M-image-token (`imageOutput`) prices from the OpenRouter images API;
+ * live catalog prices override via `/api/models`.
  */
 export const MODEL_PRICING: Record<string, LandingModelPricing> = {
+  'anthropic/claude-fable-5': { cacheRead: 1, input: 10, output: 50 },
   'anthropic/claude-haiku-4.5': { cacheRead: 0.1, input: 1, output: 5 },
   'anthropic/claude-opus-5': { cacheRead: 0.5, input: 5, output: 25 },
   'anthropic/claude-sonnet-5': { cacheRead: 0.2, input: 2, output: 10 },
   'bytedance-seed/seed-2.0-mini': { input: 0.1, output: 0.4 },
+  'bytedance-seed/seedream-4.5': { image: 0.04, input: 0, output: 0 },
   'deepseek/deepseek-v4-flash-0731': {
     cacheRead: 0.018,
     input: 0.09,
     output: 0.18,
   },
-  'google/gemini-3.1-flash-lite-image': { input: 0.25, output: 1.5 },
+  'google/gemini-3.1-flash-image': {
+    imageOutput: 60,
+    input: 0.5,
+    output: 3,
+  },
+  'google/gemini-3.1-flash-lite-image': {
+    imageOutput: 30,
+    input: 0.25,
+    output: 1.5,
+  },
+  'google/gemini-3.1-pro-preview': { cacheRead: 0.2, input: 2, output: 12 },
+  'google/gemini-3.5-flash-lite': { cacheRead: 0.03, input: 0.3, output: 2.5 },
+  'google/gemini-3.6-flash': { cacheRead: 0.15, input: 1.5, output: 7.5 },
   'minimax/minimax-m3': { cacheRead: 0.06, input: 0.3, output: 1.2 },
   'moonshotai/kimi-k2.7-code': { cacheRead: 0.15, input: 0.73, output: 3.5 },
   'moonshotai/kimi-k3': { cacheRead: 0.3, input: 3, output: 15 },
@@ -98,8 +130,11 @@ export const MODEL_PRICING: Record<string, LandingModelPricing> = {
   'openai/gpt-5.6-luna': { cacheRead: 0.01, input: 0.1, output: 0.6 },
   'openai/gpt-5.6-sol': { cacheRead: 0.5, input: 5, output: 30 },
   'openai/gpt-5.6-terra': { cacheRead: 0.1, input: 1, output: 6 },
+  'openai/gpt-image-2': { imageOutput: 30, input: 0, output: 0 },
   'poolside/laguna-s-2.1': { cacheRead: 0.009, input: 0.09, output: 0.18 },
   'tencent/hy3': { cacheRead: 0.033, input: 0.132, output: 0.528 },
+  'x-ai/grok-4.5': { cacheRead: 0.3, input: 2, output: 6 },
+  'x-ai/grok-imagine-image-quality': { image: 0.05, input: 0, output: 0 },
   'xiaomi/mimo-v2.5': { cacheRead: 0.0028, input: 0.14, output: 0.28 },
   'z-ai/glm-5.2': { cacheRead: 0.078, input: 0.42, output: 1.32 },
   'z-ai/glm-5v-turbo': { cacheRead: 0.24, input: 1.2, output: 4 },
@@ -339,7 +374,23 @@ export function modelPricingFor(
   modelId: string,
   pricing: Record<string, LandingModelPricing> = MODEL_PRICING,
 ) {
-  return pricing[modelId.replace(/:(?:floor|free|nitro|online)$/, '')]
+  return pricing[baseModelId(modelId)]
+}
+
+const VARIANT_SUFFIX_RE = /:(?:floor|free|nitro|online)$/
+
+/** Base ids of every vision-capable model (accepts image input). */
+const VISION_CAPABLE_IDS = new Set(
+  VISION_MODEL_OPTIONS.map((option) => option.id),
+)
+
+/**
+ * Whether a text model accepts image input — mirrors the server's
+ * direct-mode rule (`supportsImageInput` against the OpenRouter catalog),
+ * using the vision option list as the client-side capability set.
+ */
+export function isVisionCapableTextModel(modelId: string) {
+  return syncedVisionModel(modelId) != null
 }
 
 /**
@@ -352,16 +403,75 @@ export function resolveLandingModels(input: {
   text?: string
   vision?: string
 }): LandingModels {
-  return {
+  return syncLandingModels({
     image: input.image?.trim() || DEFAULT_LANDING_MODELS.image,
     text: resolveTextModel(input.text),
     vision: input.vision?.trim() || DEFAULT_LANDING_MODELS.vision,
+  })
+}
+
+/**
+ * Apply one picker selection to a `LandingModels`, enforcing the
+ * vision-sync invariant:
+ * - text: a vision-capable text model also claims the vision role.
+ * - vision: picking a model that is also a text option adopts it as the
+ *   text brain too (a vision-capable pair produces better output than the
+ *   OCR fallback); vision-only models just set the vision role.
+ */
+export function selectLandingModel(
+  models: LandingModels,
+  role: LandingModelRole,
+  optionId: string,
+): LandingModels {
+  if (role === 'text') {
+    return syncLandingModels({ ...models, text: optionId })
   }
+  if (role === 'vision') {
+    const textOption = TEXT_MODEL_OPTIONS.find(
+      (option) => baseModelId(option.id) === optionId,
+    )
+    if (textOption) {
+      return syncLandingModels({
+        ...models,
+        text: textOption.id,
+        vision: optionId,
+      })
+    }
+    return { ...models, vision: optionId }
+  }
+  return { ...models, image: optionId }
+}
+
+/**
+ * The vision model a text model is synced to (its own base id) when it
+ * accepts image input, else `null` (vision role stays free).
+ */
+export function syncedVisionModel(textModel: string): null | string {
+  const base = baseModelId(textModel)
+  return VISION_CAPABLE_IDS.has(base) ? base : null
+}
+
+/**
+ * Enforce the vision-sync invariant: a vision-capable text model always
+ * serves vision itself (server direct mode produces better output + skips
+ * the separate OCR call), so the vision selection is forced to the same
+ * base model. Text-only models leave vision free.
+ */
+export function syncLandingModels(models: LandingModels): LandingModels {
+  const synced = syncedVisionModel(models.text)
+  if (synced && models.vision !== synced) {
+    return { ...models, vision: synced }
+  }
+  return models
+}
+
+/** Strip an OpenRouter routing-variant suffix (`:nitro`, `:free`, …). */
+function baseModelId(modelId: string) {
+  return modelId.replace(VARIANT_SUFFIX_RE, '')
 }
 
 function resolveTextModel(input: string | undefined) {
   const model = input?.trim()
   if (!model) return DEFAULT_LANDING_MODELS.text
-  const base = model.replace(/:(?:floor|free|nitro|online)$/, '')
-  return `${base}:nitro`
+  return `${baseModelId(model)}:nitro`
 }

@@ -29,6 +29,8 @@ import {
   type LandingModels,
   type LandingModelRole,
   modelPricingFor,
+  selectLandingModel,
+  syncedVisionModel,
 } from './domain'
 import { GeminiIcon } from './gemini-icon'
 import { GlmIcon } from './glm-icon'
@@ -43,6 +45,8 @@ import { XaiIcon } from './xai-icon'
 import { XiaomiIcon } from './xiaomi-icon'
 
 const MODEL_ICONS: Record<string, ComponentType<{ className?: string }>> = {
+  'anthropic/claude-fable-5': AnthropicIcon,
+  'anthropic/claude-fable-5:nitro': AnthropicIcon,
   'anthropic/claude-haiku-4.5': AnthropicIcon,
   'anthropic/claude-haiku-4.5:nitro': AnthropicIcon,
   'anthropic/claude-opus-5': AnthropicIcon,
@@ -74,6 +78,7 @@ const MODEL_ICONS: Record<string, ComponentType<{ className?: string }>> = {
   'openai/gpt-image-2': OpenaiIcon,
   'poolside/laguna-s-2.1:nitro': PoolsideIcon,
   'tencent/hy3:nitro': TencentIcon,
+  'x-ai/grok-4.5': XaiIcon,
   'x-ai/grok-4.5:nitro': XaiIcon,
   'x-ai/grok-imagine-image-quality': XaiIcon,
   'xiaomi/mimo-v2.5': XiaomiIcon,
@@ -156,6 +161,11 @@ export function ModelDropdown({
     setFocusId(selectedId)
   }, [selectedId])
 
+  // Vision-sync invariant: a vision-capable text model serves vision itself
+  // (server direct mode), so every other vision row is disabled.
+  const visionSyncId =
+    activeRole === 'vision' ? syncedVisionModel(models.text) : null
+
   // Filter model rows by name, id, or provider; empty groups drop out.
   const normalizedQuery = query.trim().toLowerCase()
   const filteredProviders = normalizedQuery
@@ -193,7 +203,9 @@ export function ModelDropdown({
 
   function onListKeyDown(event: KeyboardEvent<HTMLDivElement>) {
     const rows = Array.from(
-      listRef.current?.querySelectorAll<HTMLElement>('[role="radio"]') ?? [],
+      listRef.current?.querySelectorAll<HTMLElement>(
+        '[role="radio"]:not([aria-disabled="true"])',
+      ) ?? [],
     )
     if (rows.length === 0) return
     const current = rows.indexOf(document.activeElement as HTMLElement)
@@ -255,6 +267,11 @@ export function ModelDropdown({
                   </span>
                 </TooltipTrigger>
                 <TooltipContent side="top">
+                  <RoleIcon
+                    className={cn('size-3.5', MODEL_ROLE_META[role].color)}
+                  />
+                  {MODEL_ROLE_META[role].label}
+                  <span className="text-muted-foreground">·</span>
                   {Logo ? <Logo className="size-3.5" /> : null}
                   {option?.label ?? models[role]}
                 </TooltipContent>
@@ -288,8 +305,8 @@ export function ModelDropdown({
                   'flex flex-1 items-center justify-center gap-1.5 p-2 text-xs',
                   'outline-none focus-visible:bg-accent focus-visible:ring-1 focus-visible:ring-ring/50 focus-visible:ring-inset',
                   active
-                    ? 'text-foreground shadow-[inset_0_-2px_0_0_currentColor]'
-                    : 'text-muted-foreground hover:text-foreground',
+                    ? 'bg-accent text-foreground'
+                    : 'text-muted-foreground hover:bg-accent/50 hover:text-foreground',
                 )}
                 key={role}
                 onClick={() => {
@@ -314,8 +331,9 @@ export function ModelDropdown({
             onKeyDown={(event) => {
               if (event.key === 'ArrowDown') {
                 event.preventDefault()
-                const first =
-                  listRef.current?.querySelector<HTMLElement>('[role="radio"]')
+                const first = listRef.current?.querySelector<HTMLElement>(
+                  '[role="radio"]:not([aria-disabled="true"])',
+                )
                 first?.focus()
                 const id = first?.dataset.modelId
                 if (id) setFocusId(id)
@@ -354,18 +372,26 @@ export function ModelDropdown({
                 const Icon = MODEL_ICONS[option.id]
                 const pricing = modelPricingFor(option.id, modelPricing)
                 const selected = models[activeRole] === option.id
+                const locked =
+                  visionSyncId != null && option.id !== visionSyncId
                 return (
                   <button
                     aria-checked={selected}
+                    aria-disabled={locked || undefined}
                     className={cn(
                       'flex w-full items-center gap-2 rounded-none px-2 py-1.5 text-left text-xs',
                       'outline-none hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground focus-visible:ring-1 focus-visible:ring-ring/50 focus-visible:ring-inset',
+                      locked &&
+                        'cursor-not-allowed opacity-50 hover:bg-transparent hover:text-muted-foreground',
                     )}
                     data-model-id={option.id}
                     key={option.id}
-                    onClick={() =>
-                      onModelsChange({ ...models, [activeRole]: option.id })
-                    }
+                    onClick={() => {
+                      if (locked) return
+                      onModelsChange(
+                        selectLandingModel(models, activeRole, option.id),
+                      )
+                    }}
                     role="radio"
                     tabIndex={option.id === effectiveFocusId ? 0 : -1}
                     type="button"
@@ -375,11 +401,19 @@ export function ModelDropdown({
                       <span className="truncate">{option.label}</span>
                       {pricing ? (
                         <span className="truncate text-[10px] text-muted-foreground">
-                          {formatTokenPrice(pricing.input)}/M in ·{' '}
-                          {formatTokenPrice(pricing.output)}/M out
-                          {pricing.cacheRead == null
-                            ? ''
-                            : ` · ${formatTokenPrice(pricing.cacheRead)}/M cache`}
+                          {pricing.image != null ? (
+                            `${formatTokenPrice(pricing.image)} / image`
+                          ) : pricing.imageOutput != null ? (
+                            `${formatTokenPrice(pricing.imageOutput)} / M image tokens`
+                          ) : (
+                            <>
+                              {formatTokenPrice(pricing.input)}/M in ·{' '}
+                              {formatTokenPrice(pricing.output)}/M out
+                              {pricing.cacheRead == null
+                                ? ''
+                                : ` · ${formatTokenPrice(pricing.cacheRead)}/M cache`}
+                            </>
+                          )}
                         </span>
                       ) : null}
                     </span>

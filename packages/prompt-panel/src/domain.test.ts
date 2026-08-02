@@ -3,8 +3,12 @@ import { describe, expect, it } from 'vitest'
 import {
   DEFAULT_LANDING_MODELS,
   formatTokenPrice,
+  isVisionCapableTextModel,
   modelPricingFor,
   resolveLandingModels,
+  selectLandingModel,
+  syncLandingModels,
+  syncedVisionModel,
   VISION_MODEL_OPTIONS,
 } from './domain'
 
@@ -37,6 +41,95 @@ describe('model pricing', () => {
     expect(formatTokenPrice(0.42)).toBe('$0.42')
     expect(formatTokenPrice(0.078)).toBe('$0.078')
     expect(formatTokenPrice(0.0028)).toBe('$0.0028')
+  })
+})
+
+describe('vision sync', () => {
+  it('detects vision-capable text models, tolerating variants', () => {
+    expect(isVisionCapableTextModel('openai/gpt-5.6-luna:nitro')).toBe(true)
+    expect(isVisionCapableTextModel('anthropic/claude-opus-5:nitro')).toBe(true)
+    expect(isVisionCapableTextModel('google/gemini-3.6-flash:nitro')).toBe(true)
+    expect(isVisionCapableTextModel('x-ai/grok-4.5:nitro')).toBe(true)
+    expect(isVisionCapableTextModel('z-ai/glm-5.2:nitro')).toBe(false)
+    expect(isVisionCapableTextModel('tencent/hy3:nitro')).toBe(false)
+    expect(syncedVisionModel('openai/gpt-5.6-luna:nitro')).toBe(
+      'openai/gpt-5.6-luna',
+    )
+    expect(syncedVisionModel('z-ai/glm-5.2:nitro')).toBeNull()
+  })
+
+  it('forces vision to the text model when it accepts images', () => {
+    expect(
+      syncLandingModels({
+        image: 'bytedance-seed/seedream-4.5',
+        text: 'openai/gpt-5.6-luna:nitro',
+        vision: 'bytedance-seed/seed-2.0-mini',
+      }).vision,
+    ).toBe('openai/gpt-5.6-luna')
+  })
+
+  it('leaves vision free for text-only models', () => {
+    const models = {
+      image: 'bytedance-seed/seedream-4.5',
+      text: 'z-ai/glm-5.2:nitro',
+      vision: 'bytedance-seed/seed-2.0-mini',
+    }
+    expect(syncLandingModels(models)).toEqual(models)
+  })
+
+  it('syncs vision when selecting a vision-capable text model', () => {
+    const next = selectLandingModel(
+      {
+        image: 'bytedance-seed/seedream-4.5',
+        text: 'z-ai/glm-5.2:nitro',
+        vision: 'bytedance-seed/seed-2.0-mini',
+      },
+      'text',
+      'anthropic/claude-sonnet-5:nitro',
+    )
+    expect(next.text).toBe('anthropic/claude-sonnet-5:nitro')
+    expect(next.vision).toBe('anthropic/claude-sonnet-5')
+  })
+
+  it('adopts a shared model picked in the vision tab as the text brain', () => {
+    const next = selectLandingModel(
+      {
+        image: 'bytedance-seed/seedream-4.5',
+        text: 'z-ai/glm-5.2:nitro',
+        vision: 'bytedance-seed/seed-2.0-mini',
+      },
+      'vision',
+      'openai/gpt-5.6-terra',
+    )
+    expect(next.text).toBe('openai/gpt-5.6-terra:nitro')
+    expect(next.vision).toBe('openai/gpt-5.6-terra')
+  })
+
+  it('keeps the text brain when picking a vision-only model', () => {
+    const next = selectLandingModel(
+      {
+        image: 'bytedance-seed/seedream-4.5',
+        text: 'z-ai/glm-5.2:nitro',
+        vision: 'bytedance-seed/seed-2.0-mini',
+      },
+      'vision',
+      'google/gemini-3.5-flash-lite',
+    )
+    expect(next.text).toBe('z-ai/glm-5.2:nitro')
+    expect(next.vision).toBe('google/gemini-3.5-flash-lite')
+  })
+
+  it('enforces the invariant when restoring persisted selections', () => {
+    expect(
+      resolveLandingModels({
+        text: 'anthropic/claude-haiku-4.5',
+        vision: 'bytedance-seed/seed-2.0-mini',
+      }),
+    ).toEqual({
+      image: DEFAULT_LANDING_MODELS.image,
+      text: 'anthropic/claude-haiku-4.5:nitro',
+      vision: 'anthropic/claude-haiku-4.5',
+    })
   })
 })
 

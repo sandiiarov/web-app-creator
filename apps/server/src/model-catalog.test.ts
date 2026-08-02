@@ -2,7 +2,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import {
   filterModelPricing,
+  getImageModelPricing,
   getModelPricing,
+  parseImageEndpointsPricing,
   parseModelPricing,
   resetModelPricingCache,
 } from './model-catalog.ts'
@@ -45,6 +47,29 @@ describe('parseModelPricing', () => {
     })
   })
 
+  it('parses image-output token prices when present', () => {
+    expect(
+      parseModelPricing({
+        data: [
+          {
+            id: 'google/gemini-3.1-flash-image',
+            pricing: {
+              completion: '0.000003',
+              image_output: '0.00006',
+              prompt: '0.0000005',
+            },
+          },
+        ],
+      }),
+    ).toEqual({
+      'google/gemini-3.1-flash-image': {
+        imageOutput: 60,
+        input: 0.5,
+        output: 3,
+      },
+    })
+  })
+
   it('skips entries without an id or usable prompt/completion prices', () => {
     expect(
       parseModelPricing({
@@ -57,6 +82,117 @@ describe('parseModelPricing', () => {
       }),
     ).toEqual({})
     expect(parseModelPricing({})).toEqual({})
+  })
+})
+
+describe('parseImageEndpointsPricing', () => {
+  it('extracts per-image and per-image-token output prices', () => {
+    expect(
+      parseImageEndpointsPricing({
+        endpoints: [
+          {
+            pricing: [
+              { billable: 'input_image', cost_usd: 0.01, unit: 'image' },
+              {
+                billable: 'output_image',
+                cost_usd: 0.05,
+                unit: 'image',
+                variant: '1k',
+              },
+              {
+                billable: 'output_image',
+                cost_usd: 0.07,
+                unit: 'image',
+                variant: '2k',
+              },
+            ],
+          },
+        ],
+      }),
+    ).toEqual({ image: 0.05 })
+    expect(
+      parseImageEndpointsPricing({
+        endpoints: [
+          {
+            pricing: [
+              { billable: 'output_image', cost_usd: 0.00003, unit: 'token' },
+            ],
+          },
+        ],
+      }),
+    ).toEqual({ imageOutput: 30 })
+  })
+
+  it('returns null when no output-image pricing exists', () => {
+    expect(parseImageEndpointsPricing({})).toBeNull()
+    expect(parseImageEndpointsPricing({ endpoints: [{}] })).toBeNull()
+    expect(
+      parseImageEndpointsPricing({
+        endpoints: [
+          {
+            pricing: [{ billable: 'input_image', cost_usd: 1, unit: 'image' }],
+          },
+        ],
+      }),
+    ).toBeNull()
+  })
+})
+
+describe('getImageModelPricing', () => {
+  const endpointsResponse = (pricing: unknown[]) =>
+    new Response(JSON.stringify({ endpoints: [{ pricing }] }), {
+      headers: { 'content-type': 'application/json' },
+      status: 200,
+    })
+
+  it('fetches, caches, and negative-caches per id', async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>(async (input) => {
+      const url = String(input)
+      if (url.includes('seedream')) {
+        return endpointsResponse([
+          { billable: 'output_image', cost_usd: 0.04, unit: 'image' },
+        ])
+      }
+      return endpointsResponse([])
+    })
+    vi.stubGlobal('fetch', fetch)
+
+    const first = await getImageModelPricing([
+      'bytedance-seed/seedream-4.5',
+      'unknown/model',
+    ])
+    expect(first).toEqual({
+      'bytedance-seed/seedream-4.5': { image: 0.04 },
+    })
+
+    const second = await getImageModelPricing([
+      'bytedance-seed/seedream-4.5',
+      'unknown/model',
+    ])
+    expect(second).toEqual(first)
+    // Both ids cached after the first call — no refetch within the TTL.
+    expect(fetch).toHaveBeenCalledTimes(2)
+  })
+
+  it('skips ids whose fetch fails without breaking the rest', async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>(async (input) => {
+      const url = String(input)
+      if (url.includes('seedream')) {
+        return endpointsResponse([
+          { billable: 'output_image', cost_usd: 0.04, unit: 'image' },
+        ])
+      }
+      return new Response('gone', { status: 404 })
+    })
+    vi.stubGlobal('fetch', fetch)
+
+    const result = await getImageModelPricing([
+      'bytedance-seed/seedream-4.5',
+      'openai/gpt-image-2',
+    ])
+    expect(result).toEqual({
+      'bytedance-seed/seedream-4.5': { image: 0.04 },
+    })
   })
 })
 
