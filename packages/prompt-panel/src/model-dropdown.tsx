@@ -28,6 +28,7 @@ import {
   type LandingModelPricing,
   type LandingModels,
   type LandingModelRole,
+  liveCapableIds,
   modelPricingFor,
   selectLandingModel,
   syncedVisionModel,
@@ -162,9 +163,11 @@ export function ModelDropdown({
   }, [selectedId])
 
   // Vision-sync invariant: a vision-capable text model serves vision itself
-  // (server direct mode), so every other vision row is disabled.
+  // (server direct mode), so every other vision row is disabled. Prefer the
+  // live `/api/models` modalities over the static option-list fallback.
+  const capableIds = liveCapableIds(modelPricing)
   const visionSyncId =
-    activeRole === 'vision' ? syncedVisionModel(models.text) : null
+    activeRole === 'vision' ? syncedVisionModel(models.text, capableIds) : null
 
   // Filter model rows by name, id, or provider; empty groups drop out.
   const normalizedQuery = query.trim().toLowerCase()
@@ -389,7 +392,12 @@ export function ModelDropdown({
                     onClick={() => {
                       if (locked) return
                       onModelsChange(
-                        selectLandingModel(models, activeRole, option.id),
+                        selectLandingModel(
+                          models,
+                          activeRole,
+                          option.id,
+                          capableIds,
+                        ),
                       )
                     }}
                     role="radio"

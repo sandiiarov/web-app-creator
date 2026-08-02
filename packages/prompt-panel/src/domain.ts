@@ -24,6 +24,8 @@ export type LandingModelPricing = {
   /** USD per 1M image-output tokens (image models billed per image token). */
   imageOutput?: number
   input: number
+  /** Lowercased OpenRouter `architecture.input_modalities` (live map only). */
+  inputModalities?: string[]
   output: number
 }
 
@@ -393,6 +395,21 @@ export function isVisionCapableTextModel(modelId: string) {
   return syncedVisionModel(modelId) != null
 }
 
+/** Derive the vision-capable id set from a live pricing/capability map
+ *  (`/api/models` entries carrying `inputModalities`). Returns undefined
+ *  when no entry carries modalities — callers fall back to the static
+ *  option list. */
+export function liveCapableIds(
+  pricing: Record<string, LandingModelPricing> | undefined,
+): Set<string> | undefined {
+  if (!pricing) return undefined
+  const ids = new Set<string>()
+  for (const [id, entry] of Object.entries(pricing)) {
+    if (entry.inputModalities?.includes('image')) ids.add(id)
+  }
+  return ids.size > 0 ? ids : undefined
+}
+
 /**
  * Build a complete `LandingModels` from a partial persisted selection,
  * falling back to the defaults for any missing/blank category. Used when
@@ -422,20 +439,24 @@ export function selectLandingModel(
   models: LandingModels,
   role: LandingModelRole,
   optionId: string,
+  capableIds?: Set<string>,
 ): LandingModels {
   if (role === 'text') {
-    return syncLandingModels({ ...models, text: optionId })
+    return syncLandingModels({ ...models, text: optionId }, capableIds)
   }
   if (role === 'vision') {
     const textOption = TEXT_MODEL_OPTIONS.find(
       (option) => baseModelId(option.id) === optionId,
     )
     if (textOption) {
-      return syncLandingModels({
-        ...models,
-        text: textOption.id,
-        vision: optionId,
-      })
+      return syncLandingModels(
+        {
+          ...models,
+          text: textOption.id,
+          vision: optionId,
+        },
+        capableIds,
+      )
     }
     return { ...models, vision: optionId }
   }
@@ -444,11 +465,17 @@ export function selectLandingModel(
 
 /**
  * The vision model a text model is synced to (its own base id) when it
- * accepts image input, else `null` (vision role stays free).
+ * accepts image input, else `null` (vision role stays free). `capableIds`
+ * overrides the static capability set with live `/api/models` modalities
+ * when provided; `resolveLandingModels` intentionally keeps the static
+ * fallback so project restore stays synchronous.
  */
-export function syncedVisionModel(textModel: string): null | string {
+export function syncedVisionModel(
+  textModel: string,
+  capableIds: Set<string> = VISION_CAPABLE_IDS,
+): null | string {
   const base = baseModelId(textModel)
-  return VISION_CAPABLE_IDS.has(base) ? base : null
+  return capableIds.has(base) ? base : null
 }
 
 /**
@@ -457,8 +484,11 @@ export function syncedVisionModel(textModel: string): null | string {
  * the separate OCR call), so the vision selection is forced to the same
  * base model. Text-only models leave vision free.
  */
-export function syncLandingModels(models: LandingModels): LandingModels {
-  const synced = syncedVisionModel(models.text)
+export function syncLandingModels(
+  models: LandingModels,
+  capableIds?: Set<string>,
+): LandingModels {
+  const synced = syncedVisionModel(models.text, capableIds)
   if (synced && models.vision !== synced) {
     return { ...models, vision: synced }
   }

@@ -18,7 +18,7 @@ before starting, honor its STOP conditions, and update your row when done.
 | 010 | Bound `/api/models?ids=` to stop upstream fetch amplification | P2 | S | — | DONE (executed 2026-08-02) |
 | 013 | End-to-end verification of direct-mode image delivery | P2 | M | — | DONE (executed 2026-08-02, see plans/013-report.md) |
 | 011 | Extract `runAgentStream` into composable units | P2 | L | 009 (soft) | DONE (executed 2026-08-02) |
-| 012 | Drive the picker's vision-sync from live OpenRouter modalities | P3 | M | — | TODO |
+| 012 | Drive the picker's vision-sync from live OpenRouter modalities | P3 | M | — | DONE (executed 2026-08-02) |
 | 001 | Delete the dead legacy turn writers | — | — | — | DONE (moot — only read-only legacy fallback remains, by design) |
 | 005 | Accumulate `warnings` across multi-section edits | — | — | — | DONE (engine.ts accumulates warnings across ranges) |
 | 006 | Fix the stale `request('close')` comment in `route.ts` | — | — | — | DONE (superseded by ae221a8d — index.ts listens on response close) |

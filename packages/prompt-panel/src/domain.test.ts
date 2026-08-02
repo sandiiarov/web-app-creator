@@ -4,6 +4,7 @@ import {
   DEFAULT_LANDING_MODELS,
   formatTokenPrice,
   isVisionCapableTextModel,
+  liveCapableIds,
   modelPricingFor,
   resolveLandingModels,
   selectLandingModel,
@@ -130,6 +131,55 @@ describe('vision sync', () => {
       text: 'anthropic/claude-haiku-4.5:nitro',
       vision: 'anthropic/claude-haiku-4.5',
     })
+  })
+})
+
+describe('liveCapableIds', () => {
+  it('derives capability from live inputModalities, undefined without them', () => {
+    expect(liveCapableIds(undefined)).toBeUndefined()
+    expect(liveCapableIds({})).toBeUndefined()
+    expect(
+      liveCapableIds({
+        'acme/text-only': { input: 1, output: 2 },
+      }),
+    ).toBeUndefined()
+    expect(
+      liveCapableIds({
+        'acme/new-vision': {
+          input: 1,
+          inputModalities: ['text', 'image'],
+          output: 2,
+        },
+        'acme/text-only': { input: 1, inputModalities: ['text'], output: 2 },
+      }),
+    ).toEqual(new Set(['acme/new-vision']))
+  })
+
+  it('syncs vision to a live-capable model absent from the static options', () => {
+    const capableIds = new Set(['acme/new-vision'])
+    const next = selectLandingModel(
+      {
+        image: 'bytedance-seed/seedream-4.5',
+        text: 'z-ai/glm-5.2:nitro',
+        vision: 'bytedance-seed/seed-2.0-mini',
+      },
+      'text',
+      'acme/new-vision:nitro',
+      capableIds,
+    )
+    expect(next.vision).toBe('acme/new-vision')
+    // Without the override, the same model is treated as text-only.
+    expect(
+      selectLandingModel(
+        {
+          image: 'bytedance-seed/seedream-4.5',
+          text: 'z-ai/glm-5.2:nitro',
+          vision: 'bytedance-seed/seed-2.0-mini',
+        },
+        'text',
+        'acme/new-vision:nitro',
+      ).vision,
+    ).toBe('bytedance-seed/seed-2.0-mini')
   })
 })
 

@@ -70,6 +70,27 @@ describe('parseModelPricing', () => {
     })
   })
 
+  it('parses input modalities when the architecture carries them', () => {
+    expect(
+      parseModelPricing({
+        data: [
+          {
+            architecture: { input_modalities: ['text', 'Image'] },
+            id: 'acme/vision-1',
+            pricing: { completion: '0.000001', prompt: '0.000001' },
+          },
+          {
+            id: 'acme/no-arch',
+            pricing: { completion: '0.000001', prompt: '0.000001' },
+          },
+        ],
+      }),
+    ).toEqual({
+      'acme/no-arch': { input: 1, output: 1 },
+      'acme/vision-1': { input: 1, inputModalities: ['text', 'image'], output: 1 },
+    })
+  })
+
   it('skips entries without an id or usable prompt/completion prices', () => {
     expect(
       parseModelPricing({

@@ -32,6 +32,8 @@ export type ModelPricingEntry = {
   /** USD per 1M image-output tokens (image models priced per image token). */
   imageOutput?: number
   input: number
+  /** Lowercased upstream `architecture.input_modalities` (e.g. ['text','image']). */
+  inputModalities?: string[]
   output: number
 }
 
@@ -60,6 +62,9 @@ export type ImageModelPricing = {
 }
 
 interface OpenRouterModelEntry {
+  architecture?: {
+    input_modalities?: string[]
+  }
   id?: string
   pricing?: {
     completion?: string
@@ -216,12 +221,16 @@ export function parseModelPricing(
       pricing.image_output == null
         ? undefined
         : roundPrice(Number(pricing.image_output))
+    const inputModalities = entry.architecture?.input_modalities
+      ?.map((modality) => modality.toLowerCase())
+      .filter(Boolean)
     catalog[id] = {
       ...(cacheRead != null && Number.isFinite(cacheRead) ? { cacheRead } : {}),
       ...(imageOutput != null && Number.isFinite(imageOutput)
         ? { imageOutput }
         : {}),
       input,
+      ...(inputModalities?.length ? { inputModalities } : {}),
       output,
     }
   }
