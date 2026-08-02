@@ -42,6 +42,7 @@ export function createLandingPageAgent(
   textModel: string = config.openrouter.defaultChatModel,
   captureProjectSelector?: RequestProjectScreenshot,
   options: {
+    directImages?: boolean
     imageModel?: string
     projectId?: string
     signal?: AbortSignal
@@ -69,6 +70,7 @@ function createLandingPageAgentConfig(
   textModel: string = config.openrouter.defaultChatModel,
   captureProjectSelector?: RequestProjectScreenshot,
   options: {
+    directImages?: boolean
     imageModel?: string
     projectId?: string
     signal?: AbortSignal

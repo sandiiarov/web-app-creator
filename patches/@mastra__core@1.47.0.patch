@@ -35,10 +35,32 @@ index ce8ef1a91e0dabe935929921b0f47ef7900c1147..5fcd197354888a9adc9b2973615af49c
                type: "finish",
                finishReason,
 diff --git a/dist/chunk-GHDHOLZS.js b/dist/chunk-GHDHOLZS.js
-index 33e6d4b73b127bf493113919a8a0017b532a0487..0aba4ea1e20e9ab47564af63a6f5aa08e4625ad1 100644
+index 33e6d4b73b127bf493113919a8a0017b532a0487..85c0dbc388f0dc6eda4796e0ca7522fff2e4dbac 100644
 --- a/dist/chunk-GHDHOLZS.js
 +++ b/dist/chunk-GHDHOLZS.js
-@@ -9559,35 +9559,6 @@ var OpenRouterChatLanguageModel = class {
+@@ -8775,7 +8775,20 @@ function convertToOpenRouterChatMessages(prompt) {
+   return messages;
+ }
+ function getToolResultContent(input) {
+-  return input.output.type === "text" ? input.output.value : JSON.stringify(input.output.value);
++  // PATCHED: serialize multimodal `content` tool results as chat-completions
++  // content parts (text + image_url) instead of JSON-stringifying them, so
++  // screenshots/images returned by tools reach vision-capable models.
++  if (input.output.type === "text") return input.output.value;
++  if (input.output.type === "content" && Array.isArray(input.output.value)) {
++    return input.output.value.map((item) => {
++      if (item.type === "text") return { type: "text", text: item.text };
++      if (item.type === "media" && typeof item.mediaType === "string" && item.mediaType.startsWith("image/")) {
++        return { type: "image_url", image_url: { url: `data:${item.mediaType};base64,${item.data}` } };
++      }
++      return { type: "text", text: JSON.stringify(item) };
++    });
++  }
++  return JSON.stringify(input.output.value);
+ }
+ z.union([
+   z.literal("auto"),
+@@ -9559,35 +9572,6 @@ var OpenRouterChatLanguageModel = class {
                        message: `Tool call at index ${index} is missing after creation.`
                      });
                    }
@@ -74,7 +96,7 @@ index 33e6d4b73b127bf493113919a8a0017b532a0487..0aba4ea1e20e9ab47564af63a6f5aa08
                    continue;
                  }
                  const toolCall = toolCalls[index];
-@@ -9601,35 +9572,14 @@ var OpenRouterChatLanguageModel = class {
+@@ -9601,35 +9585,14 @@ var OpenRouterChatLanguageModel = class {
                      message: `Tool call at index ${index} is missing during merge.`
                    });
                  }
@@ -118,7 +140,7 @@ index 33e6d4b73b127bf493113919a8a0017b532a0487..0aba4ea1e20e9ab47564af63a6f5aa08
                  }
                }
              }
-@@ -9644,31 +9594,49 @@ var OpenRouterChatLanguageModel = class {
+@@ -9644,31 +9607,49 @@ var OpenRouterChatLanguageModel = class {
              }
            },
            flush(controller) {
@@ -189,10 +211,32 @@ index 33e6d4b73b127bf493113919a8a0017b532a0487..0aba4ea1e20e9ab47564af63a6f5aa08
              }
              if (reasoningStarted) {
 diff --git a/dist/chunk-YYUDVZJC.cjs b/dist/chunk-YYUDVZJC.cjs
-index ed85bcd8b8dea06ba08b26d3e070cfb5f369fd42..3126c215b9b096ed1fa597c812b71158cee57026 100644
+index ed85bcd8b8dea06ba08b26d3e070cfb5f369fd42..b77d63da1aec9b99fe9f801921ef14b86ca8648f 100644
 --- a/dist/chunk-YYUDVZJC.cjs
 +++ b/dist/chunk-YYUDVZJC.cjs
-@@ -9561,35 +9561,6 @@ var OpenRouterChatLanguageModel = class {
+@@ -8777,7 +8777,20 @@ function convertToOpenRouterChatMessages(prompt) {
+   return messages;
+ }
+ function getToolResultContent(input) {
+-  return input.output.type === "text" ? input.output.value : JSON.stringify(input.output.value);
++  // PATCHED: serialize multimodal `content` tool results as chat-completions
++  // content parts (text + image_url) instead of JSON-stringifying them, so
++  // screenshots/images returned by tools reach vision-capable models.
++  if (input.output.type === "text") return input.output.value;
++  if (input.output.type === "content" && Array.isArray(input.output.value)) {
++    return input.output.value.map((item) => {
++      if (item.type === "text") return { type: "text", text: item.text };
++      if (item.type === "media" && typeof item.mediaType === "string" && item.mediaType.startsWith("image/")) {
++        return { type: "image_url", image_url: { url: `data:${item.mediaType};base64,${item.data}` } };
++      }
++      return { type: "text", text: JSON.stringify(item) };
++    });
++  }
++  return JSON.stringify(input.output.value);
+ }
+ v4.z.union([
+   v4.z.literal("auto"),
+@@ -9561,35 +9574,6 @@ var OpenRouterChatLanguageModel = class {
                        message: `Tool call at index ${index} is missing after creation.`
                      });
                    }
@@ -228,7 +272,7 @@ index ed85bcd8b8dea06ba08b26d3e070cfb5f369fd42..3126c215b9b096ed1fa597c812b71158
                    continue;
                  }
                  const toolCall = toolCalls[index];
-@@ -9603,35 +9574,14 @@ var OpenRouterChatLanguageModel = class {
+@@ -9603,35 +9587,14 @@ var OpenRouterChatLanguageModel = class {
                      message: `Tool call at index ${index} is missing during merge.`
                    });
                  }
@@ -272,7 +316,7 @@ index ed85bcd8b8dea06ba08b26d3e070cfb5f369fd42..3126c215b9b096ed1fa597c812b71158
                  }
                }
              }
-@@ -9646,31 +9596,49 @@ var OpenRouterChatLanguageModel = class {
+@@ -9646,31 +9609,49 @@ var OpenRouterChatLanguageModel = class {
              }
            },
            flush(controller) {

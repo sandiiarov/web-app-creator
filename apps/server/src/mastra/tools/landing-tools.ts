@@ -23,6 +23,7 @@ type LandingTool =
 interface LandingToolContext {
   baseUrl: string
   captureProjectSelector?: RequestProjectScreenshot
+  directImages?: boolean
   fs: HtmlStoreFilesystem
   imageModel?: string
   projectId?: string
@@ -77,9 +78,14 @@ const LANDING_TOOL_DEFINITIONS = [
   ),
   tool(
     'screenshot',
-    'Use `screenshot` as a FINAL verification/QA step — like running tests or a linter — taken ONCE the page (or the requested change) is complete, not after every edit. Finish all the edits for a task first, then screenshot to confirm layout, text, spacing, contrast, clipping, and responsive behavior. It renders the current project HTML at three viewport sizes (mobile, tablet, desktop) in one isolated browser session, captures the element matching `selector` with 8px padding around it, and returns OCR plus visual QA notes across all three viewports. For a targeted user request (e.g. "change the navigation") you may screenshot once beforehand to assess current state, and once after the change is done — never as a reflex after each intermediate edit. The tool accepts only `selector`, and creates no files.',
-    ({ captureProjectSelector, signal, visionModel }) =>
-      createScreenshotTool(captureProjectSelector, visionModel, signal),
+    'Use `screenshot` as a FINAL verification/QA step — like running tests or a linter — taken ONCE the page (or the requested change) is complete, not after every edit. Finish all the edits for a task first, then screenshot to confirm layout, text, spacing, contrast, clipping, and responsive behavior. It renders the current project HTML at three viewport sizes (mobile, tablet, desktop) in one isolated browser session, captures the element matching `selector` with 8px padding around it, and returns the screenshots (direct images when the chat model accepts image input, otherwise a vision OCR transcript). For a targeted user request (e.g. "change the navigation") you may screenshot once beforehand to assess current state, and once after the change is done — never as a reflex after each intermediate edit. The tool accepts only `selector`, and creates no files.',
+    ({ captureProjectSelector, directImages, signal, visionModel }) =>
+      createScreenshotTool(
+        captureProjectSelector,
+        visionModel,
+        signal,
+        directImages,
+      ),
   ),
   tool(
     'generate_image',
@@ -93,6 +99,7 @@ export function createLandingTools(
   baseUrl: string,
   captureProjectSelector?: RequestProjectScreenshot,
   options: {
+    directImages?: boolean
     imageModel?: string
     projectId?: string
     signal?: AbortSignal
@@ -107,6 +114,7 @@ export function createLandingTools(
       create({
         baseUrl,
         captureProjectSelector,
+        directImages: options.directImages,
         fs,
         imageModel: options.imageModel,
         projectId: options.projectId,

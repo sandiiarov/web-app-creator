@@ -285,6 +285,107 @@ describe('streamLandingAgent attachments', () => {
     expect(JSON.stringify(saved?.messages[0])).not.toContain(PNG_DATA_URL)
   })
 
+  it('attaches images directly to the user message when the model supports image input', async () => {
+    vi.stubEnv('OPENROUTER_API_KEY', 'test-openrouter-key')
+
+    let capturedMessages: Array<{
+      content: unknown
+      role: string
+    }> = []
+    vi.doMock('./index.ts', () => ({ mastra: {} }))
+    vi.doMock('./agents/landing-page-agent.ts', () => ({
+      createLandingPageAgent: () => ({
+        stream: async (messages: Array<{ content: unknown; role: string }>) => {
+          capturedMessages = messages
+          return fakeAgentStream()
+        },
+      }),
+    }))
+
+    const fetch = vi.fn<typeof globalThis.fetch>(async (input) => {
+      const url = String(input)
+      if (url.includes('/models')) {
+        return jsonResponse({
+          data: [
+            {
+              architecture: { input_modalities: ['text', 'image'] },
+              id: 'acme/vision-chat',
+            },
+          ],
+        })
+      }
+      if (url.includes('/generation')) return jsonResponse({ data: {} })
+      throw new Error(`Unexpected fetch in direct mode: ${url}`)
+    })
+    vi.stubGlobal('fetch', fetch)
+
+    const { createProject, getProject } = await import('./lib/project-store.ts')
+    const project = await createProject()
+    createdProjectIds.push(project.id)
+    const response = new FakeResponse()
+
+    await streamLandingAgent({
+      attachments: [
+        {
+          dataUrl: PNG_DATA_URL,
+          id: 'image-1',
+          mediaType: 'image/png',
+          name: 'wireframe.png',
+          size: 68,
+        },
+      ],
+      projectId: project.id,
+      prompt: 'Use this reference image.',
+      request: fakeRequest(),
+      response: response as unknown as ServerResponse,
+      textModel: 'acme/vision-chat:nitro',
+    })
+
+    // Current prompt rides as a multimodal user message: text + image part.
+    const current = capturedMessages.at(-1)
+    expect(current?.role).toBe('user')
+    expect(Array.isArray(current?.content)).toBe(true)
+    const parts = current?.content as Array<{
+      image?: string
+      text?: string
+      type: string
+    }>
+    expect(parts[0]).toMatchObject({ type: 'text' })
+    expect(parts[0]?.text).toContain('Use this reference image.')
+    expect(parts[0]?.text).toContain('wireframe.png')
+    expect(parts[1]).toEqual({ image: PNG_DATA_URL, type: 'image' })
+
+    // No vision OCR call was made — only the model catalog fetch.
+    for (const call of fetch.mock.calls) {
+      expect(String(call[0])).not.toContain('/chat/completions')
+    }
+
+    const events = parseSseEvents(response.body)
+    expect(events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          data: expect.objectContaining({
+            result: 'Attached 1 image to the model',
+            state: 'done',
+            tool: 'analyze_image',
+          }),
+          event: 'tool_call',
+        }),
+        expect.objectContaining({
+          data: expect.objectContaining({
+            costBreakdown: expect.objectContaining({
+              vision: { calls: 0, cost: 0, images: 0 },
+            }),
+          }),
+          event: 'stats',
+        }),
+      ]),
+    )
+
+    const saved = await getProject(project.id)
+    expect(JSON.stringify(saved?.messages[0])).not.toContain(PNG_DATA_URL)
+  })
+
   it('records attachment analysis failures without blocking the agent run', async () => {
     vi.stubEnv('OPENROUTER_API_KEY', 'test-openrouter-key')
 

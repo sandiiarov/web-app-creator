@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 
+import { ocrImageInputs } from '../lib/image-ocr.ts'
 import type { CapturedProjectSelector } from '../lib/project-screenshot.ts'
 import {
   createScreenshotTool,
@@ -164,5 +165,70 @@ describe('createScreenshotTool execute', () => {
     expect(res.ok).toBe(false)
     expect(res.captures).toEqual([])
     expect(res.reason).toBe('capture failed')
+  })
+})
+
+describe('createScreenshotTool direct mode', () => {
+  it('keeps data URLs, skips OCR, and exposes multimodal toModelOutput', async () => {
+    vi.mocked(ocrImageInputs).mockClear()
+    const capture = vi.fn<RequestProjectScreenshot>(async (selector) =>
+      makeCapturedSelector(selector),
+    )
+    const tool = createScreenshotTool(
+      capture,
+      'test-vision-model',
+      undefined,
+      true,
+    )
+    const res = (await tool.execute?.(
+      { action: 'check hero', selector: 'main' },
+      undefined as never,
+    )) as {
+      captures: { dataUrl?: string; viewport: string }[]
+      imageOcr: { imagesAnalyzed: number; ok: boolean }
+      ok: boolean
+      text: string
+    }
+
+    expect(res.ok).toBe(true)
+    expect(res.captures).toHaveLength(3)
+    expect(res.imageOcr).toMatchObject({ imagesAnalyzed: 0, ok: true })
+    // No vision-model OCR call in direct mode.
+    expect(ocrImageInputs).not.toHaveBeenCalled()
+    // Captures retain inline images for toModelOutput.
+    expect(JSON.stringify(res)).toContain('data:image/jpeg')
+
+    const modelOutput = tool.toModelOutput?.(res as never) as {
+      type: string
+      value: Array<
+        | { data: string; mediaType: string; type: 'media' }
+        | { text: string; type: 'text' }
+      >
+    }
+    expect(modelOutput.type).toBe('content')
+    const textPart = modelOutput.value.find(
+      (part): part is { text: string; type: 'text' } => part.type === 'text',
+    )
+    const mediaParts = modelOutput.value.filter((part) => part.type === 'media')
+    expect(mediaParts).toHaveLength(3)
+    expect(mediaParts[0]).toEqual({
+      data: '/9j/4AAQ',
+      mediaType: 'image/jpeg',
+      type: 'media',
+    })
+    // The text summary carries capture metadata but no inline image bytes.
+    expect(textPart).toBeDefined()
+    expect(textPart?.text).toContain('mobile')
+    expect(textPart?.text).not.toContain('data:image/jpeg')
+  })
+
+  it('has no toModelOutput in OCR mode', () => {
+    const tool = createScreenshotTool(
+      vi.fn<RequestProjectScreenshot>(async (selector) =>
+        makeCapturedSelector(selector),
+      ),
+      'test-vision-model',
+    )
+    expect(tool.toModelOutput).toBeUndefined()
   })
 })

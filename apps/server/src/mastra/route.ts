@@ -15,6 +15,7 @@ import {
   visionCost,
 } from './lib/cost.ts'
 import { ocrImageInputs, type ImageOcrResult } from './lib/image-ocr.ts'
+import { supportsImageInput } from './lib/model-capabilities.ts'
 import {
   captureProjectSelectors,
   type CapturedProjectSelector,
@@ -100,17 +101,27 @@ type AgentConversationMessage =
 
 /**
  * Items fed back to `agent.stream` for history replay. Either a reconstructed
- * `{content, role}` message (user prompt text) or a verbatim persisted
+ * `{content, role}` message (user prompt text), a verbatim persisted
  * `MastraDBMessage` carrying the real assistant text, tool calls, and tool
- * results from a prior turn.
+ * results from a prior turn, or a multimodal user message for the current
+ * prompt when the chat model accepts image inputs.
  */
-type AgentReplayMessage = AgentConversationMessage | MastraDBMessage
+type AgentReplayMessage =
+  | AgentConversationMessage
+  | MastraDBMessage
+  | { content: AgentUserContentPart[]; role: 'user' }
+
+/** Multimodal user-message content part (current-prompt attachments). */
+type AgentUserContentPart =
+  | { image: string; type: 'image' }
+  | { text: string; type: 'text' }
 
 interface AttachmentAnalysis {
   contextBlock: string
   cost: number
-  images: number
+  imageParts: { dataUrl: string; label: string }[]
   ok: boolean
+  visionImages: number
 }
 
 interface HtmlUpdatePayload {
@@ -269,6 +280,7 @@ function addUsageSnapshots(
 async function analyzePromptAttachments({
   attachments,
   baseUrl,
+  directImages,
   emit,
   nextToolSeq,
   projectId,
@@ -279,6 +291,7 @@ async function analyzePromptAttachments({
 }: {
   attachments: AgentAttachmentInput[]
   baseUrl: string
+  directImages: boolean
   emit: (event: string, payload: unknown) => void
   nextToolSeq: () => number
   projectId: string
@@ -288,7 +301,13 @@ async function analyzePromptAttachments({
   visionModel: string
 }): Promise<AttachmentAnalysis> {
   if (attachments.length === 0) {
-    return { contextBlock: '', cost: 0, images: 0, ok: true }
+    return {
+      contextBlock: '',
+      cost: 0,
+      imageParts: [],
+      ok: true,
+      visionImages: 0,
+    }
   }
 
   const elementSelectors = attachments
@@ -334,6 +353,49 @@ async function analyzePromptAttachments({
       })
     }
 
+    // Direct mode: the chat model accepts image inputs, so attached images
+    // ride into the run as image parts on the current user message instead of
+    // a separate vision-model OCR pass. The model sees the pixels itself.
+    if (directImages) {
+      const imageParts = [
+        ...imageAttachments.map((attachment) => ({
+          dataUrl: attachment.dataUrl,
+          label: attachment.name,
+        })),
+        ...elementCaptures.flatMap((capture) =>
+          capture.captures.map((viewport) => ({
+            dataUrl: viewport.dataUrl,
+            label: `Element ${capture.selector} (${viewport.viewport})`,
+          })),
+        ),
+      ]
+      // Persist safe screenshot URLs for element captures so the conversation
+      // UI can preview them without data URLs.
+      const safeImages = elementCaptures.flatMap((capture) =>
+        capture.captures.map((viewport) => ({
+          alt: `Element ${capture.selector} (${viewport.viewport})`,
+          url: expandScreenshotUrl(viewport.imageUrl, baseUrl),
+        })),
+      )
+      const donePayload: RecordedToolPayload = {
+        action,
+        detail,
+        id,
+        ...(safeImages.length > 0 ? { images: safeImages } : {}),
+        result: `Attached ${imageParts.length} image${imageParts.length === 1 ? '' : 's'} to the model`,
+        state: 'done',
+        tool: 'analyze_image',
+      }
+      emit('tool_call', donePayload)
+      return {
+        contextBlock: buildDirectAttachmentContext(imageParts),
+        cost: 0,
+        imageParts,
+        ok: true,
+        visionImages: 0,
+      }
+    }
+
     // Build OCR inputs: uploaded images (with their dataUrls) plus captured
     // element screenshots (mobile/tablet/desktop per selector).
     const ocrInputs = [
@@ -358,7 +420,6 @@ async function analyzePromptAttachments({
     )
     const cost = visionCost(result.usage ?? {}, result.cost)
     const images = result.imagesAnalyzed
-
     // Record this OCR/vision call in vision-messages.json (text/usage/cost only).
     void appendVisionMessage(projectId, {
       costUsd: cost,
@@ -389,8 +450,9 @@ async function analyzePromptAttachments({
       return {
         contextBlock: `Attached image analysis failed: ${reason}`,
         cost,
-        images,
+        imageParts: [],
         ok: false,
+        visionImages: images,
       }
     }
 
@@ -421,8 +483,9 @@ async function analyzePromptAttachments({
         visionModel,
       ),
       cost,
-      images,
+      imageParts: [],
       ok: true,
+      visionImages: images,
     }
   } catch (error) {
     signal.throwIfAborted()
@@ -439,8 +502,9 @@ async function analyzePromptAttachments({
     return {
       contextBlock: `Attached image analysis failed: ${reason}`,
       cost: 0,
-      images: 0,
+      imageParts: [],
       ok: false,
+      visionImages: 0,
     }
   }
 }
@@ -449,7 +513,21 @@ function buildAgentMessages(
   history: ProjectMessageTurn[],
   rawByTurnId: ReadonlyMap<string, MastraDBMessage[]>,
   currentPrompt: string,
+  currentImageParts: { dataUrl: string; label: string }[] = [],
 ): AgentReplayMessage[] {
+  const currentMessage: AgentReplayMessage =
+    currentImageParts.length > 0
+      ? {
+          content: [
+            { text: currentPrompt, type: 'text' as const },
+            ...currentImageParts.map((part) => ({
+              image: part.dataUrl,
+              type: 'image' as const,
+            })),
+          ],
+          role: 'user' as const,
+        }
+      : { content: currentPrompt, role: 'user' as const }
   const messages: AgentReplayMessage[] = [
     ...history.flatMap((turn) => {
       const messages: AgentReplayMessage[] = []
@@ -471,7 +549,7 @@ function buildAgentMessages(
       }
       return messages
     }),
-    { content: currentPrompt, role: 'user' },
+    currentMessage,
   ]
 
   return messages
@@ -502,6 +580,20 @@ function buildAttachmentContext(
     imageList,
     '',
     result.text || 'No text returned.',
+  ].join('\n')
+}
+
+function buildDirectAttachmentContext(
+  imageParts: { dataUrl: string; label: string }[],
+): string {
+  const imageList = imageParts
+    .map((part, index) => `${index + 1}. ${part.label}`)
+    .join('\n')
+  return [
+    `${imageParts.length} image${imageParts.length === 1 ? '' : 's'} attached directly to this message (in order):`,
+    imageList,
+    '',
+    'Inspect the attached image(s) visually and use them as design/content reference for the landing page.',
   ].join('\n')
 }
 
@@ -665,6 +757,10 @@ async function runAgentStream({
   const store = createProjectHtmlStore(projectId)
   let lastHtmlUpdate = store.get()
   let htmlUpdateSequence = 0
+  // When the chat model accepts image inputs, screenshots/attached images go
+  // straight to the model (direct mode); otherwise a separate vision model
+  // OCRs them into transcripts (fallback mode).
+  const directImages = await supportsImageInput(textModel, controller.signal)
   const agent = createLandingPageAgent(
     store,
     mastra,
@@ -683,6 +779,7 @@ async function runAgentStream({
       return result
     },
     {
+      directImages,
       imageModel,
       projectId,
       signal: controller.signal,
@@ -818,6 +915,7 @@ async function runAgentStream({
     const attachmentAnalysis = await analyzePromptAttachments({
       attachments,
       baseUrl,
+      directImages,
       emit,
       nextToolSeq: () => ++toolCallSeq,
       projectId,
@@ -832,8 +930,8 @@ async function runAgentStream({
     if (recordedTurn.attachments && recordedTurn.attachments.length > 0) {
       emit('attachments_update', { attachments: recordedTurn.attachments })
     }
-    if (attachmentAnalysis.images > 0) {
-      visionImages += attachmentAnalysis.images
+    if (attachmentAnalysis.visionImages > 0) {
+      visionImages += attachmentAnalysis.visionImages
       visionCostUsd += attachmentAnalysis.cost
       if (attachmentAnalysis.ok) visionCalls += 1
       emitStats()
@@ -854,6 +952,7 @@ async function runAgentStream({
       project.messages,
       rawByTurnId,
       agentPrompt,
+      attachmentAnalysis.imageParts,
     )
 
     agentStep = 0
@@ -894,7 +993,7 @@ async function runAgentStream({
           agentStep += 1
           void appendAgentMessages(projectId, {
             dir: 'step',
-            messages: stripReasoning(messages) as ProjectRawMessage[],
+            messages: sanitizeAgentMessages(messages) as ProjectRawMessage[],
             step: agentStep,
             ts: new Date().toISOString(),
             turnId: recordedTurn.id,
@@ -1229,7 +1328,9 @@ async function runAgentStream({
         agentStep += 1
         void appendAgentMessages(projectId, {
           dir: 'step',
-          messages: stripReasoning(finalAgentMessages) as ProjectRawMessage[],
+          messages: sanitizeAgentMessages(
+            finalAgentMessages,
+          ) as ProjectRawMessage[],
           step: agentStep,
           ts: new Date().toISOString(),
           turnId: recordedTurn.id,
@@ -1305,6 +1406,14 @@ async function runLandingAgentBody(options: RunBodyOptions) {
   }
 }
 
+/** Sanitize Mastra messages before persisting to agent-messages.jsonl:
+ *  strip reasoning parts + inline image bytes. */
+function sanitizeAgentMessages(messages: MastraDBMessage[]): MastraDBMessage[] {
+  return stripReasoning(messages).map(
+    (message) => stripInlineImageData(message) as MastraDBMessage,
+  )
+}
+
 function startToolCallDisplay(
   displayByProviderId: Map<string, ToolCallDisplay>,
   completedProviderIds: Set<string>,
@@ -1348,6 +1457,30 @@ function stripAttachmentData(
   }
   const { dataUrl: _dataUrl, ...metadata } = attachment
   return metadata
+}
+
+const OMITTED_INLINE_IMAGE = '[omitted inline image bytes]'
+
+/** Replace inline base64 image payloads (`data:image/...` strings, media
+ *  parts) with a placeholder. Direct-mode screenshot tool results carry
+ *  capture data URLs; base64 must never land in JSON logs (log bloat) — the
+ *  persisted imageUrl stays as the durable pointer. */
+function stripInlineImageData<T>(value: T): T {
+  if (typeof value === 'string') {
+    return (value.startsWith('data:image/') ? OMITTED_INLINE_IMAGE : value) as T
+  }
+  if (Array.isArray(value)) {
+    return value.map((item) => stripInlineImageData(item)) as T
+  }
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>).map(([key, item]) => [
+        key,
+        stripInlineImageData(item),
+      ]),
+    ) as T
+  }
+  return value
 }
 
 /** Strip `reasoning` parts (the model's private chain-of-thought) from Mastra

@@ -26,8 +26,7 @@ export function createGenerateImageTool(
   model: string = config.openrouter.defaultImageModel,
 ) {
   return createTool({
-    description:
-      'Generate an image from a text prompt using the Seedream 4.5 model. Returns a hosted URL (e.g. http://localhost:3001/images/img-1.jpg) — embed it directly as `<img src="<url>" alt="...">`. Use for hero/product imagery, brand visuals, or any raster graphic the landing page needs — do NOT use for icons or decoration. Always pass an action: one short imperative line on what you are generating (shown to the user as the label for this step). Be specific and art-directed in the prompt (subject, lighting, composition, style).',
+    description: `Generate an image from a text prompt using the ${model} image model. Returns a hosted URL (e.g. http://localhost:3001/images/img-1.jpg) — embed it directly as \`<img src="<url>" alt="...">\`. Use for hero/product imagery, brand visuals, or any raster graphic the landing page needs — do NOT use for icons or decoration. Always pass an action: one short imperative line on what you are generating (shown to the user as the label for this step). Be specific and art-directed in the prompt (subject, lighting, composition, style).`,
     execute: async ({ action: _intent, aspectRatio, prompt }) => {
       if (!config.openrouter.apiKey) {
         return {

@@ -20,6 +20,12 @@ export type RequestProjectScreenshot = (
  * string. Regex-extract the intended values so a usable screenshot call lands
  * instead of a validation error plus retry.
  */
+const DIRECT_DESCRIPTION =
+  'Final verification/QA step: call it once the page (or the requested change) is complete — like running tests or a linter — not after every edit. Request a browser-rendered screenshot of one element in the current project HTML document; the images are returned to you directly for visual inspection (no separate OCR step). Accepts two arguments: a CSS element selector and an action describing what to inspect. The tool automatically captures the element at three viewport sizes (mobile 390×844, tablet 768×1024, and desktop 1440×900) in a single isolated browser session, so you get responsive feedback in one call. Use the action to state precisely what feedback you need (e.g. "check hero spacing and CTA contrast", "verify mobile nav wraps without clipping"), then look at the returned images and judge them yourself. Each capture is annotated with numbered red badges on interactive elements, and the result includes per-viewport elementMaps listing every badge (index → role / accessible name / bounding box / state), so reference elements by index (e.g. "the CTA at badge 0"). Returns per-viewport padded screenshots plus elementMaps; it does not create files.'
+
+const OCR_DESCRIPTION =
+  'Final verification/QA step: call it once the page (or the requested change) is complete — like running tests or a linter — not after every edit. Request a browser-rendered screenshot of one element in the current project HTML document, then OCR/analyze it with vision. Accepts two arguments: a CSS element selector and an action describing what to inspect. The tool automatically captures the element at three viewport sizes (mobile 390×844, tablet 768×1024, and desktop 1440×900) in a single isolated browser session, so you get responsive feedback in one call. The action becomes the vision prompt alongside the Z.AI ui_to_artifact system prompt, so state precisely what feedback you need (e.g. "check hero spacing and CTA contrast", "verify mobile nav wraps without clipping"). Each capture is annotated with numbered red badges on interactive elements, and the result includes per-viewport elementMaps listing every badge (index → role / accessible name / bounding box / state), so reference elements by index (e.g. "the CTA at badge 0"). Returns per-viewport padded screenshots plus OCR/visual transcripts and elementMaps; it does not create files.'
+
 export function recoverScreenshotArgs(value: unknown): unknown {
   if (typeof value === 'string') {
     try {
@@ -75,10 +81,10 @@ export function createScreenshotTool(
   captureProjectSelector?: RequestProjectScreenshot,
   visionModel: string = config.openrouter.defaultVisionModel,
   signal?: AbortSignal,
+  directImages = false,
 ) {
   return createTool({
-    description:
-      'Final verification/QA step: call it once the page (or the requested change) is complete — like running tests or a linter — not after every edit. Request a browser-rendered screenshot of one element in the current project HTML document, then OCR/analyze it with vision. Accepts two arguments: a CSS element selector and an action describing what to inspect. The tool automatically captures the element at three viewport sizes (mobile 390×844, tablet 768×1024, and desktop 1440×900) in a single isolated browser session, so you get responsive feedback in one call. The action becomes the vision prompt alongside the Z.AI ui_to_artifact system prompt, so state precisely what feedback you need (e.g. "check hero spacing and CTA contrast", "verify mobile nav wraps without clipping"). Each capture is annotated with numbered red badges on interactive elements, and the result includes per-viewport elementMaps listing every badge (index → role / accessible name / bounding box / state), so reference elements by index (e.g. "the CTA at badge 0"). Returns per-viewport padded screenshots plus OCR/visual transcripts and elementMaps; it does not create files.',
+    description: directImages ? DIRECT_DESCRIPTION : OCR_DESCRIPTION,
     execute: async (rawInput) => {
       const { action, selector } = recoverScreenshotArgs(rawInput) as {
         action?: string
@@ -139,6 +145,24 @@ export function createScreenshotTool(
         }
       }
 
+      // Direct mode: the chat model accepts image inputs, so the screenshots
+      // ride back inside the tool result (see `toModelOutput` below) and the
+      // model inspects them itself — no separate vision-model OCR call.
+      if (directImages) {
+        return {
+          captures: captured.captures,
+          imageOcr: {
+            imagesAnalyzed: 0,
+            ok: true,
+            text: '',
+            usage: null,
+          },
+          ok: true,
+          selector,
+          text: '',
+        }
+      }
+
       const imageOcr = await ocrImageInputs(
         captured.captures.map((capture) => ({
           dataUrl: capture.dataUrl,
@@ -168,7 +192,7 @@ export function createScreenshotTool(
           .string()
           .optional()
           .describe(
-            'What to inspect in this screenshot; becomes the vision prompt alongside the ui_to_artifact system prompt, e.g. "check hero spacing and CTA contrast" or "verify mobile nav wraps without clipping".',
+            'What to inspect in this screenshot; becomes the vision prompt in OCR mode, or frames what you look for when the images are returned to you, e.g. "check hero spacing and CTA contrast" or "verify mobile nav wraps without clipping".',
           ),
         selector: z
           .string()
@@ -183,6 +207,12 @@ export function createScreenshotTool(
     outputSchema: z.object({
       captures: z.array(
         z.object({
+          dataUrl: z
+            .string()
+            .optional()
+            .describe(
+              'Inline base64 image, present only in direct-to-model mode; consumed by toModelOutput and stripped from persisted logs.',
+            ),
           elementMap: z.string(),
           height: z.number(),
           imageUrl: z.string(),
@@ -197,7 +227,52 @@ export function createScreenshotTool(
       text: z.string(),
     }),
     strict: true,
+    // Direct mode only: hand the model the screenshot images as multimodal
+    // tool-result content (text summary + one media part per viewport). The
+    // OpenRouter adapter serializes these as image_url parts on the wire. In
+    // OCR mode the model gets the plain JSON result (transcript, no bytes).
+    ...(directImages
+      ? {
+          toModelOutput: (output: {
+            captures: Array<{ dataUrl?: string | undefined }>
+          }) => ({
+            type: 'content',
+            value: [
+              {
+                text: JSON.stringify({
+                  ...output,
+                  captures: output.captures.map(
+                    ({ dataUrl: _dataUrl, ...capture }) => capture,
+                  ),
+                }),
+                type: 'text',
+              },
+              ...output.captures.flatMap((capture) => {
+                const parsed = parseCaptureDataUrl(capture.dataUrl)
+                return parsed
+                  ? [
+                      {
+                        data: parsed.data,
+                        mediaType: parsed.mediaType,
+                        type: 'media' as const,
+                      },
+                    ]
+                  : []
+              }),
+            ],
+          }),
+        }
+      : {}),
   })
+}
+
+/** Split a capture data URL into `{ data, mediaType }` for a media part. */
+function parseCaptureDataUrl(
+  dataUrl: string | undefined,
+): null | { data: string; mediaType: string } {
+  const match = dataUrl?.match(/^data:([^;,]+);base64,(.+)$/)
+  if (!match?.[1] || !match[2]) return null
+  return { data: match[2].replace(/\s+/g, ''), mediaType: match[1] }
 }
 
 /** Strip the internal data URL from a capture before returning it as a tool result. */
