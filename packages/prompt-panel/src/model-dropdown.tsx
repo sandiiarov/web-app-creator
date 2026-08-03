@@ -115,10 +115,11 @@ export interface ModelDropdownProps {
 /**
  * A model picker with one trigger showing all three role selections (text,
  * image, vision). Opens a popover with full-width role tabs across the top
- * and one scrollable menu of every model in the active role, grouped under
- * provider headers, with per-1M pricing under each name. Arrow keys rove
- * between models; the selected model is scrolled into view on open. Selecting
- * a model keeps the popover open so all three roles can be set in one session.
+ * and one scrollable flat list of every model in the active role, each row
+ * labeled `Provider Model Name` with per-1M pricing underneath. Arrow keys
+ * rove between models; the selected model is scrolled into view on open.
+ * Selecting a model keeps the popover open so all three roles can be set in
+ * one session.
  */
 export function ModelDropdown({
   modelPricing,
@@ -133,28 +134,19 @@ export function ModelDropdown({
     (entry) => entry.role === activeRole,
   )!
 
-  // Providers available in the active role with their models, in
-  // first-appearance order — rendered as group headers over flat model rows.
-  const providers: {
-    Icon?: ComponentType<{ className?: string }>
-    name: string
-    options: typeof activeGroup.options
-    prefix: string
-  }[] = []
-  for (const option of activeGroup.options) {
+  // Flat model rows for the active role, each labeled `Provider Model Name`
+  // (no group headers). When the label already starts with the provider name
+  // (e.g. "MiniMax M3"), it stands alone.
+  const items = activeGroup.options.map((option) => {
     const prefix = providerOf(option.id)
-    let provider = providers.find((entry) => entry.prefix === prefix)
-    if (!provider) {
-      provider = {
-        Icon: MODEL_ICONS[option.id],
-        name: PROVIDER_NAMES[prefix] ?? prefix,
-        options: [],
-        prefix,
-      }
-      providers.push(provider)
-    }
-    provider.options.push(option)
-  }
+    const providerName = PROVIDER_NAMES[prefix] ?? prefix
+    const label = option.label
+      .toLowerCase()
+      .startsWith(providerName.toLowerCase())
+      ? option.label
+      : `${providerName} ${option.label}`
+    return { Icon: MODEL_ICONS[option.id], id: option.id, label }
+  })
 
   const selectedId = models[activeRole]
   const [focusId, setFocusId] = useState(selectedId)
@@ -169,26 +161,18 @@ export function ModelDropdown({
   const visionSyncId =
     activeRole === 'vision' ? syncedVisionModel(models.text, capableIds) : null
 
-  // Filter model rows by name, id, or provider; empty groups drop out.
+  // Filter model rows by label or id.
   const normalizedQuery = query.trim().toLowerCase()
-  const filteredProviders = normalizedQuery
-    ? providers
-        .map((provider) => ({
-          ...provider,
-          options: provider.options.filter(
-            (option) =>
-              option.label.toLowerCase().includes(normalizedQuery) ||
-              option.id.toLowerCase().includes(normalizedQuery) ||
-              provider.name.toLowerCase().includes(normalizedQuery),
-          ),
-        }))
-        .filter((provider) => provider.options.length > 0)
-    : providers
+  const visibleItems = normalizedQuery
+    ? items.filter(
+        (item) =>
+          item.label.toLowerCase().includes(normalizedQuery) ||
+          item.id.toLowerCase().includes(normalizedQuery),
+      )
+    : items
 
   // Roving tab stop must always land on a visible row.
-  const visibleIds = filteredProviders.flatMap((provider) =>
-    provider.options.map((option) => option.id),
-  )
+  const visibleIds = visibleItems.map((item) => item.id)
   const effectiveFocusId = visibleIds.includes(focusId)
     ? focusId
     : visibleIds[0]
@@ -355,84 +339,65 @@ export function ModelDropdown({
           ref={listRef}
           role="radiogroup"
         >
-          {filteredProviders.length === 0 ? (
+          {visibleItems.length === 0 ? (
             <div className="px-2 py-3 text-xs text-muted-foreground">
               No models match &quot;{query.trim()}&quot;
             </div>
           ) : null}
-          {filteredProviders.map((provider, groupIndex) => (
-            <div aria-label={provider.name} key={provider.prefix} role="group">
-              <div
+          {visibleItems.map((item) => {
+            const Icon = item.Icon
+            const pricing = modelPricingFor(item.id, modelPricing)
+            const selected = models[activeRole] === item.id
+            const locked = visionSyncId != null && item.id !== visionSyncId
+            return (
+              <button
+                aria-checked={selected}
+                aria-disabled={locked || undefined}
                 className={cn(
-                  'flex items-center gap-1.5 px-2 pb-1 text-[10px] font-medium text-muted-foreground',
-                  groupIndex === 0 ? 'pt-1' : 'pt-2',
+                  'flex w-full items-center gap-2 rounded-none px-2 py-1.5 text-left text-xs',
+                  'outline-none hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground focus-visible:ring-1 focus-visible:ring-ring/50 focus-visible:ring-inset',
+                  locked &&
+                    'cursor-not-allowed opacity-50 hover:bg-transparent hover:text-muted-foreground',
                 )}
+                data-model-id={item.id}
+                key={item.id}
+                onClick={() => {
+                  if (locked) return
+                  onModelsChange(
+                    selectLandingModel(models, activeRole, item.id, capableIds),
+                  )
+                }}
+                role="radio"
+                tabIndex={item.id === effectiveFocusId ? 0 : -1}
+                type="button"
               >
-                {provider.Icon ? <provider.Icon className="size-3" /> : null}
-                {provider.name}
-              </div>
-              {provider.options.map((option) => {
-                const Icon = MODEL_ICONS[option.id]
-                const pricing = modelPricingFor(option.id, modelPricing)
-                const selected = models[activeRole] === option.id
-                const locked =
-                  visionSyncId != null && option.id !== visionSyncId
-                return (
-                  <button
-                    aria-checked={selected}
-                    aria-disabled={locked || undefined}
-                    className={cn(
-                      'flex w-full items-center gap-2 rounded-none px-2 py-1.5 text-left text-xs',
-                      'outline-none hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground focus-visible:ring-1 focus-visible:ring-ring/50 focus-visible:ring-inset',
-                      locked &&
-                        'cursor-not-allowed opacity-50 hover:bg-transparent hover:text-muted-foreground',
-                    )}
-                    data-model-id={option.id}
-                    key={option.id}
-                    onClick={() => {
-                      if (locked) return
-                      onModelsChange(
-                        selectLandingModel(
-                          models,
-                          activeRole,
-                          option.id,
-                          capableIds,
-                        ),
-                      )
-                    }}
-                    role="radio"
-                    tabIndex={option.id === effectiveFocusId ? 0 : -1}
-                    type="button"
-                  >
-                    {Icon ? <Icon className="size-3.5 shrink-0" /> : null}
-                    <span className="flex min-w-0 flex-col">
-                      <span className="truncate">{option.label}</span>
-                      {pricing ? (
-                        <span className="truncate text-[10px] text-muted-foreground">
-                          {pricing.image != null ? (
-                            `${formatTokenPrice(pricing.image)} / image`
-                          ) : pricing.imageOutput != null ? (
-                            `${formatTokenPrice(pricing.imageOutput)} / M image tokens`
-                          ) : (
-                            <>
-                              {formatTokenPrice(pricing.input)}/M in ·{' '}
-                              {formatTokenPrice(pricing.output)}/M out
-                              {pricing.cacheRead == null
-                                ? ''
-                                : ` · ${formatTokenPrice(pricing.cacheRead)}/M cache`}
-                            </>
-                          )}
-                        </span>
-                      ) : null}
+                {Icon ? <Icon className="size-3.5 shrink-0" /> : null}
+                <span className="flex min-w-0 flex-col">
+                  <span className="truncate">{item.label}</span>
+                  {pricing ? (
+                    <span className="truncate text-[10px] text-muted-foreground">
+                      {pricing.image != null ? (
+                        `${formatTokenPrice(pricing.image)} / image`
+                      ) : pricing.imageOutput != null ? (
+                        `${formatTokenPrice(pricing.imageOutput)} / M image tokens`
+                      ) : (
+                        <>
+                          {formatTokenPrice(pricing.input)}/M in ·{' '}
+                          {formatTokenPrice(pricing.output)}/M out
+                          {pricing.cacheRead == null
+                            ? ''
+                            : ` · ${formatTokenPrice(pricing.cacheRead)}/M cache`}
+                        </>
+                      )}
                     </span>
-                    {selected ? (
-                      <Check className="ml-auto size-3.5 shrink-0" />
-                    ) : null}
-                  </button>
-                )
-              })}
-            </div>
-          ))}
+                  ) : null}
+                </span>
+                {selected ? (
+                  <Check className="ml-auto size-3.5 shrink-0" />
+                ) : null}
+              </button>
+            )
+          })}
         </div>
       </PopoverContent>
     </Popover>
