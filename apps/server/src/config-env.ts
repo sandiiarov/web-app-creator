@@ -29,7 +29,7 @@ export function createConfigFromEnv(source: ConfigEnvironment) {
       ),
     },
     agentMaxCostUsd: parseNonNegativeNumber(
-      optionalEnv(source, 'AGENT_MAX_COST_USD') ?? '1',
+      optionalEnv(source, 'AGENT_MAX_COST_USD') ?? '5',
       'AGENT_MAX_COST_USD',
     ),
     agentRetry: {

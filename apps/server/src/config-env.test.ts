@@ -128,8 +128,8 @@ describe('createConfigFromEnv', () => {
     })
   })
 
-  it('defaults the per-run cost cap to $1 and allows override/disable', () => {
-    expect(createConfigFromEnv(createEnv()).agentMaxCostUsd).toBe(1)
+  it('defaults the per-run cost cap to $5 and allows override/disable', () => {
+    expect(createConfigFromEnv(createEnv()).agentMaxCostUsd).toBe(5)
     expect(
       createConfigFromEnv(createEnv({ AGENT_MAX_COST_USD: '0.25' }))
         .agentMaxCostUsd,
