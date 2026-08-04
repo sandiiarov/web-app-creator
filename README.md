@@ -32,17 +32,17 @@ Root files are workspace/orchestration only. TS, Vite, Oxlint, and Oxfmt config 
 
 - `POST /agent` — SSE stream. Body `{ prompt: string, projectId: string, turnId?: string, textModel?: string, imageModel?: string, visionModel?: string, attachments?: attachment[] }`. The first-party client supplies `turnId` so local state, append-only logs, hydration, and transport-loss reconciliation address the same turn. Emits `text`, `thinking`, `tool_call`, `tool_call_drop`, `html_update`, `stats`, `screenshot_request`, `retry`, `error`, and `done` events.
 - `POST /api/screenshot-responses/:requestId` — browser POST-back that resolves a pending `screenshot_request` (bytes persisted once to disk; only metadata is logged).
-- `GET /api/models` — slim per-1M-token pricing map (`{ ok, models: Record<id, { input, output, cacheRead? }> }`) for the model picker; server-proxied OpenRouter `/models` catalog w/ in-process TTL cache (5 min, matches upstream), stale-on-error, `502` when no snapshot so the client falls back to bundled static pricing. `?ids=a/b,c/d` scopes the response to the app's supported models (client sends its picker option ids).
+- `GET /api/models` — slim per-1M-token pricing map (`{ ok, models: Record<id, { input, output, cacheRead?, image?, imageOutput?, inputModalities? }> }`) for the model picker; server-proxied OpenRouter `/models` catalog w/ in-process TTL cache (5 min, matches upstream), stale-on-error, `502` when no snapshot so the client falls back to bundled static pricing. `?ids=a/b,c/d` scopes the response to the app's supported models (client sends its picker option ids; capped at 64 ids, `400` beyond). Chat-model pricing comes from the catalog; image-only models (absent there) get per-image / per-image-token pricing enriched from OpenRouter's images-model endpoints, cached per id. `inputModalities` mirrors the upstream `architecture.input_modalities` (lowercased) so the picker can sync vision choices to live model capabilities.
 - `GET /api/projects` — list projects with generated HTML.
 - `POST /api/projects` — create a project. Body `{ textModel?: string, title?: string }`.
 - `GET /api/projects/:id` — get a project (HTML + hydrated message turns).
 - `POST /api/projects/:id/stop` — gracefully abort the active run while its SSE response remains open for terminal `stats`, stopped state, and `done`.
-- `PATCH /api/projects/:id` — update project model. Body `{ textModel: string }`.
+- `PATCH /api/projects/:id` — update project models. Body `{ textModel: string, imageModel?: string, visionModel?: string }`.
 - `DELETE /api/projects/:id` — delete a project.
 - `GET /api/projects/:id/images/:file` — serve a persisted project image.
 - `GET /images/:id` — serve a generated image (`http://<host>/images/img-1.jpg`).
 
-**The agent** is a Mastra agent backed by OpenRouter. It builds the page with these tools: `scrape` (Firecrawl a reference URL + OCR its images), `read`/`find` (inspect the current HTML as line-numbered, snapshot-tagged views), `edit` (apply a snapshot-verified line diff; stale tags and unbalanced HTML are rejected), `screenshot` (ask the browser to render the page, annotate interactive elements with numbered badges, and return visual-QA notes plus a Set-of-Marks element map), and `generate_image` (OpenRouter image model). A `design` skill is injected as system-prompt guidance.
+**The agent** is a Mastra agent backed by OpenRouter. It builds the page with these tools: `scrape` (Firecrawl a reference URL + OCR its images), `read`/`find` (inspect the current HTML as line-numbered, snapshot-tagged views), `edit` (apply a snapshot-verified line diff; stale tags and unbalanced HTML are rejected), `screenshot` (ask the browser to render the page, annotate interactive elements with numbered badges, and return visual-QA notes plus a Set-of-Marks element map), and `generate_image` (OpenRouter image model). A `design` skill is injected as system-prompt guidance. When the selected text model accepts image input, screenshot captures and prompt attachments are delivered to it directly as image parts (better output, no separate vision call); otherwise a vision model OCRs them into text transcripts. Image bytes are never written to JSON logs — only metadata is.
 
 **Per-project data** lives under `.data/projects/<id>/`: `project.json` (metadata), `html.json` (current document), `client-messages.jsonl` (append-only client wire — one line per SSE event out + inbound request; terminal events are queued before best-effort socket delivery), `agent-messages.jsonl` (per-step Mastra message snapshots), `vision-messages.json` (OCR calls), `screenshots/` (captured bytes), and `images/` (generated images). Legacy `messages.json` / `raw-messages.json` are read-only fallbacks for older projects.
 
@@ -90,7 +90,7 @@ The server reads `apps/server/.env` (package-local; do not create a root `.env`)
 | `AGENT_MODEL_MAX_RETRIES` | `0` | per-call model retries |
 | `AGENT_RETRY_BASE_DELAY_MS` / `AGENT_RETRY_MAX_DELAY_MS` | `1000` / `10000` | retry backoff |
 | `AGENT_STREAM_ERROR_MAX_RETRIES` | `10` | mid-stream error retries |
-| `AGENT_MAX_COST_USD` | `1` | per-run USD cap (`0` disables; hard-aborts on exceed) |
+| `AGENT_MAX_COST_USD` | `5` | per-run USD cap (`0` disables; hard-aborts on exceed) |
 | `AGENT_TEMPERATURE` / `AGENT_TOP_P` | `1` / — | GLM-5.2 sampling; set EITHER one, never both |
 
 Requests without an `Origin` header remain available to CLI/server clients. Set `VITE_SERVER_URL` on the client (sample: `apps/client/.env.example`) if the server is not at `http://localhost:3001`, and set `CLIENT_ORIGIN` to that browser app's exact HTTP(S) origin. Binding `HOST` to a non-loopback address does not add authentication; expose it only behind an operator-controlled network boundary.
