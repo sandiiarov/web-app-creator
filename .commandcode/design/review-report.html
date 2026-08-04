@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8" />
+	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+	<title>Model Selector - Review Report</title>
+	<script src="https://cdn.tailwindcss.com"></script>
+	<style>
+		body { font-family: Inter, ui-sans-serif, system-ui, sans-serif; }
+		.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+		.report-section { border: 1px solid #222226; background: #0a0a0b; position: relative; }
+		.corner-box { position: absolute; width: 20px; height: 20px; border: 1px solid #222226; background: #000; }
+	</style>
+</head>
+<body class="bg-black text-[#fafafa]">
+	<main class="mx-auto w-full max-w-6xl px-5 py-8 md:px-10 md:py-12">
+		<header class="report-section mb-8 p-6 md:p-8">
+			<div class="corner-box left-0 top-0 -translate-x-1/2 -translate-y-1/2"></div>
+			<div class="corner-box right-0 top-0 translate-x-1/2 -translate-y-1/2"></div>
+			<div class="flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
+				<div>
+					<div class="mono mb-2 text-xs tracking-widest text-[#666]">// REVIEW</div>
+					<h1 class="text-4xl font-bold tracking-tight md:text-6xl">Model Selector</h1>
+				</div>
+				<div class="mono text-left text-xs text-[#666] md:text-right">
+					<div>COMMANDCODE REPORT</div>
+					<div class="text-[#444]">2026-08-02</div>
+				</div>
+			</div>
+		</header>
+
+		<section class="report-section mb-8 p-6 md:p-8">
+			<div class="corner-box left-0 top-0 -translate-x-1/2 -translate-y-1/2"></div>
+			<div class="corner-box right-0 top-0 translate-x-1/2 -translate-y-1/2"></div>
+			<div class="grid gap-8 md:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]">
+				<div>
+					<div class="mono mb-2 text-xs tracking-widest text-[#666]">// OVERALL</div>
+					<div class="text-6xl font-bold tracking-tight md:text-7xl">32</div>
+					<div class="mt-1 text-lg text-[#666]">/ 50</div>
+					<div class="mt-4 inline-flex border border-[#fbbf24]/30 bg-[#fbbf24]/10 px-3 py-1 text-sm text-[#fbbf24]">FOCUSED INTERVENTIONS</div>
+				</div>
+				<div>
+					<div class="mono mb-3 text-xs tracking-widest text-[#666]">// TL;DR</div>
+					<p class="text-sm leading-6 text-[#a0a0a0]">The picker reads clean and the live per-1M pricing is genuinely useful, but the composition is three levels of navigation (role tabs, provider rail, model list) for data that is mostly one model per provider. The content pane — where the actual decision happens — renders 1–2 rows inside a tall void on most providers.</p>
+					<p class="mt-4 text-sm leading-6 text-[#fbbf24]">NEXT: /design relayout — flatten the drill-down into one grouped list per role tab.</p>
+				</div>
+			</div>
+		</section>
+
+		<section class="report-section mb-8 p-6 md:p-8">
+			<div class="mono mb-6 text-xs tracking-widest text-[#666]">// HEURISTIC SCORES</div>
+			<div class="overflow-x-auto">
+				<table class="w-full min-w-[720px] border-collapse text-sm">
+					<thead>
+						<tr class="border-b border-[#222226] text-left mono text-xs text-[#666]">
+							<th class="py-3 pr-4 font-normal">#</th>
+							<th class="py-3 pr-4 font-normal">HEURISTIC</th>
+							<th class="py-3 pr-4 font-normal">SCORE</th>
+							<th class="py-3 font-normal">KEY FINDING</th>
+						</tr>
+					</thead>
+					<tbody>
+						<tr class="border-b border-[#1a1a1e]">
+							<td class="py-4 pr-4 text-[#555]">1</td>
+							<td class="py-4 pr-4 text-[#fafafa]">First impression</td>
+							<td class="py-4 pr-4 text-[#fbbf24]">7/10</td>
+							<td class="py-4 text-[#a0a0a0]">Sharp dark popover with real brand identity from provider marks; arrival on a 1-model provider deflates it</td>
+						</tr>
+						<tr class="border-b border-[#1a1a1e]">
+							<td class="py-4 pr-4 text-[#555]">2</td>
+							<td class="py-4 pr-4 text-[#fafafa]">Hierarchy</td>
+							<td class="py-4 pr-4 text-[#fbbf24]">6/10</td>
+							<td class="py-4 text-[#a0a0a0]">Squint test fails: rail + tabs dominate, the actual choice is a sliver of the surface</td>
+						</tr>
+						<tr class="border-b border-[#1a1a1e]">
+							<td class="py-4 pr-4 text-[#555]">3</td>
+							<td class="py-4 pr-4 text-[#fafafa]">Color voice</td>
+							<td class="py-4 pr-4 text-[#fbbf24]">7/10</td>
+							<td class="py-4 text-[#a0a0a0]">Role colors consistent with composer + spend popover; disciplined whisper, nothing wrong, nothing memorable</td>
+						</tr>
+						<tr class="border-b border-[#1a1a1e]">
+							<td class="py-4 pr-4 text-[#555]">4</td>
+							<td class="py-4 pr-4 text-[#fafafa]">Type voice</td>
+							<td class="py-4 pr-4 text-[#fbbf24]">7/10</td>
+							<td class="py-4 text-[#a0a0a0]">Two-line rows (name over muted price) are right; "Prices per 1M tokens" footer is honest microcopy</td>
+						</tr>
+						<tr class="border-b border-[#1a1a1e]">
+							<td class="py-4 pr-4 text-[#555]">5</td>
+							<td class="py-4 pr-4 text-[#fafafa]">Interaction feel</td>
+							<td class="py-4 pr-4 text-[#fbbf24]">5/10</td>
+							<td class="py-4 text-[#a0a0a0]">States + Escape verified; focus ring is default 1px outline; no arrow-key roving; rail marks shown, not selected, provider</td>
+						</tr>
+					</tbody>
+				</table>
+			</div>
+		</section>
+
+		<section class="report-section mb-8 p-6 md:p-8">
+			<div class="mono mb-6 text-xs tracking-widest text-[#666]">// COGNITIVE LOAD / RISK</div>
+			<div class="grid gap-6 md:grid-cols-2">
+				<div>
+					<div class="mb-3 text-xl font-semibold">Medium — more machinery than the data needs</div>
+					<ul class="space-y-3 text-sm text-[#a0a0a0]">
+						<li><span class="mono mr-2 text-[#34d399]">PASS</span>Live in/out/cache pricing verified in rendered rows, incl. partial and absent cases</li>
+						<li><span class="mono mr-2 text-[#34d399]">PASS</span>A11y tree: tab/aria-selected + radio/aria-checked; sidebar aria-labels + tooltips; focus trap + Escape close</li>
+						<li><span class="mono mr-2 text-[#34d399]">PASS</span>Trigger summarizes all three role selections as icon segments — glanceable, zero clutter</li>
+						<li><span class="mono mr-2 text-[#34d399]">PASS</span>Selection keeps popover open — all three roles settable in one session</li>
+						<li><span class="mono mr-2 text-[#fbbf24]">WATCH</span>Content void: 1–2 rows in a tall empty pane on most providers (all three tabs screenshotted)</li>
+						<li><span class="mono mr-2 text-[#fbbf24]">WATCH</span>Focus indicator: computed outline auto 1px, no ring, on near-black surface</li>
+						<li><span class="mono mr-2 text-[#ef4444]">FAIL</span>Three-level drill where ~75% of providers have exactly one model — navigation cost, no payoff</li>
+						<li><span class="mono mr-2 text-[#ef4444]">FAIL</span>Nothing marks which provider owns the selection once you drill elsewhere</li>
+					</ul>
+				</div>
+				<div>
+					<div class="mono mb-3 text-xs tracking-widest text-[#666]">// NEXT MODES</div>
+					<div class="flex flex-wrap gap-2">
+						<span class="border border-[#333] px-3 py-1 text-sm text-[#a0a0a0]">/relayout</span>
+						<span class="border border-[#333] px-3 py-1 text-sm text-[#a0a0a0]">/interaction</span>
+						<span class="border border-[#333] px-3 py-1 text-sm text-[#a0a0a0]">/refine</span>
+					</div>
+				</div>
+			</div>
+		</section>
+
+		<section class="report-section mb-8 p-6 md:p-8">
+			<div class="mono mb-6 text-xs tracking-widest text-[#666]">// WHAT'S WORKING</div>
+			<div class="grid gap-4 md:grid-cols-3">
+				<article class="border border-[#1f1f24] p-4">
+					<h2 class="mb-2 text-sm font-semibold">Trigger as summary</h2>
+					<p class="text-sm leading-6 text-[#a0a0a0]">Three role segments (role icon + selected provider logo) with dividers and tooltips. Whole selection state visible without opening anything.</p>
+				</article>
+				<article class="border border-[#1f1f24] p-4">
+					<h2 class="mb-2 text-sm font-semibold">Live pricing layer</h2>
+					<p class="text-sm leading-6 text-[#a0a0a0]">Per-1M in/out/cache from the server proxy with static fallback. Two-line rows keep name primary, price secondary; degrades honestly when pricing is missing.</p>
+				</article>
+				<article class="border border-[#1f1f24] p-4">
+					<h2 class="mb-2 text-sm font-semibold">Role color system</h2>
+					<p class="text-sm leading-6 text-[#a0a0a0]">Text/Image/Vision colors match composer segments and spend popover categories — the role mental model carries across the panel.</p>
+				</article>
+			</div>
+		</section>
+
+		<section class="report-section mb-8 p-6 md:p-8">
+			<div class="mono mb-6 text-xs tracking-widest text-[#666]">// PRIORITY ISSUES</div>
+			<div class="space-y-5">
+				<article class="border border-[#2a1d22] bg-[#110b0d] p-5">
+					<div class="mono mb-2 text-xs text-[#f43f5e]">P1</div>
+					<h2 class="mb-2 text-lg font-semibold">Content pane is a void; the drill-down out-complexes the data</h2>
+					<p class="mb-4 text-sm leading-6 text-[#a0a0a0]">Screenshots on all three tabs: 1–2 model rows in a ~500px pane. Popover height is driven by the 7–8 icon rail, so the emptiness is structural. 6 of 8 text providers, 6 of 7 vision providers, and all 4 image providers have exactly one model — the provider level filters almost nothing.</p>
+					<div class="border-l border-[#fbbf24] pl-4 text-sm leading-6 text-[#fbbf24]">FIX: /design relayout — drop the rail; one grouped list per role tab (provider icon + name as group headers); tabs, pricing rows, and selected-on-open visibility stay.</div>
+				</article>
+				<article class="border border-[#2a1d22] bg-[#110b0d] p-5">
+					<div class="mono mb-2 text-xs text-[#f43f5e]">P2</div>
+					<h2 class="mb-2 text-lg font-semibold">Focus indicator is the browser default 1px outline</h2>
+					<p class="mb-4 text-sm leading-6 text-[#a0a0a0]">Computed style on the focused control inside the open popover: outline auto 1px, box-shadow none. Marginal against the 2–3px, offset, 3:1-contrast bar on a near-black surface.</p>
+					<div class="border-l border-[#fbbf24] pl-4 text-sm leading-6 text-[#fbbf24]">FIX: /design interaction — focus-visible rings (2px, offset, role-consistent color) on tabs, rail buttons, and model rows.</div>
+				</article>
+				<article class="border border-[#2a1d22] bg-[#110b0d] p-5">
+					<div class="mono mb-2 text-xs text-[#f43f5e]">P3</div>
+					<h2 class="mb-2 text-lg font-semibold">Rail shows the shown provider, never the selected one</h2>
+					<p class="mb-4 text-sm leading-6 text-[#a0a0a0]">The accent highlight tracks whichever provider you clicked; nothing marks the provider owning the current selection. Drill away and the check's location is lost from view.</p>
+					<div class="border-l border-[#fbbf24] pl-4 text-sm leading-6 text-[#fbbf24]">FIX: /design interaction — selected-dot on the rail icon whose provider owns the role's selection (moot if P1 lands).</div>
+				</article>
+				<article class="border border-[#2a1d22] bg-[#110b0d] p-5">
+					<div class="mono mb-2 text-xs text-[#f43f5e]">P3</div>
+					<h2 class="mb-2 text-lg font-semibold">Arrow-key navigation is not wired</h2>
+					<p class="mb-4 text-sm leading-6 text-[#a0a0a0]">Rows are plain buttons in a Popover with role="radiogroup" — semantics that imply arrow-key movement the implementation doesn't provide. Tab reaches items; arrows were not verified to move between them, and there is no roving tabindex in code.</p>
+					<div class="border-l border-[#fbbf24] pl-4 text-sm leading-6 text-[#fbbf24]">FIX: /design interaction — add roving tabindex/arrow handling, or drop radiogroup semantics so the a11y tree doesn't over-promise.</div>
+				</article>
+			</div>
+		</section>
+
+		<footer class="mono py-8 text-center text-xs tracking-widest text-[#444]">
+			Generated with CommandCode - 2026-08-02
+		</footer>
+	</main>
+</body>
+</html>
