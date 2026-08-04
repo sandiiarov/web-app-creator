@@ -309,29 +309,6 @@ export function ModelDropdown({
             )
           })}
         </div>
-        <div className="flex items-center gap-2 border-b border-border px-2 py-1.5">
-          <Search className="size-3.5 shrink-0 text-muted-foreground" />
-          <input
-            aria-label="Search models"
-            className="min-w-0 flex-1 bg-transparent text-xs outline-none placeholder:text-muted-foreground"
-            onChange={(event) => setQuery(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === 'ArrowDown') {
-                event.preventDefault()
-                const first = listRef.current?.querySelector<HTMLElement>(
-                  '[role="radio"]:not([aria-disabled="true"])',
-                )
-                first?.focus()
-                const id = first?.dataset.modelId
-                if (id) setFocusId(id)
-              }
-            }}
-            placeholder="Search models"
-            ref={inputRef}
-            type="text"
-            value={query}
-          />
-        </div>
         <div
           aria-label={activeGroup.title}
           className="max-h-80 overflow-y-auto p-1"
@@ -398,6 +375,30 @@ export function ModelDropdown({
               </button>
             )
           })}
+        </div>
+        <div className="flex items-center gap-2 border-t border-border px-2 py-1.5">
+          <Search className="size-3.5 shrink-0 text-muted-foreground" />
+          <input
+            aria-label="Search models"
+            className="min-w-0 flex-1 bg-transparent text-xs outline-none placeholder:text-muted-foreground"
+            onChange={(event) => setQuery(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'ArrowUp') {
+                event.preventDefault()
+                const rows = listRef.current?.querySelectorAll<HTMLElement>(
+                  '[role="radio"]:not([aria-disabled="true"])',
+                )
+                const last = rows?.[rows.length - 1]
+                last?.focus()
+                const id = last?.dataset.modelId
+                if (id) setFocusId(id)
+              }
+            }}
+            placeholder="Search models"
+            ref={inputRef}
+            type="text"
+            value={query}
+          />
         </div>
       </PopoverContent>
     </Popover>
