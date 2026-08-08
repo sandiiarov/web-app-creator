@@ -1,9 +1,8 @@
 @import 'tailwindcss';
 @import 'tw-animate-css';
 @import 'shadcn/tailwind.css';
-@import '@fontsource-variable/noto-sans';
 
-@custom-variant dark (&:is(.dark *));
+@custom-variant dark (&:is(.dark, .dark *));
 @source '../../../../apps/**/*.{ts,tsx}';
 @source '../../../../components/**/*.{ts,tsx}';
 @source '../../../prompt-panel/src/**/*.{ts,tsx}';
@@ -20,8 +19,29 @@
   initial-value: 420px;
 }
 
+/* Design tokens ported from t3code (apps/web/src/index.css): neutral-black
+   dark palette, white-alpha surfaces, blue primary, inset-highlight control
+   shadows, glass dropdown/dialog treatments, system font stack. */
+@theme {
+  --font-sans:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  --font-mono:
+    ui-monospace, 'SF Mono', 'SFMono-Regular', Menlo, Consolas,
+    'Liberation Mono', monospace;
+}
+
 @theme inline {
   --font-heading: var(--font-sans);
+  --color-zinc-25: oklch(99.2% 0 0);
+  --animate-skeleton: skeleton 2s -1s infinite linear;
+  --animate-status-pulse: status-pulse 2s infinite;
+  --color-warning-foreground: var(--warning-foreground);
+  --color-warning: var(--warning);
+  --color-success-foreground: var(--success-foreground);
+  --color-success: var(--success);
+  --color-info-foreground: var(--info-foreground);
+  --color-info: var(--info);
+  --color-destructive-foreground: var(--destructive-foreground);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -53,83 +73,137 @@
   --color-card: var(--card);
   --color-foreground: var(--foreground);
   --color-background: var(--background);
-  --radius-sm: calc(var(--radius) * 0.6);
-  --radius-md: calc(var(--radius) * 0.8);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) * 1.4);
-  --radius-2xl: calc(var(--radius) * 1.8);
-  --radius-3xl: calc(var(--radius) * 2.2);
-  --radius-4xl: calc(var(--radius) * 2.6);
-  --font-sans: 'Noto Sans Variable', sans-serif;
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+  --radius-3xl: calc(var(--radius) + 12px);
+  --radius-4xl: calc(var(--radius) + 16px);
+  @keyframes skeleton {
+    to {
+      background-position: -200% 0;
+    }
+  }
+  @keyframes status-pulse {
+    0%,
+    40% {
+      opacity: 1;
+      animation-timing-function: steps(6);
+    }
+    50%,
+    90% {
+      opacity: 0.5;
+      animation-timing-function: steps(6);
+    }
+    100% {
+      opacity: 1;
+    }
+  }
 }
 
 :root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.141 0.005 285.823);
+  color-scheme: light;
+  /* Compact UI geometry (t3code): one semantic control radius shared by
+     buttons, inputs, badges, and menu items. */
+  --control-radius: 0.5rem;
+  --glass-blur: 12px;
+  --glass-opacity: 80%;
+  --glass-saturation: 1.14;
+  --app-scrollbar-width: 6px;
+  --app-scrollbar-thumb: rgb(217 217 217);
+  --app-scrollbar-thumb-hover: rgb(191 191 191);
+  --radius: 0.625rem;
+  --background: var(--color-zinc-25);
+  --foreground: oklch(0.32 0.01 285);
   --card: oklch(1 0 0);
-  --card-foreground: oklch(0.141 0.005 285.823);
+  --card-foreground: oklch(0.32 0.01 285);
   --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.141 0.005 285.823);
-  --primary: oklch(92.4% 0.12 95.746);
-  --primary-foreground: oklch(0.421 0.095 57.708);
-  --secondary: oklch(0.967 0.001 286.375);
-  --secondary-foreground: oklch(0.21 0.006 285.885);
-  --muted: oklch(0.967 0.001 286.375);
+  --popover-foreground: oklch(0.32 0.01 285);
+  --primary: oklch(0.488 0.217 264);
+  --primary-foreground: oklch(1 0 0);
+  --secondary: oklch(0.985 0 0);
+  --secondary-foreground: oklch(0.32 0.01 285);
+  --muted: oklch(0.985 0 0);
   --muted-foreground: oklch(0.552 0.016 285.938);
   --accent: oklch(0.967 0.001 286.375);
-  --accent-foreground: oklch(0.21 0.006 285.885);
+  --accent-foreground: oklch(0.247 0.008 285.75);
   --destructive: oklch(0.577 0.245 27.325);
+  --destructive-foreground: oklch(0.505 0.213 27.518);
   --border: oklch(0.92 0.004 286.32);
-  --input: oklch(0.92 0.004 286.32);
-  --ring: oklch(0.705 0.015 286.067);
+  --input: oklch(0.871 0.006 286.286);
+  --ring: oklch(0.488 0.217 264);
+  --info: oklch(0.623 0.214 259.815);
+  --info-foreground: oklch(0.488 0.243 264.376);
+  --success: oklch(0.696 0.17 162.48);
+  --success-foreground: oklch(0.508 0.118 165.612);
+  --warning: oklch(0.769 0.188 70.08);
+  --warning-foreground: oklch(0.555 0.163 48.998);
   --chart-1: oklch(0.905 0.182 98.111);
   --chart-2: oklch(0.795 0.184 86.047);
   --chart-3: oklch(0.681 0.162 75.834);
   --chart-4: oklch(0.554 0.135 66.442);
   --chart-5: oklch(0.476 0.114 61.907);
-  --radius: 0.625rem;
   --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.141 0.005 285.823);
-  --sidebar-primary: oklch(0.681 0.162 75.834);
-  --sidebar-primary-foreground: oklch(0.987 0.026 102.212);
-  --sidebar-accent: oklch(0.967 0.001 286.375);
-  --sidebar-accent-foreground: oklch(0.21 0.006 285.885);
-  --sidebar-border: oklch(0.92 0.004 286.32);
-  --sidebar-ring: oklch(0.705 0.015 286.067);
+  --sidebar-foreground: var(--foreground);
+  --sidebar-primary: var(--primary);
+  --sidebar-primary-foreground: var(--primary-foreground);
+  --sidebar-accent: var(--accent);
+  --sidebar-accent-foreground: var(--accent-foreground);
+  --sidebar-border: var(--border);
+  --sidebar-ring: var(--ring);
 }
 
 .dark {
-  --background: oklch(0.141 0.005 285.823);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.21 0.006 285.885);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.21 0.006 285.885);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(92.4% 0.12 95.746);
-  --primary-foreground: oklch(0.421 0.095 57.708);
-  --secondary: oklch(0.274 0.006 286.033);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.274 0.006 286.033);
-  --muted-foreground: oklch(0.705 0.015 286.067);
-  --accent: oklch(0.274 0.006 286.033);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.552 0.016 285.938);
+  color-scheme: dark;
+  --glass-blur: 16px;
+  --glass-saturation: 1.08;
+  --app-scrollbar-thumb: rgb(255 255 255 / 8%);
+  --app-scrollbar-thumb-hover: rgb(255 255 255 / 12%);
+  /* t3code workspace: neutral-black base; surfaces lift via white mixes
+     instead of starting from a milky gray. */
+  --background: oklch(0.145 0 0);
+  --foreground: oklch(0.922 0 0);
+  --card: color-mix(in srgb, var(--background) 97%, oklch(1 0 0));
+  --card-foreground: oklch(0.922 0 0);
+  --popover: color-mix(in srgb, var(--background) 94%, oklch(1 0 0));
+  --popover-foreground: oklch(0.922 0 0);
+  --primary: oklch(0.588 0.217 264);
+  --primary-foreground: oklch(1 0 0);
+  --secondary: --alpha(oklch(1 0 0) / 4%);
+  --secondary-foreground: oklch(0.922 0 0);
+  --muted: --alpha(oklch(1 0 0) / 4%);
+  --muted-foreground: color-mix(in srgb, oklch(0.556 0 0) 90%, oklch(1 0 0));
+  --accent: --alpha(oklch(1 0 0) / 4%);
+  --accent-foreground: oklch(0.922 0 0);
+  --destructive: color-mix(
+    in srgb,
+    oklch(0.577 0.245 27.325) 90%,
+    oklch(1 0 0)
+  );
+  --destructive-foreground: oklch(0.704 0.191 22.216);
+  --border: --alpha(oklch(1 0 0) / 6%);
+  --input: --alpha(oklch(1 0 0) / 8%);
+  --ring: oklch(0.588 0.217 264);
+  --info: oklch(0.623 0.214 259.815);
+  --info-foreground: oklch(0.707 0.165 254.624);
+  --success: oklch(0.696 0.17 162.48);
+  --success-foreground: oklch(0.765 0.177 163.223);
+  --warning: oklch(0.769 0.188 70.08);
+  --warning-foreground: oklch(0.828 0.189 84.429);
   --chart-1: oklch(0.905 0.182 98.111);
   --chart-2: oklch(0.795 0.184 86.047);
   --chart-3: oklch(0.681 0.162 75.834);
   --chart-4: oklch(0.554 0.135 66.442);
   --chart-5: oklch(0.476 0.114 61.907);
-  --sidebar: oklch(0.21 0.006 285.885);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.795 0.184 86.047);
-  --sidebar-primary-foreground: oklch(0.987 0.026 102.212);
-  --sidebar-accent: oklch(0.274 0.006 286.033);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.552 0.016 285.938);
+  --sidebar: var(--card);
+  --sidebar-foreground: var(--foreground);
+  --sidebar-primary: var(--primary);
+  --sidebar-primary-foreground: var(--primary-foreground);
+  --sidebar-accent: var(--accent);
+  --sidebar-accent-foreground: var(--accent-foreground);
+  --sidebar-border: var(--border);
+  --sidebar-ring: var(--ring);
 }
 
 @layer base {
@@ -148,7 +222,42 @@
   }
 }
 
-/* ── Scroll utilities (shadcn message-scroller) ─────────────── */
+/* ── Glass surfaces (t3code) ──────────────────────────────── */
+/* Elevated glass uses a denser tint than broad ambient surfaces: nesting the
+   mix inside an 18% popover tint keeps high-contrast page content from
+   blooming through menus. */
+@utility dropdown-glass {
+  background: color-mix(
+    in srgb,
+    var(--popover) 18%,
+    color-mix(in srgb, var(--popover) var(--glass-opacity), transparent)
+  );
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  backdrop-filter: blur(var(--glass-blur));
+  border: 1px solid color-mix(in srgb, var(--foreground) 10%, transparent);
+  box-shadow: 0 16px 40px -18px rgb(0 0 0 / 55%);
+}
+
+@utility dialog-glass {
+  background: color-mix(
+    in srgb,
+    var(--background) var(--glass-opacity),
+    transparent
+  );
+  -webkit-backdrop-filter: blur(var(--glass-blur))
+    saturate(var(--glass-saturation));
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
+  border-color: color-mix(in srgb, var(--foreground) 10%, transparent);
+  box-shadow: 0 24px 64px -24px rgb(0 0 0 / 65%);
+}
+
+@utility dialog-backdrop-glass {
+  background: color-mix(in srgb, var(--background) 60%, transparent);
+  -webkit-backdrop-filter: blur(4px);
+  backdrop-filter: blur(4px);
+}
+
+/* ── Scroll utilities ─────────────────────────────────────── */
 @utility scroll-fade-b {
   mask-image: linear-gradient(to bottom, black calc(100% - 2rem), transparent);
 }
@@ -174,6 +283,25 @@
       transparent 1px
     );
   background-size: 10px 10px;
+}
+
+/* Thin overlay scrollbars (t3code), applied to the app chrome's scroll
+   containers via scrollbar-thin on webkit. */
+@layer base {
+  ::-webkit-scrollbar {
+    width: var(--app-scrollbar-width);
+    height: var(--app-scrollbar-width);
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--app-scrollbar-thumb);
+    border-radius: 999px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--app-scrollbar-thumb-hover);
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
 }
 
 /* ── Landing editor layout transitions ─────────────────────── */

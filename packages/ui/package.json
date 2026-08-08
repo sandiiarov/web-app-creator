@@ -22,7 +22,6 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
-    "@fontsource-variable/noto-sans": "catalog:",
     "@shadcn/react": "catalog:",
     "class-variance-authority": "catalog:",
     "clsx": "catalog:",

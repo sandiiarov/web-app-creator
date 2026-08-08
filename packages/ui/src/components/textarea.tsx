@@ -2,11 +2,13 @@ import * as React from 'react'
 
 import { cn } from '#lib/utils'
 
+// Matches the t3code-ported Input surface (rounded-lg, inset highlight, ring
+// focus) with textarea sizing.
 function Textarea({ className, ...props }: React.ComponentProps<'textarea'>) {
   return (
     <textarea
       className={cn(
-        'flex field-sizing-content min-h-16 w-full rounded-none border border-input bg-transparent px-2.5 py-2 text-xs transition-colors outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:bg-input/50 disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-1 aria-invalid:ring-destructive/20 md:text-xs dark:bg-input/30 dark:disabled:bg-input/80 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40',
+        'flex field-sizing-content min-h-16 w-full rounded-lg border border-input bg-background px-[calc(--spacing(3)-1px)] py-2 text-sm text-foreground shadow-xs/5 ring-ring/24 transition-shadow outline-none not-dark:bg-clip-padding placeholder:text-muted-foreground/72 focus-visible:border-ring focus-visible:shadow-none focus-visible:ring-[3px] disabled:cursor-not-allowed disabled:opacity-64 disabled:shadow-none aria-invalid:border-destructive/36 aria-invalid:shadow-none aria-invalid:ring-destructive/16 focus-visible:aria-invalid:border-destructive/64 focus-visible:aria-invalid:ring-destructive/16 dark:bg-input/32 dark:aria-invalid:ring-destructive/24',
         className,
       )}
       data-slot="textarea"

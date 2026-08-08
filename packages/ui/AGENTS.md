@@ -9,6 +9,7 @@
 - `src/components/`: reusable UI primitives, exported `@workspace/ui/components/*`.
 - `src/lib/utils.ts`: shared `cn()`.
 - `src/styles/globals.css`: Tailwind v4 imports, theme tokens, source scan, base styles, UI utils (incl `landing-grid-bg` 10px grid applied by `@workspace/client` behind centered previews), registered `@property --landing-panel-width` (owned by/for `@workspace/prompt-panel`), landing layout transitions (`[data-landing-prompt-panel]` `height`; `[data-landing-preview-area]` `margin`/`width`, disabled under `:has([data-resizing])`).
+- Design system ported from t3code (`~/Documents/t3code`, apps/web): neutral-black dark palette (`--background` oklch neutral-950, white-alpha `--border`/`--input`/`--muted`/`--accent`), light zinc palette, blue `--primary` (oklch 0.488/0.588 0.217 264), `--control-radius: 0.5rem` shared control radius (rounded controls, not `rounded-none`), `--radius-*` ladder = `--radius` ± px steps (not multipliers), system font stack (`--font-sans` = -apple-system…, no webfont dep), status tokens (`--info/--success/--warning` + `-foreground`), `dropdown-glass`/`dialog-glass`/`dialog-backdrop-glass` utilities (backdrop-blur surfaces), thin `--app-scrollbar-*` webkit scrollbars, `animate-skeleton`/`animate-status-pulse` keyframes. Component recipes (button/badge/input/textarea/popover/tooltip/dialog/dropdown-menu/command/input-group) mirror t3code's Base UI class patterns adapted to our Radix primitives (desktop density = their `sm:` values, Base UI `[:hover,[data-pressed]]` → Radix `hover:`/`active:`/`aria-expanded`).
 - `components.json`: shadcn config for pkg.
 
 ## Local Contracts
@@ -19,12 +20,12 @@
 - Keep Tailwind theme/global CSS centralized in `src/styles/globals.css`; no competing global sheets. Include source-consumed workspace pkg paths (e.g. `packages/prompt-panel/src`) + external runtime `dist/*.js` paths in `@source` list so Tailwind emits all classes.
 - `src/styles/globals.css` registers `@property --landing-panel-width` (`syntax: '<length>'`, `inherits: true`, `initial-value` = default panel width). Runtime width of prompt panel + docked preview offset; `@workspace/prompt-panel` writes/owns it — don't redefine/drive elsewhere.
 - `src/styles/globals.css` owns landing editor layout transitions: `[data-landing-prompt-panel]` transitions `height` (only on dock/undock/collapse, always safe); `[data-landing-preview-area]` transitions dock offset (`margin`/`width`) — disabled under `[data-project-id]:has([data-resizing])` so offset tracks `--landing-panel-width` exactly while panel width-resized. Hooks `data-landing-prompt-panel`, `data-landing-preview-area`, `data-resizing` set by `@workspace/prompt-panel` / `@workspace/client`.
-- Preserve current `radix-lyra`, Tailwind v4, Lucide icon setup unless preset intentionally changed.
+- Preserve current `radix-lyra`, Tailwind v4, Lucide icon setup unless preset intentionally changed. Keep primitives on Radix even though t3code uses Base UI — port their class recipes, not their primitive deps.
 - `TooltipProvider` (in `src/components/tooltip.tsx`) defaults `delayDuration=0` + `disableHoverableContent=true`. They interact: `delayDuration=0` + hoverable on (Radix default) → moving between adjacent triggers leaves prev tooltip open during grace while next opens instantly → stack/swap. Tooltips here non-interactive (label + `kbd` hint) so hoverable disabled by default; consumer can override `disableHoverableContent={false}` per provider if needs interactive tooltip. Dropdown-trigger tooltips that also open menu must force-close on open (`Tooltip open={open ? false : undefined}`), owned at trigger site.
 
 ## Work Guidance
 
-- Use existing shadcn components first, follow shadcn rules: semantic colors, `gap-*` not `space-*`, `size-*` for square dims, `cn()` for conditional classes, no raw color overrides, accessible overlay titles.
+- Use existing shadcn components first, follow shadcn rules: semantic colors, `gap-*` not `space-*`, `size-*` for square dims, `cn()` for conditional classes, no raw color overrides, accessible overlay titles. New/changed components copy the t3code recipe for their counterpart (see Ownership design-system bullet) before inventing new styling.
 - For component create/fix, check shadcn docs before guessing APIs.
 - Keep components reusable + app-agnostic; product-specific layout in `apps/client`.
 

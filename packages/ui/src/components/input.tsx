@@ -2,11 +2,14 @@ import * as React from 'react'
 
 import { cn } from '#lib/utils'
 
+// Visual style ported from t3code (apps/web/src/components/ui/input.tsx),
+// flattened onto the bare input (no wrapper span): rounded-lg, subtle dark
+// surface, inset highlight, 3px ring on focus.
 function Input({ className, type, ...props }: React.ComponentProps<'input'>) {
   return (
     <input
       className={cn(
-        'h-8 w-full min-w-0 rounded-none border border-input bg-transparent px-2.5 py-1 text-xs transition-colors outline-none file:inline-flex file:h-6 file:border-0 file:bg-transparent file:text-xs file:font-medium file:text-foreground placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:cursor-not-allowed disabled:bg-input/50 disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-1 aria-invalid:ring-destructive/20 md:text-xs dark:bg-input/30 dark:disabled:bg-input/80 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40',
+        'h-7.5 w-full min-w-0 rounded-lg border border-input bg-background px-[calc(--spacing(3)-1px)] text-sm leading-7.5 text-foreground shadow-xs/5 ring-ring/24 transition-shadow outline-none not-dark:bg-clip-padding placeholder:text-muted-foreground/72 focus-visible:border-ring focus-visible:shadow-none focus-visible:ring-[3px] disabled:pointer-events-none disabled:opacity-64 disabled:shadow-none aria-invalid:border-destructive/36 aria-invalid:shadow-none aria-invalid:ring-destructive/16 focus-visible:aria-invalid:border-destructive/64 focus-visible:aria-invalid:ring-destructive/16 dark:bg-input/32 dark:aria-invalid:ring-destructive/24',
         className,
       )}
       data-slot="input"
