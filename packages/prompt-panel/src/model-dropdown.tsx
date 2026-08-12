@@ -57,6 +57,7 @@ const MODEL_ICONS: Record<string, ComponentType<{ className?: string }>> = {
   'bytedance-seed/seed-2.0-mini': BytedanceIcon,
   'bytedance-seed/seedream-4.5': BytedanceIcon,
   'deepseek/deepseek-v4-flash-0731:nitro': DeepseekIcon,
+  'deepseek/deepseek-v4-pro-0813:nitro': DeepseekIcon,
   'google/gemini-3.1-flash-image': GeminiIcon,
   'google/gemini-3.1-flash-lite-image': GeminiIcon,
   'google/gemini-3.1-pro-preview': GeminiIcon,

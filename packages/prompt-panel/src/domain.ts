@@ -42,6 +42,10 @@ export const TEXT_MODEL_OPTIONS: LandingModelOption[] = [
     label: 'DeepSeek V4 Flash 0731',
   },
   {
+    id: 'deepseek/deepseek-v4-pro-0813:nitro',
+    label: 'DeepSeek V4 Pro 0813',
+  },
+  {
     id: 'nvidia/nemotron-3-ultra-550b-a55b:nitro',
     label: 'Nemotron Ultra',
   },
