@@ -8,7 +8,7 @@ import { cn } from '#lib/utils'
 // rounded badges with tinted status variants. `ghost`/`link` kept for
 // existing call sites (t3code has no equivalents).
 const badgeVariants = cva(
-  "group/badge relative inline-flex h-4.5 w-fit min-w-4.5 shrink-0 items-center justify-center gap-1 rounded-sm border border-transparent px-[calc(--spacing(1)-1px)] text-xs font-medium whitespace-nowrap transition-shadow outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background [&>svg]:pointer-events-none [&>svg]:shrink-0 [&>svg:not([class*='opacity-'])]:opacity-80 [&>svg:not([class*='size-'])]:size-3",
+  "group/badge relative inline-flex h-4.5 w-fit min-w-4.5 shrink-0 items-center justify-center gap-1 rounded-none border border-transparent px-[calc(--spacing(1)-1px)] text-xs font-medium whitespace-nowrap transition-shadow outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background [&>svg]:pointer-events-none [&>svg]:shrink-0 [&>svg:not([class*='opacity-'])]:opacity-80 [&>svg:not([class*='size-'])]:size-3",
   {
     defaultVariants: {
       variant: 'default',

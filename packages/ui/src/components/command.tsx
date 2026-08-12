@@ -19,7 +19,7 @@ function Command({
   return (
     <CommandPrimitive
       className={cn(
-        'flex size-full flex-col overflow-hidden rounded-lg bg-popover text-popover-foreground',
+        'flex size-full flex-col overflow-hidden rounded-none bg-popover text-popover-foreground',
         className,
       )}
       data-slot="command"
@@ -49,7 +49,7 @@ function CommandDialog({
       </DialogHeader>
       <DialogContent
         className={cn(
-          'top-1/3 translate-y-0 overflow-hidden rounded-2xl p-0',
+          'top-1/3 translate-y-0 overflow-hidden rounded-none p-0',
           className,
         )}
         showCloseButton={showCloseButton}
@@ -120,7 +120,7 @@ function CommandItem({
   return (
     <CommandPrimitive.Item
       className={cn(
-        "group/command-item relative flex min-h-7 cursor-default items-center gap-2 rounded-sm px-2 py-1 text-sm outline-hidden select-none in-data-[slot=dialog-content]:rounded-sm! data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-64 data-selected:bg-accent data-selected:text-accent-foreground [&_svg]:pointer-events-none [&_svg]:-mx-0.5 [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 [&_svg:not([class*='text-'])]:text-muted-foreground data-selected:*:[svg]:text-accent-foreground",
+        "group/command-item relative flex min-h-7 cursor-default items-center gap-2 rounded-none px-2 py-1 text-sm outline-hidden select-none in-data-[slot=dialog-content]:rounded-none! data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-64 data-selected:bg-accent data-selected:text-accent-foreground [&_svg]:pointer-events-none [&_svg]:-mx-0.5 [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 [&_svg:not([class*='text-'])]:text-muted-foreground data-selected:*:[svg]:text-accent-foreground",
         className,
       )}
       data-slot="command-item"

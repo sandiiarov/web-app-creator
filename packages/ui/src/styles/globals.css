@@ -106,7 +106,7 @@
   color-scheme: light;
   /* Compact UI geometry (t3code): one semantic control radius shared by
      buttons, inputs, badges, and menu items. */
-  --control-radius: 0.5rem;
+  --control-radius: 0rem;
   --glass-blur: 12px;
   --glass-opacity: 80%;
   --glass-saturation: 1.14;
@@ -120,8 +120,8 @@
   --card-foreground: oklch(0.32 0.01 285);
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.32 0.01 285);
-  --primary: oklch(0.488 0.217 264);
-  --primary-foreground: oklch(1 0 0);
+  --primary: oklch(92.4% 0.12 95.746);
+  --primary-foreground: oklch(0.421 0.095 57.708);
   --secondary: oklch(0.985 0 0);
   --secondary-foreground: oklch(0.32 0.01 285);
   --muted: oklch(0.985 0 0);
@@ -132,7 +132,7 @@
   --destructive-foreground: oklch(0.505 0.213 27.518);
   --border: oklch(0.92 0.004 286.32);
   --input: oklch(0.871 0.006 286.286);
-  --ring: oklch(0.488 0.217 264);
+  --ring: oklch(0.705 0.015 286.067);
   --info: oklch(0.623 0.214 259.815);
   --info-foreground: oklch(0.488 0.243 264.376);
   --success: oklch(0.696 0.17 162.48);
@@ -168,8 +168,8 @@
   --card-foreground: oklch(0.922 0 0);
   --popover: color-mix(in srgb, var(--background) 94%, oklch(1 0 0));
   --popover-foreground: oklch(0.922 0 0);
-  --primary: oklch(0.588 0.217 264);
-  --primary-foreground: oklch(1 0 0);
+  --primary: oklch(92.4% 0.12 95.746);
+  --primary-foreground: oklch(0.421 0.095 57.708);
   --secondary: --alpha(oklch(1 0 0) / 4%);
   --secondary-foreground: oklch(0.922 0 0);
   --muted: --alpha(oklch(1 0 0) / 4%);
@@ -184,7 +184,7 @@
   --destructive-foreground: oklch(0.704 0.191 22.216);
   --border: --alpha(oklch(1 0 0) / 6%);
   --input: --alpha(oklch(1 0 0) / 8%);
-  --ring: oklch(0.588 0.217 264);
+  --ring: oklch(0.552 0.016 285.938);
   --info: oklch(0.623 0.214 259.815);
   --info-foreground: oklch(0.707 0.165 254.624);
   --success: oklch(0.696 0.17 162.48);

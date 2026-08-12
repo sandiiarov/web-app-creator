@@ -9,7 +9,7 @@ import { cn } from '#lib/utils'
 // ring-offset focus, muted-foreground icons on quiet variants. Density uses
 // t3code's desktop (sm:) values — this is a desktop-only app.
 const buttonVariants = cva(
-  "relative inline-flex shrink-0 cursor-pointer items-center justify-center gap-2 rounded-[var(--control-radius)] border text-sm font-medium whitespace-nowrap transition-shadow outline-none [--control-icon-color:currentColor] before:pointer-events-none before:absolute before:inset-0 before:rounded-[calc(var(--control-radius)-1px)] focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-64 [&_svg]:pointer-events-none [&_svg]:-mx-0.5 [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 [&_svg:not([class*='text-'])]:text-[var(--control-icon-color)]",
+  "relative inline-flex shrink-0 cursor-pointer items-center justify-center gap-2 rounded-none border text-sm font-medium whitespace-nowrap transition-shadow outline-none [--control-icon-color:currentColor] before:pointer-events-none before:absolute before:inset-0 before:rounded-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-64 [&_svg]:pointer-events-none [&_svg]:-mx-0.5 [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 [&_svg:not([class*='text-'])]:text-[var(--control-icon-color)]",
   {
     defaultVariants: {
       size: 'default',
