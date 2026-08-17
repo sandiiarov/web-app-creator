@@ -26,9 +26,9 @@ describe('model inventory', () => {
 describe('model pricing', () => {
   it('looks up pricing by base id and tolerates routing variants', () => {
     expect(modelPricingFor('z-ai/glm-5.2')).toEqual({
-      cacheRead: 0.078,
-      input: 0.42,
-      output: 1.32,
+      cacheRead: 0.14,
+      input: 0.76,
+      output: 2.42,
     })
     expect(modelPricingFor('z-ai/glm-5.2:nitro')).toEqual(
       modelPricingFor('z-ai/glm-5.2'),

@@ -35,6 +35,8 @@ export type LandingModelRole = 'image' | 'text' | 'vision'
 export const TEXT_MODEL_OPTIONS: LandingModelOption[] = [
   { id: 'z-ai/glm-5.2:nitro', label: 'GLM 5.2' },
   { id: 'tencent/hy3:nitro', label: 'Tencent Hy3' },
+  { id: 'qwen/qwen3.8-max:nitro', label: 'Qwen 3.8 Max' },
+  { id: 'qwen/qwen3.8-27b:nitro', label: 'Qwen 3.8 27B' },
   { id: 'moonshotai/kimi-k2.7-code:nitro', label: 'Kimi K2.7 Code' },
   { id: 'moonshotai/kimi-k3:nitro', label: 'Kimi K3' },
   {
@@ -80,6 +82,8 @@ export const VISION_MODEL_OPTIONS: LandingModelOption[] = [
   { id: 'moonshotai/kimi-k3', label: 'Kimi K3' },
   { id: 'minimax/minimax-m3', label: 'MiniMax M3' },
   { id: 'xiaomi/mimo-v2.5', label: 'MiMo V2.5' },
+  { id: 'qwen/qwen3.8-max', label: 'Qwen 3.8 Max' },
+  { id: 'qwen/qwen3.8-27b', label: 'Qwen 3.8 27B' },
   { id: 'google/gemini-3.1-pro-preview', label: 'Gemini 3.1 Pro' },
   { id: 'google/gemini-3.6-flash', label: 'Gemini 3.6 Flash' },
   { id: 'google/gemini-3.5-flash-lite', label: 'Gemini 3.5 Flash Lite' },
@@ -108,15 +112,16 @@ export const MODEL_PRICING: Record<string, LandingModelPricing> = {
   'bytedance-seed/seed-2.0-mini': { input: 0.1, output: 0.4 },
   'bytedance-seed/seedream-4.5': { image: 0.04, input: 0, output: 0 },
   'deepseek/deepseek-v4-flash-0731': {
-    cacheRead: 0.018,
-    input: 0.09,
-    output: 0.18,
+    cacheRead: 0.028,
+    input: 0.14,
+    output: 0.28,
   },
-  'google/gemini-3.1-flash-image': {
-    imageOutput: 60,
-    input: 0.5,
-    output: 3,
+  'deepseek/deepseek-v4-pro-0813': {
+    cacheRead: 0.044,
+    input: 1.32,
+    output: 3.96,
   },
+  'google/gemini-3.1-flash-image': { imageOutput: 60, input: 0.5, output: 3 },
   'google/gemini-3.1-flash-lite-image': {
     imageOutput: 30,
     input: 0.25,
@@ -124,9 +129,9 @@ export const MODEL_PRICING: Record<string, LandingModelPricing> = {
   },
   'google/gemini-3.1-pro-preview': { cacheRead: 0.2, input: 2, output: 12 },
   'google/gemini-3.5-flash-lite': { cacheRead: 0.03, input: 0.3, output: 2.5 },
-  'google/gemini-3.6-flash': { cacheRead: 0.15, input: 1.5, output: 7.5 },
+  'google/gemini-3.6-flash': { cacheRead: 0.075, input: 0.75, output: 3.75 },
   'minimax/minimax-m3': { cacheRead: 0.06, input: 0.3, output: 1.2 },
-  'moonshotai/kimi-k2.7-code': { cacheRead: 0.15, input: 0.73, output: 3.5 },
+  'moonshotai/kimi-k2.7-code': { cacheRead: 0.15, input: 0.71, output: 3.5 },
   'moonshotai/kimi-k3': { cacheRead: 0.3, input: 3, output: 15 },
   'nvidia/nemotron-3-ultra-550b-a55b': {
     cacheRead: 0.2,
@@ -138,11 +143,13 @@ export const MODEL_PRICING: Record<string, LandingModelPricing> = {
   'openai/gpt-5.6-terra': { cacheRead: 0.1, input: 1, output: 6 },
   'openai/gpt-image-2': { imageOutput: 30, input: 0, output: 0 },
   'poolside/laguna-s-2.1': { cacheRead: 0.009, input: 0.09, output: 0.18 },
+  'qwen/qwen3.8-27b': { cacheRead: 0.05, input: 0.45, output: 3.2 },
+  'qwen/qwen3.8-max': { cacheRead: 0.25, input: 2, output: 6 },
   'tencent/hy3': { cacheRead: 0.033, input: 0.132, output: 0.528 },
   'x-ai/grok-4.5': { cacheRead: 0.3, input: 2, output: 6 },
   'x-ai/grok-imagine-image-quality': { image: 0.05, input: 0, output: 0 },
   'xiaomi/mimo-v2.5': { cacheRead: 0.0028, input: 0.14, output: 0.28 },
-  'z-ai/glm-5.2': { cacheRead: 0.078, input: 0.42, output: 1.32 },
+  'z-ai/glm-5.2': { cacheRead: 0.14, input: 0.76, output: 2.42 },
   'z-ai/glm-5v-turbo': { cacheRead: 0.24, input: 1.2, output: 4 },
 }
 
