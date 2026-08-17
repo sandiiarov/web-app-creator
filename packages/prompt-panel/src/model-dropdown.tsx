@@ -41,6 +41,7 @@ import { MODEL_ROLE_META } from './model-role-meta'
 import { NvidiaIcon } from './nvidia-icon'
 import { OpenaiIcon } from './openai-icon'
 import { PoolsideIcon } from './poolside-icon'
+import { QwenIcon } from './qwen-icon'
 import { TencentIcon } from './tencent-icon'
 import { XaiIcon } from './xai-icon'
 import { XiaomiIcon } from './xiaomi-icon'
@@ -79,6 +80,10 @@ const MODEL_ICONS: Record<string, ComponentType<{ className?: string }>> = {
   'openai/gpt-5.6-terra:nitro': OpenaiIcon,
   'openai/gpt-image-2': OpenaiIcon,
   'poolside/laguna-s-2.1:nitro': PoolsideIcon,
+  'qwen/qwen3.8-27b': QwenIcon,
+  'qwen/qwen3.8-27b:nitro': QwenIcon,
+  'qwen/qwen3.8-max': QwenIcon,
+  'qwen/qwen3.8-max:nitro': QwenIcon,
   'tencent/hy3:nitro': TencentIcon,
   'x-ai/grok-4.5': XaiIcon,
   'x-ai/grok-4.5:nitro': XaiIcon,
@@ -244,7 +249,7 @@ export function ModelDropdown({
                 <TooltipTrigger asChild>
                   <span
                     className={cn(
-                      'flex items-center gap-1 px-1',
+                      'flex items-center gap-1.5 px-1.5',
                       index > 0 && 'border-l border-border',
                     )}
                   >
