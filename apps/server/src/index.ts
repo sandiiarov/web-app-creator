@@ -320,7 +320,22 @@ async function handleCreateProject(
   response: ServerResponse,
 ) {
   const body = await readJsonObject(request, MAX_PROJECT_JSON_BODY_SIZE)
+  if (
+    body.creationKey !== undefined &&
+    (typeof body.creationKey !== 'string' ||
+      !/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(
+        body.creationKey,
+      ))
+  ) {
+    sendJson(response, 400, {
+      error: 'Expected a UUID creation key',
+      ok: false,
+    })
+    return
+  }
   const project = await createProject({
+    creationKey:
+      typeof body.creationKey === 'string' ? body.creationKey : undefined,
     model: typeof body.textModel === 'string' ? body.textModel : undefined,
     title: typeof body.title === 'string' ? body.title : undefined,
   })
@@ -397,24 +412,27 @@ async function handlePatchProject(
 ) {
   const body = await readJsonObject(request, MAX_PROJECT_JSON_BODY_SIZE)
 
-  if (typeof body.textModel !== 'string' || body.textModel.trim() === '') {
+  if (body.title === undefined && body.textModel === undefined) {
     sendJson(response, 400, {
-      error: 'Expected { textModel: string }',
+      error: 'Expected { title?: string, textModel?: string }',
       ok: false,
     })
     return
   }
-
-  for (const field of ['imageModel', 'visionModel'] as const) {
+  for (const field of [
+    'title',
+    'textModel',
+    'imageModel',
+    'visionModel',
+  ] as const) {
     const value = body[field]
     if (
       value !== undefined &&
-      (typeof value !== 'string' || value.trim() === '')
+      (typeof value !== 'string' ||
+        value.trim() === '' ||
+        (field === 'title' && value.trim().length > 120))
     ) {
-      sendJson(response, 400, {
-        error: `Expected { ${field}?: string }`,
-        ok: false,
-      })
+      sendJson(response, 400, { error: `Invalid ${field}`, ok: false })
       return
     }
   }
@@ -424,7 +442,11 @@ async function handlePatchProject(
       typeof body.imageModel === 'string'
         ? resolveModelId(body.imageModel)
         : undefined,
-    textModel: resolveModelId(body.textModel),
+    textModel:
+      typeof body.textModel === 'string'
+        ? resolveModelId(body.textModel)
+        : undefined,
+    title: typeof body.title === 'string' ? body.title : undefined,
     visionModel:
       typeof body.visionModel === 'string'
         ? resolveModelId(body.visionModel)
@@ -454,6 +476,7 @@ async function handleProjectEvents(id: string, response: ServerResponse) {
   startSse(response)
   const turns = replayClientEventsLive(await readClientMessages(id))
   sendSse(response, 'state', {
+    brief: project.brief,
     html: project.indexHtml,
     models: {
       image: project.imageModel,
@@ -461,6 +484,7 @@ async function handleProjectEvents(id: string, response: ServerResponse) {
       vision: project.visionModel,
     },
     status: project.status,
+    title: project.title,
     turns,
   })
 

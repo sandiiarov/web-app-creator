@@ -67,7 +67,7 @@ describe('summarizeSpend', () => {
     const summary = summarizeSpend([activeTurn])
 
     expect(summary.cost).toBe(0.03)
-    expect(summary.turnCount).toBe(1)
+    expect(summary.turnCount).toBe(0)
     expect(summary.usage).toEqual({
       inputTokens: 20,
       outputTokens: 10,

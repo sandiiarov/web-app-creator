@@ -1,7 +1,9 @@
+import { isStarterPreview } from '@workspace/landing-preview'
 import { LandingPreview } from '@workspace/landing-preview/react'
 import {
   DEFAULT_PREVIEW_VIEWPORT,
   type ElementAttachmentInput,
+  type LandingTurn,
   type PanelLayout,
   type PreviewViewport,
   PromptPanel,
@@ -15,9 +17,14 @@ import { useNavigate } from 'react-router-dom'
 
 import { useTheme } from '#components/theme-provider'
 
+import { EditorPageActions } from './components/editor-page-actions'
 import { ErrorBanner } from './components/error-banner'
+import { ProjectSwitcher } from './components/project-switcher'
+import { RenameProjectDialog } from './components/rename-project-dialog'
 import { useLandingPage } from './hooks/use-landing-page'
 import { useModelPricing } from './hooks/use-model-pricing'
+import { useProjectDraft } from './hooks/use-project-draft'
+import { loadDraft } from './lib/project-drafts'
 import { downloadProjectHtml } from './lib/projects-api'
 
 // Vite's accept() marks a boundary; it does not opt a React subtree out of
@@ -53,6 +60,15 @@ function useEditorPageRender({ projectId }: EditorPageProps) {
   const navigate = useNavigate()
   const { setTheme, theme } = useTheme()
   const [error, setError] = useState<null | string>(null)
+  const draft = useProjectDraft(projectId)
+  const [renaming, setRenaming] = useState(false)
+  const [locateElement, setLocateElement] = useState<{
+    nonce: number
+    selector: string
+  }>()
+  const [exporting, setExporting] = useState(false)
+  const [exportError, setExportError] = useState<null | string>(null)
+  const [refreshed, setRefreshed] = useState(false)
   const [elementSelectionActive, setElementSelectionActive] = useState(false)
   const [panelLayout, setPanelLayout] = useState<PanelLayout>(
     readStoredPanelLayout,
@@ -73,10 +89,10 @@ function useEditorPageRender({ projectId }: EditorPageProps) {
     [],
   )
 
-  const handleReloadPreview = useCallback(
-    () => setReloadToken((token) => token + 1),
-    [],
-  )
+  const handleReloadPreview = useCallback(() => {
+    setReloadToken((token) => token + 1)
+    setRefreshed(true)
+  }, [])
 
   const handleElementSelectionCancel = useCallback(() => {
     setElementSelectionActive(false)
@@ -98,7 +114,61 @@ function useEditorPageRender({ projectId }: EditorPageProps) {
     onError: setErrorMessage,
     projectId,
   })
+  useEffect(() => {
+    if (!refreshed) return
+    const timer = setTimeout(() => setRefreshed(false), 1400)
+    return () => clearTimeout(timer)
+  }, [refreshed, reloadToken])
+  const handleExport = async () => {
+    if (exporting) return
+    setExporting(true)
+    setExportError(null)
+    try {
+      await downloadProjectHtml(projectId)
+    } catch (failure) {
+      setExportError(
+        failure instanceof Error ? failure.message : 'Could not download HTML',
+      )
+    } finally {
+      setExporting(false)
+    }
+  }
+  const handleRetryTurn = async (turn: LandingTurn) => {
+    try {
+      const saved = await loadDraft(`${projectId}:turn:${turn.id}`)
+      const fallback = {
+        attachments: (turn.attachments ?? []).filter(
+          (attachment): attachment is ElementAttachmentInput =>
+            attachment.kind === 'element',
+        ),
+        prompt: turn.prompt,
+      }
+      const next = saved.prompt ? saved : fallback
+      if (
+        !saved.prompt &&
+        (turn.attachments ?? []).some(
+          (attachment) => attachment.kind !== 'element',
+        )
+      )
+        setError(
+          'This older request has no local image copy. Reattach its images before sending.',
+        )
+      if (
+        (draft.draft.prompt.trim() || draft.draft.attachments.length) &&
+        draft.draft.prompt !== next.prompt &&
+        !window.confirm('Replace your current draft with this request?')
+      )
+        return
+      draft.update(next)
+      document.querySelector<HTMLTextAreaElement>('#landing-prompt')?.focus()
+    } catch {
+      setError(
+        'Could not restore the request. Your current draft is unchanged.',
+      )
+    }
+  }
   const modelPricing = useModelPricing()
+  const previewHtml = isStarterPreview(landing.html) ? '' : landing.html
 
   if (landing.missing) {
     return (
@@ -121,55 +191,74 @@ function useEditorPageRender({ projectId }: EditorPageProps) {
     )
   }
 
-  const hasLanding = landing.turns.length > 0
-
-  const isFixedViewport = viewport === 'tablet' || viewport === 'mobile'
   const previewAreaClassName = cn(
     panelLayout === 'left-sidebar'
-      ? 'ml-[var(--landing-panel-width)] w-[calc(100vw-var(--landing-panel-width))]'
+      ? 'ml-(--landing-panel-width) w-[calc(100vw-var(--landing-panel-width))]'
       : panelLayout === 'right-sidebar'
-        ? 'mr-[var(--landing-panel-width)] w-[calc(100vw-var(--landing-panel-width))]'
+        ? 'mr-(--landing-panel-width) w-[calc(100vw-var(--landing-panel-width))]'
         : 'w-screen',
-    'flex h-svh justify-center',
-    isFixedViewport && 'landing-grid-bg',
+    'editor-canvas flex h-svh flex-col',
   )
 
-  const previewFrameClassName =
+  const previewFrameClassName = cn(
+    'preview-frame h-full border-0',
     viewport === 'mobile'
-      ? 'h-full w-[390px] shrink-0 border-0'
+      ? 'w-97.5 shrink-0'
       : viewport === 'tablet'
-        ? 'h-full w-[768px] shrink-0 border-0'
-        : 'h-full w-full border-0'
+        ? 'w-3xl shrink-0'
+        : 'w-full',
+  )
 
   return (
     <main
-      className="fixed inset-0 overflow-hidden bg-background"
+      className="workspace-surface fixed inset-0 overflow-hidden"
       data-project-id={projectId}
+      data-viewport={viewport}
     >
       {error ? <ErrorBanner message={error} /> : null}
       <div className={previewAreaClassName} data-landing-preview-area="">
-        <LandingPreview
-          elementSelectionActive={elementSelectionActive}
-          html={landing.html}
-          iframeClassName={previewFrameClassName}
-          onElementSelected={handleElementSelected}
-          onElementSelectionCancel={handleElementSelectionCancel}
-          onError={setErrorMessage}
-          reloadToken={reloadToken}
-        />
+        <div className="preview-stage">
+          <LandingPreview
+            elementSelectionActive={elementSelectionActive}
+            html={previewHtml}
+            iframeClassName={previewFrameClassName}
+            locateElement={locateElement}
+            onElementSelected={handleElementSelected}
+            onElementSelectionCancel={handleElementSelectionCancel}
+            onError={setErrorMessage}
+            reloadToken={reloadToken}
+          />
+        </div>
       </div>
+      {renaming ? (
+        <RenameProjectDialog
+          onClose={() => setRenaming(false)}
+          onSaved={(project) => landing.setTitle(project.title)}
+          project={{ id: projectId, title: landing.title }}
+        />
+      ) : null}
       <PromptPanel
-        canDownload={!!landing.html}
+        canSelectElement={!!previewHtml}
+        connection={landing.connection}
+        draft={draft.draft}
+        draftError={draft.error}
+        draftReady={draft.ready}
         elementSelectionActive={elementSelectionActive}
+        isStopping={landing.isStopping}
         isStreaming={landing.isStreaming}
         modelPricing={modelPricing}
         models={landing.models}
         onAllProjects={() => navigate('/')}
-        onDownloadHtml={() => downloadProjectHtml(projectId)}
+        onDraftChange={draft.update}
         onElementSelectionToggle={handleElementSelectionToggle}
         onLayoutChange={handlePanelLayoutChange}
+        onLocateElement={(selector) =>
+          setLocateElement({ nonce: Date.now(), selector })
+        }
         onModelsChange={landing.setModels}
-        onReloadPreview={handleReloadPreview}
+        onReconnect={landing.reconnect}
+        onRenameProject={() => setRenaming(true)}
+        onRetryTurn={handleRetryTurn}
         onSelectedElementAttachmentConsumed={() =>
           setSelectedElementAttachment(null)
         }
@@ -182,17 +271,25 @@ function useEditorPageRender({ projectId }: EditorPageProps) {
               : 'dark',
           )
         }
-        onViewportChange={setViewport}
+        pageActions={
+          <EditorPageActions
+            canDownload={!!previewHtml}
+            exportError={exportError}
+            exporting={exporting}
+            onDownloadHtml={handleExport}
+            onReloadPreview={handleReloadPreview}
+            onRename={() => setRenaming(true)}
+            onViewportChange={setViewport}
+            refreshed={refreshed}
+            viewport={viewport}
+          />
+        }
+        projectSwitcher={<ProjectSwitcher currentProjectId={projectId} />}
+        projectTitle={landing.title}
         selectedElementAttachment={selectedElementAttachment}
         theme={theme}
         turns={landing.turns}
-        viewport={viewport}
       />
-      {!hasLanding ? (
-        <p className="pointer-events-none fixed bottom-4 left-4 z-20 max-w-xs rounded-none border border-border bg-popover/90 px-2 py-1 text-[11px] text-muted-foreground backdrop-blur">
-          Drag the panel. Describe a landing page to begin.
-        </p>
-      ) : null}
     </main>
   )
 }

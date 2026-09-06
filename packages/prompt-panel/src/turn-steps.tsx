@@ -114,7 +114,7 @@ export function TurnToolBlock({ step }: { step: ToolCallPart }) {
             </span>
             <span
               className={cn(
-                'mt-1 text-left text-xs leading-snug wrap-break-word whitespace-pre-wrap text-muted-foreground',
+                'mt-1 line-clamp-2 text-left text-xs leading-snug wrap-break-word whitespace-pre-wrap text-muted-foreground',
                 isError && 'text-destructive/85',
               )}
             >
@@ -128,6 +128,9 @@ export function TurnToolBlock({ step }: { step: ToolCallPart }) {
       <CollapsibleContent>
         <Separator className={cn(isError && 'bg-destructive/30')} />
         <div className="flex flex-col gap-2 p-2.5">
+          <p className="text-xs leading-relaxed whitespace-pre-wrap">
+            {action}
+          </p>
           {hasArgs ? (
             <ToolSection label="Args">
               {args ? <ToolBodyText>{args}</ToolBodyText> : null}
@@ -276,7 +279,7 @@ function ImageThumbnail({ image }: { image: ToolCallImage }) {
             src={image.url}
           />
         </button>
-        <figcaption className="mt-1 flex items-center justify-center gap-1 text-[10px] leading-tight text-muted-foreground/75">
+        <figcaption className="mt-1 flex items-center justify-center gap-1 text-xs leading-tight text-muted-foreground/75">
           <ViewportBadge alt={image.alt} />
         </figcaption>
       </figure>
@@ -390,7 +393,7 @@ function ToolSection({
 }) {
   return (
     <div className="flex flex-col gap-1.5">
-      <span className="text-[10px] leading-none font-medium tracking-[0.12em] text-muted-foreground/70 uppercase">
+      <span className="text-xs leading-none font-medium tracking-[0.12em] text-muted-foreground/70 uppercase">
         {label}
       </span>
       {children}
@@ -400,7 +403,7 @@ function ToolSection({
 
 function toolShellClassName(state: ToolCallState) {
   return cn(
-    'overflow-hidden rounded-none border bg-background/50',
+    'overflow-hidden rounded-xl border bg-background/50',
     state === 'error'
       ? 'border-destructive/45 bg-destructive/10 dark:bg-destructive/15'
       : isActiveState(state)
@@ -421,7 +424,7 @@ function ViewportBadge({ alt }: { alt: string }) {
         ? Tablet
         : Monitor
   return (
-    <span className="inline-flex shrink-0 items-center gap-0.5 text-[10px] leading-none text-muted-foreground capitalize">
+    <span className="inline-flex shrink-0 items-center gap-0.5 text-xs leading-none text-muted-foreground capitalize">
       <Icon className="size-3" />
       {viewport}
     </span>

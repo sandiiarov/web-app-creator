@@ -11,6 +11,7 @@ import {
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { type HtmlUpdateEvent, type RetryEvent } from '../lib/landing-agent'
+import { deleteDraft, saveDraft } from '../lib/project-drafts'
 import {
   type AgentEventSubscription,
   ProjectNotFoundError,
@@ -20,16 +21,24 @@ import {
   stopProjectAgent,
   updateProjectModels,
 } from '../lib/projects-api'
-import { streamSSEGet } from '../lib/sse-client'
+import {
+  subscribeWithRecovery,
+  type ConnectionStatus,
+} from '../lib/reconnecting-stream'
 
 export interface UseLandingPage {
+  connection: ConnectionStatus
   html: string
+  isStopping: boolean
   isStreaming: boolean
   missing: boolean
   models: LandingModels
-  send: (input: LandingAgentSendInput) => void
+  reconnect: () => void
+  send: (input: LandingAgentSendInput) => Promise<boolean>
   setModels: (models: LandingModels) => void
+  setTitle: (title: string) => void
   stop: () => void
+  title: string
   turns: LandingTurn[]
 }
 
@@ -49,6 +58,12 @@ export function useLandingPage({
 }: UseLandingPageOptions): UseLandingPage {
   const [turns, setTurns] = useState<LandingTurn[]>([])
   const [html, setHtml] = useState('')
+  const [title, setTitle] = useState('Untitled')
+  const [connection, setConnection] = useState<ConnectionStatus>('connecting')
+  const connectionRef = useRef<ConnectionStatus>('connecting')
+  const [reconnectKey, setReconnectKey] = useState(0)
+  const [isStopping, setIsStopping] = useState(false)
+  const reconnect = useCallback(() => setReconnectKey((value) => value + 1), [])
   const [models, setModelsState] = useState<LandingModels>(
     DEFAULT_LANDING_MODELS,
   )
@@ -57,6 +72,8 @@ export function useLandingPage({
 
   // Synchronous send lock (two sends in one render tick must not both fire).
   const sendingRef = useRef(false)
+  const pendingPostRef = useRef<LandingTurn | null>(null)
+  const failedRunRef = useRef(false)
   // The turn id live events currently target (the active run's turn). Null when
   // no run is streaming.
   const activeTurnIdRef = useRef<null | string>(null)
@@ -68,29 +85,62 @@ export function useLandingPage({
   const stopSafetyRef = useRef<null | number>(null)
   const modelSaveSeq = useRef(0)
 
+  const patchTurn = useCallback(
+    (turnId: string, fn: (turn: LandingTurn) => LandingTurn) => {
+      setTurns((prev) =>
+        prev.map((turn) => (turn.id === turnId ? fn(turn) : turn)),
+      )
+    },
+    [],
+  )
+
+  const finalizeActiveRun = useCallback(() => {
+    setIsStreaming(false)
+    setIsStopping(false)
+    sendingRef.current = false
+    stoppingRef.current = false
+    activeTurnIdRef.current = null
+    pendingAttachmentsRef.current = []
+    if (stopSafetyRef.current !== null) {
+      window.clearTimeout(stopSafetyRef.current)
+      stopSafetyRef.current = null
+    }
+  }, [])
+
   // Subscribe to the project's live event stream on mount (and when switching
   // projects). The server sends a `state` snapshot first (current HTML, models,
   // status, live-replayed turns), then tails run events as they happen — so a
   // tab reopened mid-run sees live progress instead of a frozen snapshot.
   useEffect(() => {
     setMissing(false)
-    setHtml('')
-    setTurns([])
-    setIsStreaming(false)
-    sendingRef.current = false
-    activeTurnIdRef.current = null
-    pendingAttachmentsRef.current = []
-
+    setConnection('connecting')
+    connectionRef.current = 'connecting'
     const controller = new AbortController()
 
-    void streamSSEGet(projectEventsUrl(projectId), {
+    void subscribeWithRecovery(projectEventsUrl(projectId), {
       onEvent: ({ data, event }) => {
         if (event === 'state') {
           const state = data as AgentEventSubscription
           setHtml(expandProjectImageUrls(state.html))
+          setTitle(state.title ?? 'Untitled')
+          setIsStopping(false)
           // Live-replayed turns keep an in-flight turn `isStreaming` so the UI
           // shows it as active; do NOT force-finalize on hydrate.
-          setTurns(restoreTurnsFromState(state.turns))
+          const pending = pendingPostRef.current
+          const restored = restoreTurnsFromState(state.turns)
+          setTurns(
+            pending && !restored.some((turn) => turn.id === pending.id)
+              ? [...restored, pending]
+              : restored,
+          )
+          failedRunRef.current =
+            state.status === 'error' ||
+            state.status === 'stopped' ||
+            state.status === 'interrupted'
+          for (const turn of restored) {
+            if (!turn.isStreaming && !turn.error && !turn.stopped)
+              void deleteDraft(`${projectId}:turn:${turn.id}`).catch(() => {})
+          }
           setModelsState(
             resolveLandingModels({
               image: state.models.image,
@@ -98,13 +148,18 @@ export function useLandingPage({
               vision: state.models.vision,
             }),
           )
-          const streaming = state.status === 'running'
+          const streaming = state.status === 'running' || !!pending
           setIsStreaming(streaming)
           sendingRef.current = streaming
           stoppingRef.current = false
           activeTurnIdRef.current = streaming
-            ? (lastStreamingTurnId(state.turns) ?? null)
+            ? (lastStreamingTurnId(state.turns) ?? pending?.id ?? null)
             : null
+          return
+        }
+
+        if (event === 'project_meta') {
+          setTitle((data as { title: string }).title)
           return
         }
 
@@ -149,20 +204,19 @@ export function useLandingPage({
           }),
         )
 
-        if (event === 'done' || event === 'error') {
+        if (event === 'error') failedRunRef.current = true
+        if (event === 'done') {
+          if (!failedRunRef.current)
+            void deleteDraft(`${projectId}:turn:${turnId}`).catch(() => {})
           finalizeActiveRun()
         }
       },
+      onMissing: () => setMissing(true),
+      onStatus: (value) => {
+        setConnection(value)
+        connectionRef.current = value
+      },
       signal: controller.signal,
-    }).catch((err: unknown) => {
-      if (controller.signal.aborted) return
-      if (err instanceof Error && /404/.test(err.message)) {
-        setMissing(true)
-        return
-      }
-      onError(
-        err instanceof Error ? err.message : 'Failed to open event stream',
-      )
     })
 
     return () => {
@@ -172,28 +226,7 @@ export function useLandingPage({
         stopSafetyRef.current = null
       }
     }
-  }, [onError, projectId])
-
-  const patchTurn = useCallback(
-    (turnId: string, fn: (turn: LandingTurn) => LandingTurn) => {
-      setTurns((prev) =>
-        prev.map((turn) => (turn.id === turnId ? fn(turn) : turn)),
-      )
-    },
-    [],
-  )
-
-  const finalizeActiveRun = useCallback(() => {
-    setIsStreaming(false)
-    sendingRef.current = false
-    stoppingRef.current = false
-    activeTurnIdRef.current = null
-    pendingAttachmentsRef.current = []
-    if (stopSafetyRef.current !== null) {
-      window.clearTimeout(stopSafetyRef.current)
-      stopSafetyRef.current = null
-    }
-  }, [])
+  }, [finalizeActiveRun, patchTurn, projectId, reconnectKey])
 
   const persistModels = useCallback(
     (nextModels: LandingModels) => {
@@ -223,8 +256,9 @@ export function useLandingPage({
   )
 
   const send = useCallback(
-    ({ attachments = [], prompt }: LandingAgentSendInput) => {
-      if (isStreaming || sendingRef.current) return
+    async ({ attachments = [], prompt }: LandingAgentSendInput) => {
+      if (isStreaming || sendingRef.current || connectionRef.current !== 'live')
+        return false
 
       const turnId = nextTurnId()
       const attachmentMetadata = attachments.map(stripAttachmentData)
@@ -237,21 +271,30 @@ export function useLandingPage({
         parts: [],
         prompt,
       }
+      pendingPostRef.current = turn
+      failedRunRef.current = false
       setTurns((prev) => [...prev, turn])
       setIsStreaming(true)
       sendingRef.current = true
       activeTurnIdRef.current = turnId
       pendingAttachmentsRef.current = attachments
 
-      void sendPrompt({
-        attachments: attachments.map(toWireAttachment),
-        imageModel: models.image,
-        projectId,
+      void saveDraft(`${projectId}:turn:${turnId}`, {
+        attachments,
         prompt,
-        textModel: models.text,
-        turnId,
-        visionModel: models.vision,
-      }).catch((error: unknown) => {
+      }).catch(() => {})
+      try {
+        await sendPrompt({
+          attachments: attachments.map(toWireAttachment),
+          imageModel: models.image,
+          projectId,
+          prompt,
+          textModel: models.text,
+          turnId,
+          visionModel: models.vision,
+        })
+        return true
+      } catch (error: unknown) {
         // The server rejected the run (e.g. 409 overlap, validation, or it was
         // deleted). Roll back the optimistic turn to a terminal error state.
         const message = error instanceof Error ? error.message : String(error)
@@ -262,14 +305,19 @@ export function useLandingPage({
           ),
         )
         finalizeActiveRun()
-      })
+        return false
+      } finally {
+        pendingPostRef.current = null
+      }
     },
     [finalizeActiveRun, isStreaming, models, patchTurn, projectId],
   )
 
   const stop = useCallback(() => {
     if (!sendingRef.current || stoppingRef.current) return
+    failedRunRef.current = true
     stoppingRef.current = true
+    setIsStopping(true)
     // Immediate visual feedback: terminalize still-running tools on the active
     // turn + stop its part animations. The panel-level `isStreaming` stays true
     // until the subscribe stream delivers the terminal `error`/`done`, so a new
@@ -285,24 +333,31 @@ export function useLandingPage({
     // Ask the server to abort its Mastra stream; the subscribe stream delivers
     // the terminal stats + `done` (do NOT abort the subscribe connection).
     void stopProjectAgent(projectId).catch(() => {
-      // Endpoint failed: force-finalize locally so the UI doesn't wait.
-      finalizeActiveRun()
+      stoppingRef.current = false
+      setIsStopping(false)
+      onError(
+        'Could not confirm the stop. Reconnecting to check the run; you can stop it again.',
+      )
+      reconnect()
     })
-    // Safety: if the server doesn't deliver a terminal event promptly, reset
-    // local streaming state so the panel isn't stuck.
     stopSafetyRef.current = window.setTimeout(() => {
-      finalizeActiveRun()
+      reconnect()
     }, STOP_SAFETY_MS)
-  }, [finalizeActiveRun, patchTurn, projectId])
+  }, [onError, patchTurn, projectId, reconnect])
 
   return {
+    connection,
     html,
+    isStopping,
     isStreaming,
     missing,
     models,
+    reconnect,
     send,
     setModels: persistModels,
+    setTitle,
     stop,
+    title,
     turns,
   }
 }

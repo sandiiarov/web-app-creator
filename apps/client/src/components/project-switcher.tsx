@@ -1,0 +1,140 @@
+import { Button } from '@workspace/ui/components/button'
+import { Input } from '@workspace/ui/components/input'
+import { ArrowUpRight, Plus } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
+
+import { type ProjectMeta, listProjects } from '../lib/projects-api'
+import { ProjectPreview } from './project-preview'
+
+/** Project navigation stays in the assistant while the current page remains visible. */
+export function ProjectSwitcher({
+  currentProjectId,
+}: {
+  currentProjectId: string
+}) {
+  const [projects, setProjects] = useState<ProjectMeta[]>([])
+  const [query, setQuery] = useState('')
+  const [alphabetical, setAlphabetical] = useState(false)
+  const [error, setError] = useState<null | string>(null)
+  const [loading, setLoading] = useState(true)
+  const [attempt, setAttempt] = useState(0)
+
+  useEffect(() => {
+    let active = true
+    setLoading(true)
+    setError(null)
+    void listProjects()
+      .then((items) => {
+        if (active) setProjects(items)
+      })
+      .catch(() => {
+        if (active) setError('Could not load projects.')
+      })
+      .finally(() => {
+        if (active) setLoading(false)
+      })
+    return () => {
+      active = false
+    }
+  }, [attempt])
+
+  const visible = useMemo(
+    () =>
+      projects
+        .filter((project) =>
+          `${project.title} ${project.brief ?? ''}`
+            .toLocaleLowerCase()
+            .includes(query.trim().toLocaleLowerCase()),
+        )
+        .toSorted((a, b) =>
+          alphabetical
+            ? a.title.localeCompare(b.title)
+            : b.updatedAt.localeCompare(a.updatedAt),
+        ),
+    [alphabetical, projects, query],
+  )
+
+  return (
+    <section aria-label="Project switcher" className="project-switcher">
+      <div className="project-switcher-heading">
+        <h2>Your projects</h2>
+        <Button
+          aria-label={
+            alphabetical ? 'Sort by recent edits' : 'Sort projects by name'
+          }
+          onClick={() => setAlphabetical((value) => !value)}
+          size="xs"
+          variant="ghost"
+        >
+          {alphabetical ? 'Name A–Z' : 'Recent ↓'}
+        </Button>
+      </div>
+      <Input
+        aria-label="Search projects"
+        autoFocus
+        onChange={(event) => setQuery(event.target.value)}
+        placeholder="Find a project…"
+        type="search"
+        value={query}
+      />
+      <div aria-busy={loading} className="project-switcher-list">
+        {loading ? (
+          <p role="status">Opening projects…</p>
+        ) : error ? (
+          <div role="alert">
+            <p>{error}</p>
+            <Button
+              onClick={() => setAttempt((value) => value + 1)}
+              size="xs"
+              variant="outline"
+            >
+              Retry
+            </Button>
+          </div>
+        ) : visible.length ? (
+          visible.map((project) => (
+            <Link
+              aria-current={
+                project.id === currentProjectId ? 'page' : undefined
+              }
+              className="project-switcher-row"
+              key={project.id}
+              to={`/projects/${project.id}`}
+            >
+              <ProjectPreview project={project} />
+              <span>
+                <strong>{project.title || 'Untitled'}</strong>
+                <small>
+                  {project.status === 'running'
+                    ? 'Building…'
+                    : project.brief || 'Open your page'}
+                </small>
+              </span>
+            </Link>
+          ))
+        ) : (
+          <p role="status">
+            {query
+              ? 'No matching projects. Try another name.'
+              : 'Your new projects will appear here.'}
+          </p>
+        )}
+      </div>
+      <div className="project-switcher-footer">
+        <Button asChild className="justify-start" size="sm" variant="outline">
+          <Link to="/projects/new">
+            <Plus />
+            New project
+          </Link>
+        </Button>
+        <Button asChild size="xs" variant="ghost">
+          <Link to="/">
+            All projects
+            <ArrowUpRight />
+          </Link>
+        </Button>
+      </div>
+    </section>
+  )
+}

@@ -36,7 +36,7 @@ export function summarizeSpend(turns: LandingTurn[]): SpendSummary {
     const stats = latestStats(turn)
     if (!stats) continue
 
-    summary.turnCount += 1
+    if (!turn.isStreaming) summary.turnCount += 1
     summary.cost += stats.cost
     addUsage(summary.usage, stats.usage)
 

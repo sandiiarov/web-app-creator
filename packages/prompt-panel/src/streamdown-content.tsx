@@ -37,7 +37,7 @@ const headingClasses = [
   '[&_[data-streamdown=heading-3]]:mt-2.5 [&_[data-streamdown=heading-3]]:mb-1 [&_[data-streamdown=heading-3]]:text-xs [&_[data-streamdown=heading-3]]:font-medium [&_[data-streamdown=heading-3]]:text-foreground',
   '[&_[data-streamdown=heading-4]]:mt-2 [&_[data-streamdown=heading-4]]:text-[11px] [&_[data-streamdown=heading-4]]:font-medium [&_[data-streamdown=heading-4]]:text-foreground',
   '[&_[data-streamdown=heading-5]]:mt-2 [&_[data-streamdown=heading-5]]:text-[11px] [&_[data-streamdown=heading-5]]:font-medium [&_[data-streamdown=heading-5]]:text-muted-foreground',
-  '[&_[data-streamdown=heading-6]]:mt-2 [&_[data-streamdown=heading-6]]:text-[10px] [&_[data-streamdown=heading-6]]:font-semibold [&_[data-streamdown=heading-6]]:tracking-[0.08em] [&_[data-streamdown=heading-6]]:text-muted-foreground [&_[data-streamdown=heading-6]]:uppercase',
+  '[&_[data-streamdown=heading-6]]:mt-2 [&_[data-streamdown=heading-6]]:text-xs [&_[data-streamdown=heading-6]]:font-semibold [&_[data-streamdown=heading-6]]:tracking-[0.08em] [&_[data-streamdown=heading-6]]:text-muted-foreground [&_[data-streamdown=heading-6]]:uppercase',
 ]
 
 const listAndBlockClasses = [
@@ -49,8 +49,8 @@ const listAndBlockClasses = [
 ]
 
 const codeClasses = [
-  '[&_[data-streamdown=code-block]]:relative [&_[data-streamdown=code-block]]:my-2 [&_[data-streamdown=code-block]]:gap-0 [&_[data-streamdown=code-block]]:overflow-hidden [&_[data-streamdown=code-block]]:rounded-none [&_[data-streamdown=code-block]]:border [&_[data-streamdown=code-block]]:border-border/70 [&_[data-streamdown=code-block]]:bg-background [&_[data-streamdown=code-block]]:p-0 [&_[data-streamdown=code-block]]:shadow-sm',
-  '[&_[data-streamdown=code-block-header]]:h-6 [&_[data-streamdown=code-block-header]]:border-b [&_[data-streamdown=code-block-header]]:border-border/60 [&_[data-streamdown=code-block-header]]:bg-muted/35 [&_[data-streamdown=code-block-header]]:px-3 [&_[data-streamdown=code-block-header]]:font-mono [&_[data-streamdown=code-block-header]]:text-[10px] [&_[data-streamdown=code-block-header]]:font-semibold [&_[data-streamdown=code-block-header]]:tracking-[0.08em] [&_[data-streamdown=code-block-header]]:text-muted-foreground [&_[data-streamdown=code-block-header]]:uppercase [&_[data-streamdown=code-block-header][data-language=""]]:hidden',
+  '[&_[data-streamdown=code-block]]:relative [&_[data-streamdown=code-block]]:my-2 [&_[data-streamdown=code-block]]:gap-0 [&_[data-streamdown=code-block]]:overflow-hidden [&_[data-streamdown=code-block]]:rounded-xl [&_[data-streamdown=code-block]]:border [&_[data-streamdown=code-block]]:border-border/70 [&_[data-streamdown=code-block]]:bg-background [&_[data-streamdown=code-block]]:p-0 [&_[data-streamdown=code-block]]:shadow-sm',
+  '[&_[data-streamdown=code-block-header]]:h-6 [&_[data-streamdown=code-block-header]]:border-b [&_[data-streamdown=code-block-header]]:border-border/60 [&_[data-streamdown=code-block-header]]:bg-muted/35 [&_[data-streamdown=code-block-header]]:px-3 [&_[data-streamdown=code-block-header]]:font-mono [&_[data-streamdown=code-block-header]]:text-xs [&_[data-streamdown=code-block-header]]:font-semibold [&_[data-streamdown=code-block-header]]:tracking-[0.08em] [&_[data-streamdown=code-block-header]]:text-muted-foreground [&_[data-streamdown=code-block-header]]:uppercase [&_[data-streamdown=code-block-header][data-language=""]]:hidden',
   // The sticky actions wrapper has no data attribute, so the old
   // `[&_[data-streamdown=code-block-actions]]:hidden` only hid its inner child and left the empty
   // `pointer-events-none sticky -mt-10 h-8 z-10` wrapper pulled up over the header (the header bg
@@ -61,7 +61,7 @@ const codeClasses = [
   '[&_[data-streamdown=code-block]_pre]:m-0 [&_[data-streamdown=code-block]_pre]:max-h-96 [&_[data-streamdown=code-block]_pre]:overflow-visible [&_[data-streamdown=code-block]_pre]:bg-transparent [&_[data-streamdown=code-block]_pre]:p-0',
   '[&_[data-streamdown=code-block]_code]:border-0 [&_[data-streamdown=code-block]_code]:bg-transparent [&_[data-streamdown=code-block]_code]:p-0 [&_[data-streamdown=code-block]_code]:font-mono [&_[data-streamdown=code-block]_code]:text-[11px] [&_[data-streamdown=code-block]_code]:leading-5',
   '[&_[data-streamdown=code-block]_code>span]:block',
-  '[&_[data-streamdown=code-block]_[class*=rounded]]:rounded-none [&_[data-streamdown=mermaid-block]_[class*=rounded]]:rounded-none [&_[data-streamdown=table-wrapper]_[class*=rounded]]:rounded-none',
+  '[&_[data-streamdown=mermaid-block]_[class*=rounded]]:rounded-none [&_[data-streamdown=table-wrapper]_[class*=rounded]]:rounded-none',
   '[&_[data-streamdown=mermaid-block]]:my-2 [&_[data-streamdown=mermaid-block]]:rounded-none [&_[data-streamdown=mermaid-block]]:border [&_[data-streamdown=mermaid-block]]:border-border/70 [&_[data-streamdown=mermaid-block]]:bg-muted/20 [&_[data-streamdown=mermaid-block]]:p-2',
 ]
 

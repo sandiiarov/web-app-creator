@@ -155,7 +155,7 @@ describe('useLandingPage run lifecycle', () => {
     await mount(state())
 
     await act(async () => {
-      current.send({ prompt: 'Build it' })
+      expect(await current.send({ prompt: 'Build it' })).toBe(false)
       await flushAsyncWork()
     })
 
@@ -164,6 +164,42 @@ describe('useLandingPage run lifecycle', () => {
       error: 'A run is already active.',
       isStreaming: false,
     })
+  })
+
+  it('blocks sends until a connection snapshot arrives', async () => {
+    await mount()
+    await act(async () => {
+      expect(await current.send({ prompt: 'Too early' })).toBe(false)
+    })
+    expect(mocks.sendPrompt).not.toHaveBeenCalled()
+  })
+
+  it('keeps a pending POST locked when an older idle snapshot arrives', async () => {
+    let accept!: (value: SendPromptResult) => void
+    mocks.sendPrompt.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          accept = resolve
+        }),
+    )
+    await mount(state())
+    let pending!: Promise<boolean>
+    act(() => {
+      pending = current.send({ prompt: 'Pending request' })
+    })
+    act(() => {
+      subscribeOnEvent({ data: state(), event: 'state' })
+    })
+    expect(current.isStreaming).toBe(true)
+    expect(current.turns[0]?.prompt).toBe('Pending request')
+    await act(async () => {
+      expect(await current.send({ prompt: 'Duplicate' })).toBe(false)
+    })
+    await act(async () => {
+      accept({ status: 'running', turnId: 'accepted' })
+      expect(await pending).toBe(true)
+    })
+    expect(mocks.sendPrompt).toHaveBeenCalledOnce()
   })
 
   it('blocks duplicate sends before streaming state rerenders', async () => {
@@ -192,13 +228,16 @@ describe('useLandingPage run lifecycle', () => {
     expect(mocks.stopProjectAgent).toHaveBeenCalledOnce()
     // Immediate visual feedback while the server flushes terminal cost/stats.
     expect(current.isStreaming).toBe(true)
+    expect(current.isStopping).toBe(true)
     expect(current.turns[0]).toMatchObject({
       isStreaming: false,
       stopped: true,
     })
 
     // A send while still draining is blocked.
-    act(() => current.send({ prompt: 'Must stay blocked' }))
+    await act(async () => {
+      await current.send({ prompt: 'Must stay blocked' })
+    })
     expect(mocks.sendPrompt).toHaveBeenCalledOnce()
 
     // Subscribe delivers the terminal events; the run finalizes.

@@ -59,7 +59,7 @@ import {
 } from './html-anchor-document.ts'
 import { PLACEHOLDER_INDEX_HTML, type HtmlStore } from './html-store.ts'
 import { getImage } from './image-store.ts'
-import { broadcastStatus } from './run-bus.ts'
+import { broadcast, broadcastStatus } from './run-bus.ts'
 
 const MODULE_DIR = dirname(fileURLToPath(import.meta.url))
 const DATA_DIR = join(MODULE_DIR, '..', '..', '..', '.data')
@@ -101,6 +101,7 @@ export interface Project extends ProjectMeta {
 }
 
 export interface ProjectInput {
+  creationKey?: string
   imageModel?: string
   model?: string
   title?: string
@@ -108,12 +109,15 @@ export interface ProjectInput {
 }
 
 export interface ProjectMeta {
+  brief?: string
   createdAt: string
+  creationKey?: string
   hasHtml: boolean
   id: string
   imageModel: string
   model: string
   title: string
+  titleSource?: 'brief' | 'page' | 'user'
   updatedAt: string
   visionModel: string
 }
@@ -122,6 +126,7 @@ export interface ProjectMeta {
 export interface ProjectModelSelection {
   imageModel?: string
   textModel?: string
+  title?: string
   visionModel?: string
 }
 
@@ -195,34 +200,34 @@ export async function appendProjectMessageTurn(
   return next
 }
 
-/** Create a new draft project seeded with the placeholder page. */
+const creations = new Map<string, Promise<Project & ProjectRunMeta>>()
+
+/** A creation key survives client retries and server restarts without duplicating a project. */
 export async function createProject(
   input: ProjectInput = {},
 ): Promise<Project & ProjectRunMeta> {
-  const id = randomUUID()
-  const now = new Date().toISOString()
-  const meta: ProjectMeta = {
-    createdAt: now,
-    hasHtml: false,
-    id,
-    imageModel: input.imageModel?.trim() ?? '',
-    model: input.model?.trim() ?? '',
-    title: input.title?.trim() || 'Untitled',
-    updatedAt: now,
-    visionModel: input.visionModel?.trim() ?? '',
-  }
-
-  const document = createHtmlDocumentFromString(PLACEHOLDER_INDEX_HTML)
-
-  await ensureProjectDir(id)
-  await writeMeta(id, meta)
-  await writeHtmlDocument(id, document)
-
-  return {
-    ...meta,
-    ...composeRunMeta(id),
-    indexHtml: renderHtmlDocument(document),
-    messages: [],
+  const key = input.creationKey
+  if (!key) return createDraft(input)
+  if (
+    !/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(key)
+  )
+    throw new Error('Invalid creation key')
+  const pending = creations.get(key)
+  if (pending) return pending
+  const operation = (async () => {
+    const existing = await getProject(key)
+    if (existing) {
+      if (existing.creationKey !== key)
+        throw new Error('Creation key is already in use')
+      return existing
+    }
+    return createDraft(input, key)
+  })()
+  creations.set(key, operation)
+  try {
+    return await operation
+  } finally {
+    creations.delete(key)
   }
 }
 
@@ -244,7 +249,7 @@ export function createProjectHtmlStore(projectId: string): HtmlStore {
       document = preserveAnchorsForRenderedHtml(document, normalizedHtml)
     }
     writeHtmlDocumentSync(projectId, document)
-    markHasHtmlSync(projectId)
+    markHasHtmlSync(projectId, normalizedHtml)
     return Buffer.byteLength(renderHtmlDocument(document), 'utf8')
   }
 
@@ -291,6 +296,21 @@ export async function getProject(
     messages = replayed.length > 0 ? replayed : await readMessages(id)
     turnCache.set(id, messages)
   }
+  if (!meta.titleSource) {
+    const latest = readMetaSync(id)
+    if (latest && !latest.titleSource) {
+      latest.brief ??= messages[0]?.prompt ?? meta.title
+      // Legacy names came from the first prompt; preserve other custom names.
+      const fromBrief =
+        latest.title === truncateTitle(latest.brief) ||
+        latest.title === 'Untitled'
+      const title = fromBrief ? pageTitle(renderHtmlDocument(document)) : null
+      latest.title = title ?? latest.title
+      latest.titleSource = fromBrief ? (title ? 'page' : 'brief') : 'user'
+      writeMetaSync(id, latest)
+      Object.assign(meta, latest)
+    }
+  }
   return {
     ...meta,
     ...composeRunMeta(id),
@@ -309,7 +329,13 @@ export async function listProjects(): Promise<
   for (const id of ids) {
     const meta = await readMeta(id)
     if (meta && meta.hasHtml) {
-      metas.push({ ...meta, ...composeRunMeta(id) })
+      if (!meta.titleSource) {
+        const full = await getProject(id)
+        if (full) {
+          const { indexHtml: _html, messages: _messages, ...metadata } = full
+          metas.push(metadata)
+        }
+      } else metas.push({ ...meta, ...composeRunMeta(id) })
     }
   }
 
@@ -345,6 +371,39 @@ export async function readProjectImage(
     return { buffer, mediaType: mediaTypeForName(file) }
   } catch {
     return null
+  }
+}
+
+/** Create a new draft project seeded with the placeholder page. */
+async function createDraft(
+  input: ProjectInput = {},
+  id: string = randomUUID(),
+): Promise<Project & ProjectRunMeta> {
+  const now = new Date().toISOString()
+  const meta: ProjectMeta = {
+    createdAt: now,
+    creationKey: input.creationKey,
+    hasHtml: false,
+    id,
+    imageModel: input.imageModel?.trim() ?? '',
+    model: input.model?.trim() ?? '',
+    title: input.title?.trim() || 'Untitled',
+    titleSource: input.title?.trim() ? 'user' : 'brief',
+    updatedAt: now,
+    visionModel: input.visionModel?.trim() ?? '',
+  }
+
+  const document = createHtmlDocumentFromString(PLACEHOLDER_INDEX_HTML)
+
+  await ensureProjectDir(id)
+  await writeMeta(id, meta)
+  await writeHtmlDocument(id, document)
+
+  return {
+    ...meta,
+    ...composeRunMeta(id),
+    indexHtml: renderHtmlDocument(document),
+    messages: [],
   }
 }
 
@@ -729,8 +788,12 @@ export function setRunStatusSync(
 /** Set the title from the prompt if it is still the default. Sync, server-side. */
 export function setTitleIfUntitled(id: string, title: string): void {
   const meta = readMetaSync(id)
-  if (!meta || meta.title !== 'Untitled') return
-  meta.title = truncateTitle(title)
+  if (!meta) return
+  meta.brief ??= title.trim()
+  if (meta.title === 'Untitled' && meta.titleSource !== 'user') {
+    meta.title = truncateTitle(title)
+    meta.titleSource = 'brief'
+  }
   meta.updatedAt = new Date().toISOString()
   writeMetaSync(id, meta)
 }
@@ -746,11 +809,14 @@ export async function updateProjectModel(
   const meta = readMetaSync(id)
   if (!meta) return null
 
+  const title = selection.title?.trim()
   const textModel = selection.textModel?.trim()
   const imageModel = selection.imageModel?.trim()
   const visionModel = selection.visionModel?.trim()
 
   const changed =
+    (title !== undefined &&
+      (meta.title !== title || meta.titleSource !== 'user')) ||
     (textModel !== undefined && meta.model !== textModel) ||
     (imageModel !== undefined && meta.imageModel !== imageModel) ||
     (visionModel !== undefined && meta.visionModel !== visionModel)
@@ -758,12 +824,16 @@ export async function updateProjectModel(
 
   const next: ProjectMeta = {
     ...meta,
+    ...(title !== undefined ? { title, titleSource: 'user' as const } : {}),
     ...(textModel !== undefined ? { model: textModel } : {}),
     ...(imageModel !== undefined ? { imageModel } : {}),
     ...(visionModel !== undefined ? { visionModel } : {}),
     updatedAt: new Date().toISOString(),
   }
   writeMetaSync(id, next)
+  if (title !== undefined) {
+    broadcast(id, 'project_meta', { title: next.title })
+  }
   return { ...next, ...composeRunMeta(id) }
 }
 
@@ -927,12 +997,22 @@ function isSafeScreenshotName(name: string): boolean {
   )
 }
 
-function markHasHtmlSync(id: string) {
+function markHasHtmlSync(id: string, html: string) {
   const meta = readMetaSync(id)
   if (!meta) return
+  const title = pageTitle(html)
+  const titleChanged = Boolean(title && meta.titleSource !== 'user')
+  if (titleChanged && title) {
+    meta.brief ??= meta.title === 'Untitled' ? '' : meta.title
+    meta.title = title
+    meta.titleSource = 'page'
+  }
   meta.hasHtml = true
   meta.updatedAt = new Date().toISOString()
   writeMetaSync(id, meta)
+  if (titleChanged && title) {
+    broadcast(id, 'project_meta', { title })
+  }
 }
 
 // ── sync fs helpers ──────────────────────────────────────────────
@@ -965,6 +1045,37 @@ function mediaTypeToExt(mediaType: string): string {
     default:
       return '.png'
   }
+}
+
+function pageTitle(html: string): null | string {
+  const raw = /<title\b[^>]*>([\s\S]*?)<\/title>/i.exec(html)?.[1]
+  if (!raw) return null
+  const named: Record<string, string> = {
+    amp: '&',
+    apos: "'",
+    gt: '>',
+    lt: '<',
+    nbsp: ' ',
+    quot: '"',
+  }
+  const title = raw
+    .replace(
+      /&(#x[0-9a-f]+|#\d+|amp|lt|gt|quot|apos|nbsp);/gi,
+      (entity, code: string) => {
+        if (!code.startsWith('#')) return named[code.toLowerCase()] ?? entity
+        const value =
+          code[1]?.toLowerCase() === 'x'
+            ? parseInt(code.slice(2), 16)
+            : Number(code.slice(1))
+        return value > 0 && value <= 0x10ffff
+          ? String.fromCodePoint(value)
+          : entity
+      },
+    )
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 120)
+  return title || null
 }
 
 /**

@@ -12,4 +12,4 @@ export {
   rerunPreviewScripts,
   shouldRerunScriptsAfterMorph,
 } from './preview-morph'
-export { preparePreviewSrcDoc } from './preview-srcdoc'
+export { isStarterPreview, preparePreviewSrcDoc } from './preview-srcdoc'

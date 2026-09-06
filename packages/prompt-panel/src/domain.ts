@@ -19,6 +19,7 @@ export type LandingModelOption = {
 /** Per-1M-token USD prices from the OpenRouter catalog (snapshot). */
 export type LandingModelPricing = {
   cacheRead?: number
+  contextLength?: number
   /** USD per generated image (image models billed per image). */
   image?: number
   /** USD per 1M image-output tokens (image models billed per image token). */

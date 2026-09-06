@@ -11,6 +11,7 @@ export type LandingPreviewProps = {
   elementSelectionActive?: boolean
   html: string
   iframeClassName?: string
+  locateElement?: { nonce: number; selector: string }
   onElementSelected?: (attachment: ElementAttachmentMeta) => void
   onElementSelectionCancel?: () => void
   onError?: (message: string) => void
@@ -139,6 +140,7 @@ export function LandingPreview({
   elementSelectionActive = false,
   html,
   iframeClassName,
+  locateElement,
   onElementSelected,
   onElementSelectionCancel,
   onError,
@@ -150,6 +152,35 @@ export function LandingPreview({
   const lastReloadTokenRef = useRef<number | undefined>(reloadToken)
   const [srcDoc, setSrcDoc] = useState('')
   const [reloadKey, setReloadKey] = useState(0)
+  useEffect(() => {
+    if (!locateElement) return
+    const doc = iframeRef.current?.contentDocument
+    if (!doc) return
+    try {
+      const element = doc.querySelector(locateElement.selector)
+      if (!element) {
+        onError?.('That element has changed. Select it again on the page.')
+        return
+      }
+      element.scrollIntoView({
+        behavior: 'instant',
+        block: 'center',
+        inline: 'nearest',
+      })
+      const overlay = createElementPickerOverlay(doc)
+      ensurePickerStyle(doc)
+      overlay.setTarget(element, 'selected')
+      const timer = setTimeout(() => {
+        overlay.destroy()
+      }, 2400)
+      return () => {
+        clearTimeout(timer)
+        overlay.destroy()
+      }
+    } catch {
+      onError?.('Could not locate that element. Select it again on the page.')
+    }
+  }, [locateElement, onError])
 
   useEffect(() => {
     if (!html.trim()) {
@@ -363,7 +394,7 @@ function createElementAttachment(
   return {
     id: createAttachmentId(),
     kind: 'element',
-    name: `Element ${label}`,
+    name: `${label}${element.textContent?.trim() ? ` · ${element.textContent.replace(/\s+/g, ' ').trim().slice(0, 70)}` : ''}`,
     selector,
   }
 }
@@ -695,20 +726,19 @@ function isSelectableElement(doc: Document, element: Element) {
 
 function LandingEmptyState({ className }: { className?: string }) {
   return (
-    <div
-      className={`grid place-items-center bg-muted/40 text-center ${className ?? 'h-svh w-screen border-0'}`}
-    >
-      <div className="max-w-md px-6">
-        <div
-          aria-hidden="true"
-          className="mx-auto mb-4 grid size-12 place-items-center rounded-none border bg-background text-lg shadow-sm"
-        >
-          ▲
-        </div>
-        <h2 className="text-lg font-semibold">Landing page preview</h2>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Describe a landing page below to generate a single-file HTML preview.
-          Paste reference URLs to scrape a brand first.
+    <div className={`landing-empty ${className ?? 'h-svh w-screen border-0'}`}>
+      <div className="landing-empty-brand">Web App Creator</div>
+      <div className="landing-empty-content">
+        <div aria-hidden="true" className="canvas-corner" />
+        <span className="landing-empty-kicker">A blank page. All yours.</span>
+        <h2>
+          Your next
+          <br />
+          <span>great idea.</span>
+        </h2>
+        <p>
+          It starts with a conversation. Tell your assistant what you want to
+          build, and watch it take shape.
         </p>
       </div>
     </div>

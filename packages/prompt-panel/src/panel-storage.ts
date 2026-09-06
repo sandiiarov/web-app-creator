@@ -5,7 +5,7 @@ import {
   clampPanelWidth,
 } from './panel-constants'
 
-export const PANEL_POSITION_STORAGE_KEY = 'landing.promptPanel.position.v1'
+export const PANEL_POSITION_STORAGE_KEY = 'landing.promptPanel.position.v2'
 
 export type StoredPanelState = Partial<PanelPosition> & {
   collapsed?: boolean

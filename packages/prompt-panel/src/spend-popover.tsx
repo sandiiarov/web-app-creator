@@ -61,6 +61,9 @@ export function SpendPopover({ turns }: { turns: LandingTurn[] }) {
             {summary.turnCount === 0
               ? 'No completed turns yet'
               : `${summary.turnCount} completed turn${summary.turnCount === 1 ? '' : 's'}`}
+            {turns.some((turn) => turn.isStreaming)
+              ? ' · Includes active usage'
+              : ''}
           </PopoverDescription>
         </PopoverHeader>
 
@@ -140,7 +143,7 @@ function MetricRow({
       </span>
       <span className="font-mono text-foreground tabular-nums">{value}</span>
       {detail ? (
-        <span className="col-span-2 truncate text-[10px] text-muted-foreground">
+        <span className="col-span-2 truncate text-xs text-muted-foreground">
           {detail}
         </span>
       ) : null}
@@ -159,7 +162,7 @@ function MetricSection({
 }) {
   return (
     <section>
-      <h3 className="mb-1 flex items-center gap-1.5 text-[10px] font-semibold tracking-[0.08em] text-muted-foreground uppercase">
+      <h3 className="mb-1 flex items-center gap-1.5 text-xs font-semibold tracking-[0.08em] text-muted-foreground uppercase">
         <Icon className="size-3.5" />
         {title}
       </h3>
@@ -192,7 +195,7 @@ function SummaryMetric({
 }) {
   return (
     <div className="min-w-0 px-2 py-1.5 odd:border-r odd:border-border/60">
-      <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
+      <div className="flex items-center gap-1 text-xs text-muted-foreground">
         <Icon className="size-3" />
         {label}
       </div>

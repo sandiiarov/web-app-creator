@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import { request as httpRequest, type Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
 
@@ -528,6 +529,49 @@ describe('server HTTP routes', () => {
         `${baseUrl}/api/projects/${created.project.id}`,
       )
       expect(missing.status).toBe(404)
+    })
+  })
+
+  it('retries project creation and supports title-only PATCH without changing models', async () => {
+    await withServer(async ({ baseUrl }) => {
+      const creationKey = randomUUID()
+      const response = await postJson(`${baseUrl}/api/projects`, {
+        creationKey,
+        textModel: 'saved/model',
+      })
+      const { project } = (await response.json()) as { project: { id: string } }
+      createdProjectIds.push(project.id)
+      const retry = await postJson(`${baseUrl}/api/projects`, { creationKey })
+      await expect(retry.json()).resolves.toMatchObject({
+        project: { id: project.id },
+      })
+      const patch = (title: unknown) =>
+        fetch(`${baseUrl}/api/projects/${project.id}`, {
+          body: JSON.stringify({ title }),
+          headers: { 'content-type': 'application/json' },
+          method: 'PATCH',
+        })
+      const renamed = await patch('  Studio & Field  ')
+      expect(renamed.status).toBe(200)
+      await expect(
+        fetchJson(`${baseUrl}/api/projects/${project.id}`),
+      ).resolves.toMatchObject({
+        project: {
+          model: 'saved/model',
+          title: 'Studio & Field',
+          titleSource: 'user',
+        },
+      })
+      for (const title of ['', ' ', 123, 'x'.repeat(121)]) {
+        expect((await patch(title)).status).toBe(400)
+      }
+      expect(
+        (
+          await postJson(`${baseUrl}/api/projects`, {
+            creationKey: '../escape',
+          })
+        ).status,
+      ).toBe(400)
     })
   })
 

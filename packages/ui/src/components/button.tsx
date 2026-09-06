@@ -4,12 +4,9 @@ import * as React from 'react'
 
 import { cn } from '#lib/utils'
 
-// Recipe ported from t3code (apps/web/src/components/ui/button.tsx), adapted
-// from Base UI to Radix Slot: rounded controls with inset highlight shadows,
-// ring-offset focus, muted-foreground icons on quiet variants. Density uses
-// t3code's desktop (sm:) values — this is a desktop-only app.
+// Shared glass controls preserve Radix composition and visible keyboard focus.
 const buttonVariants = cva(
-  "relative inline-flex shrink-0 cursor-pointer items-center justify-center gap-2 rounded-none border text-sm font-medium whitespace-nowrap transition-shadow outline-none [--control-icon-color:currentColor] before:pointer-events-none before:absolute before:inset-0 before:rounded-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-64 [&_svg]:pointer-events-none [&_svg]:-mx-0.5 [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 [&_svg:not([class*='text-'])]:text-[var(--control-icon-color)]",
+  "relative inline-flex shrink-0 cursor-pointer items-center justify-center gap-2 rounded-(--control-radius) border text-sm font-medium whitespace-nowrap transition-shadow outline-none [--control-icon-color:currentColor] before:pointer-events-none before:absolute before:inset-0 before:rounded-(--control-radius) focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-64 [&_svg]:pointer-events-none [&_svg]:-mx-0.5 [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 [&_svg:not([class*='text-'])]:text-(--control-icon-color)",
   {
     defaultVariants: {
       size: 'default',
@@ -17,14 +14,14 @@ const buttonVariants = cva(
     },
     variants: {
       size: {
-        default: 'h-8 px-[calc(--spacing(3)-1px)]',
-        icon: 'size-8',
+        default: 'h-10 px-4',
+        icon: 'size-10',
         'icon-lg': 'size-9',
-        'icon-sm': 'size-7',
+        'icon-sm': 'size-8',
         'icon-xl': "size-10 [&_svg:not([class*='size-'])]:size-4.5",
         'icon-xs':
           "size-6 not-in-data-[slot=input-group]:[&_svg:not([class*='size-'])]:size-3.5",
-        lg: 'h-9 px-[calc(--spacing(3.5)-1px)]',
+        lg: 'h-11 px-5',
         sm: 'h-7 gap-1.5 px-[calc(--spacing(2.5)-1px)]',
         xl: "h-10 px-[calc(--spacing(4)-1px)] text-base [&_svg:not([class*='size-'])]:size-4.5",
         xs: "h-6 gap-1 px-[calc(--spacing(2)-1px)] text-xs [&_svg:not([class*='size-'])]:size-3.5",

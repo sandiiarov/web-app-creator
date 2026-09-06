@@ -14,13 +14,19 @@ import { TurnMessage } from './turn-message'
 
 export const PanelBody = memo(function PanelBody({
   isStreaming,
+  onRetryTurn,
+  onSuggestion,
+  retryDisabled,
   turns,
 }: {
   isStreaming: boolean
+  onRetryTurn: (turn: LandingTurn) => void
+  onSuggestion: (prompt: string) => void
+  retryDisabled: boolean
   turns: LandingTurn[]
 }) {
   if (turns.length === 0) {
-    return <ChatEmptyState />
+    return <ChatEmptyState onSuggestion={onSuggestion} />
   }
 
   return (
@@ -31,7 +37,7 @@ export const PanelBody = memo(function PanelBody({
       scrollMargin={12}
       scrollPreviousItemPeek={56}
     >
-      <MessageScroller className="bg-popover">
+      <MessageScroller className="bg-transparent">
         <MessageScrollerViewport className="p-3">
           <MessageScrollerContent aria-busy={isStreaming} className="gap-3">
             {turns.map((turn) => (
@@ -40,7 +46,11 @@ export const PanelBody = memo(function PanelBody({
                 messageId={turn.id}
                 scrollAnchor
               >
-                <TurnMessage turn={turn} />
+                <TurnMessage
+                  onRetry={onRetryTurn}
+                  retryDisabled={retryDisabled}
+                  turn={turn}
+                />
               </MessageScrollerItem>
             ))}
           </MessageScrollerContent>

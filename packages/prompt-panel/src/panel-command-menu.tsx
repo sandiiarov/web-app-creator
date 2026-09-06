@@ -4,6 +4,9 @@ import {
   DropdownMenuContent,
   DropdownMenuGroup,
   DropdownMenuItem,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@workspace/ui/components/dropdown-menu'
 import {
@@ -11,6 +14,10 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@workspace/ui/components/tooltip'
+import {
+  MOTION_PREFERENCES,
+  useMotionPreference,
+} from '@workspace/ui/lib/motion-preference'
 import {
   AppWindow,
   Monitor,
@@ -23,7 +30,7 @@ import {
   Sun,
   Tablet,
 } from 'lucide-react'
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 
 import { KeyboardShortcut } from './keyboard-shortcut'
 import { KEYBOARD_SHORTCUTS } from './keyboard-shortcuts'
@@ -48,12 +55,16 @@ const PREVIEW_VIEWPORT_LABELS: Record<PreviewViewport, string> = {
 
 export function PanelLayoutMenu({
   layout,
+  mobileExpanded,
   onLayoutChange,
+  onMobileExpandedChange,
   onOpenChange,
   open,
 }: {
   layout: PanelLayout
+  mobileExpanded: boolean
   onLayoutChange: (layout: PanelLayout) => void
+  onMobileExpandedChange: (value: boolean) => void
   onOpenChange: (open: boolean) => void
   open: boolean
 }) {
@@ -85,7 +96,22 @@ export function PanelLayoutMenu({
         onKeyDown={(event) => event.stopPropagation()}
         sideOffset={6}
       >
-        <DropdownMenuGroup>
+        <DropdownMenuRadioGroup
+          className="md:hidden"
+          onValueChange={(value) => {
+            onMobileExpandedChange(value === 'expanded')
+            onOpenChange(false)
+          }}
+          value={mobileExpanded ? 'expanded' : 'compact'}
+        >
+          <DropdownMenuRadioItem value="compact">
+            Compact assistant
+          </DropdownMenuRadioItem>
+          <DropdownMenuRadioItem value="expanded">
+            Expanded assistant
+          </DropdownMenuRadioItem>
+        </DropdownMenuRadioGroup>
+        <DropdownMenuGroup className="hidden md:block">
           <DropdownMenuItem onSelect={() => selectLayout('left-sidebar')}>
             <PanelLeft />
             Left sidebar
@@ -118,13 +144,16 @@ export function PanelLayoutMenu({
 
 export function PanelSettingsMenu({
   onToggleTheme,
+  pageActions,
   theme,
 }: {
   onToggleTheme: () => void
+  pageActions: ReactNode
   theme: PanelTheme
 }) {
   const [open, setOpen] = useState(false)
   const ThemeIcon = themeToggleIcon(theme)
+  const [motion, setMotion] = useMotionPreference()
 
   return (
     <DropdownMenu onOpenChange={setOpen} open={open}>
@@ -149,6 +178,7 @@ export function PanelSettingsMenu({
         onKeyDown={(event) => event.stopPropagation()}
         sideOffset={6}
       >
+        {pageActions}
         <DropdownMenuGroup>
           <DropdownMenuItem onSelect={onToggleTheme}>
             <ThemeIcon />
@@ -159,6 +189,38 @@ export function PanelSettingsMenu({
             />
           </DropdownMenuItem>
         </DropdownMenuGroup>
+        <DropdownMenuSeparator />
+        <div
+          className="flex flex-col gap-3 p-2"
+          onKeyDown={(event) => event.stopPropagation()}
+        >
+          <label
+            className="flex justify-between text-xs font-medium"
+            htmlFor="workspace-motion"
+          >
+            Motion
+            <span className="font-normal text-muted-foreground capitalize">
+              {motion === 'none' ? 'Off' : motion}
+            </span>
+          </label>
+          <input
+            aria-valuetext={motion}
+            className="w-full cursor-pointer accent-primary"
+            id="workspace-motion"
+            max={3}
+            min={0}
+            onChange={(event) =>
+              setMotion(MOTION_PREFERENCES[Number(event.target.value)]!)
+            }
+            step={1}
+            type="range"
+            value={MOTION_PREFERENCES.indexOf(motion)}
+          />
+          <p className="text-xs leading-relaxed text-muted-foreground">
+            Always respects your device’s reduced-motion setting.
+          </p>
+        </div>
+        <DropdownMenuSeparator />
       </DropdownMenuContent>
     </DropdownMenu>
   )
@@ -199,20 +261,27 @@ export function PreviewViewportMenu({
         onKeyDown={(event) => event.stopPropagation()}
         sideOffset={6}
       >
-        <DropdownMenuGroup>
+        <DropdownMenuRadioGroup
+          onValueChange={(value) => onViewportChange(value as PreviewViewport)}
+          value={viewport}
+        >
           {PREVIEW_VIEWPORTS.map((nextViewport) => {
             const Icon = previewViewportIcon(nextViewport)
             return (
-              <DropdownMenuItem
-                key={nextViewport}
-                onSelect={() => onViewportChange(nextViewport)}
-              >
+              <DropdownMenuRadioItem key={nextViewport} value={nextViewport}>
                 <Icon />
                 {PREVIEW_VIEWPORT_LABELS[nextViewport]}
-              </DropdownMenuItem>
+                <span className="ml-auto text-xs text-muted-foreground">
+                  {nextViewport === 'mobile'
+                    ? '390px'
+                    : nextViewport === 'tablet'
+                      ? '768px'
+                      : 'Full width'}
+                </span>
+              </DropdownMenuRadioItem>
             )
           })}
-        </DropdownMenuGroup>
+        </DropdownMenuRadioGroup>
       </DropdownMenuContent>
     </DropdownMenu>
   )

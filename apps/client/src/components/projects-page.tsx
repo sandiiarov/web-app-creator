@@ -1,32 +1,85 @@
 import { DEFAULT_LANDING_MODELS, StatusPill } from '@workspace/prompt-panel'
 import { Button } from '@workspace/ui/components/button'
-import { cn } from '@workspace/ui/lib/utils'
-import { ArrowRight, FileCode2, Plus, Trash2 } from 'lucide-react'
-import { useCallback, useEffect, useState } from 'react'
-import { Navigate, useNavigate } from 'react-router-dom'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@workspace/ui/components/dropdown-menu'
+import {
+  Empty,
+  EmptyContent,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from '@workspace/ui/components/empty'
+import { Input } from '@workspace/ui/components/input'
+import {
+  ArrowRight,
+  ArrowDownWideNarrow,
+  ChevronDown,
+  Ellipsis,
+  FileCode2,
+  LoaderCircle,
+  Moon,
+  PanelsTopLeft,
+  Plus,
+  Search,
+  Sun,
+  Trash2,
+} from 'lucide-react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { Link, Navigate, useNavigate } from 'react-router-dom'
 
+import { deleteDraft } from '../lib/project-drafts'
 import {
   type ProjectMeta,
   type RunStatus,
   createProject,
   deleteProject,
-  expandProjectImageUrls,
-  getProject,
   listProjects,
   projectListEventsUrl,
 } from '../lib/projects-api'
 import { runStatusToPanelStatus } from '../lib/run-status'
 import { streamSSEGet } from '../lib/sse-client'
+import { ProjectPreview } from './project-preview'
+import { RenameProjectDialog } from './rename-project-dialog'
+import { useTheme } from './theme-provider'
+
+type ProjectFilter = 'all' | 'attention' | 'running'
+type ProjectSort = 'created' | 'name' | 'updated'
+const FILTER_LABELS: Record<ProjectFilter, string> = {
+  all: 'All projects',
+  attention: 'Needs attention',
+  running: 'In progress',
+}
+const SORT_LABELS: Record<ProjectSort, string> = {
+  created: 'Newest created',
+  name: 'Name A–Z',
+  updated: 'Recently edited',
+}
 
 /** Creates a draft project on mount and redirects to its editor route. */
 export function NewProjectPage() {
+  const [creationKey] = useState(() => crypto.randomUUID())
+  const [attempt, setAttempt] = useState(0)
+  const creation = useRef<null | ReturnType<typeof createProject>>(null)
   const [createdId, setCreatedId] = useState<null | string>(null)
   const [error, setError] = useState<null | string>(null)
   const navigate = useNavigate()
 
   useEffect(() => {
     let cancelled = false
-    void createProject({ textModel: DEFAULT_LANDING_MODELS.text })
+    creation.current ??= createProject({
+      creationKey,
+      textModel: DEFAULT_LANDING_MODELS.text,
+    })
+    void creation.current
       .then((project) => {
         if (!cancelled) setCreatedId(project.id)
       })
@@ -40,13 +93,23 @@ export function NewProjectPage() {
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [creationKey, attempt])
 
   if (error) {
     return (
       <main className="grid min-h-svh place-items-center bg-background p-6 text-center">
         <div>
           <p className="text-sm text-destructive">{error}</p>
+          <Button
+            className="mt-4 mr-2"
+            onClick={() => {
+              creation.current = null
+              setError(null)
+              setAttempt((value) => value + 1)
+            }}
+          >
+            Try again
+          </Button>
           <Button
             className="mt-4"
             onClick={() => navigate('/')}
@@ -72,6 +135,26 @@ export function NewProjectPage() {
 }
 
 export function ProjectsPage() {
+  const { setTheme } = useTheme()
+  const [query, setQuery] = useState(() => readLibraryState().query)
+  const [filter, setFilter] = useState<ProjectFilter>(
+    () => readLibraryState().filter,
+  )
+  const [sort, setSort] = useState<ProjectSort>(() => readLibraryState().sort)
+  const [renaming, setRenaming] = useState<null | ProjectMeta>(null)
+  const [deleting, setDeleting] = useState<null | string>(null)
+  const restoredScroll = useRef(false)
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(
+        'landing.library.v1',
+        JSON.stringify({ ...readLibraryState(), filter, query, sort }),
+      )
+    } catch {
+      /* Storage is optional for library preferences. */
+    }
+  }, [query, filter, sort])
+  const [actionError, setActionError] = useState<null | string>(null)
   const [projects, setProjects] = useState<ProjectMeta[]>([])
   const [statusById, setStatusById] = useState<Record<string, RunStatus>>({})
   const [error, setError] = useState<null | string>(null)
@@ -128,76 +211,342 @@ export function ProjectsPage() {
     return () => controller.abort()
   }, [])
 
-  const handleDelete = useCallback(async (id: string) => {
-    if (!window.confirm('Delete this project? This cannot be undone.')) return
-    try {
-      await deleteProject(id)
-      setProjects((prev) => prev.filter((project) => project.id !== id))
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to delete project')
+  useEffect(() => {
+    if (loading || restoredScroll.current) return
+    restoredScroll.current = true
+    window.scrollTo(0, readLibraryState().scroll)
+  }, [loading])
+  useEffect(() => {
+    const save = () => {
+      try {
+        sessionStorage.setItem(
+          'landing.library.v1',
+          JSON.stringify({ ...readLibraryState(), scroll: window.scrollY }),
+        )
+      } catch {
+        /* Best effort */
+      }
     }
+    window.addEventListener('scroll', save, { passive: true })
+    return () => window.removeEventListener('scroll', save)
   }, [])
+  const handleDelete = useCallback(
+    async (id: string) => {
+      if (deleting) return
+      const title =
+        projects.find((project) => project.id === id)?.title ?? 'Untitled'
+      if (!window.confirm(`Delete “${title}”? This cannot be undone.`)) return
+      setDeleting(id)
+      setActionError(null)
+      try {
+        await deleteProject(id)
+        void deleteDraft(id).catch(() => {})
+        setProjects((prev) => prev.filter((project) => project.id !== id))
+      } catch (err) {
+        setActionError(
+          err instanceof Error ? err.message : 'Failed to delete project',
+        )
+      } finally {
+        setDeleting(null)
+      }
+    },
+    [deleting, projects],
+  )
+
+  const statusFor = (project: ProjectMeta) =>
+    statusById[project.id] ?? project.status ?? 'idle'
+  const filterCounts: Record<ProjectFilter, number> = {
+    all: projects.length,
+    attention: projects.filter((project) =>
+      ['error', 'interrupted'].includes(statusFor(project)),
+    ).length,
+    running: projects.filter((project) => statusFor(project) === 'running')
+      .length,
+  }
+  const visibleProjects = projects
+    .filter((project) => {
+      const matchesQuery =
+        `${project.title || 'Untitled'} ${project.brief ?? ''}`
+          .toLowerCase()
+          .includes(query.trim().toLowerCase())
+      const status = statusFor(project)
+      return (
+        matchesQuery &&
+        (filter === 'all' ||
+          (filter === 'running'
+            ? status === 'running'
+            : status === 'error' || status === 'interrupted'))
+      )
+    })
+    .sort((a, b) =>
+      sort === 'name'
+        ? (a.title || 'Untitled').localeCompare(b.title || 'Untitled')
+        : Date.parse(sort === 'created' ? b.createdAt : b.updatedAt) -
+          Date.parse(sort === 'created' ? a.createdAt : a.updatedAt),
+    )
 
   return (
-    <main className="min-h-svh bg-background text-foreground">
-      <div className="mx-auto w-full max-w-5xl px-6 py-10">
-        <header className="mb-8 flex items-end justify-between gap-4 border-b border-border pb-5">
+    <main className="projects-workspace min-h-svh text-foreground">
+      <header className="projects-masthead">
+        <div className="projects-container flex items-center justify-between gap-4">
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="workspace-mark shrink-0">
+              <PanelsTopLeft aria-hidden="true" className="size-4" />
+            </span>
+            <span className="truncate text-sm font-semibold tracking-tight">
+              Web App Creator
+            </span>
+          </div>
+          <Button
+            aria-label="Toggle color theme"
+            onClick={() =>
+              setTheme(
+                document.documentElement.classList.contains('dark')
+                  ? 'light'
+                  : 'dark',
+              )
+            }
+            size="icon"
+            variant="ghost"
+          >
+            <Sun className="hidden dark:block" />
+            <Moon className="dark:hidden" />
+          </Button>
+        </div>
+      </header>
+      <section
+        aria-labelledby="projects-title"
+        className="projects-container projects-library"
+      >
+        <div className="projects-intro">
           <div>
-            <h1 className="text-2xl font-semibold tracking-tight">Projects</h1>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Landing pages generated by the agent. Each is a single HTML file.
+            <h1 className="projects-heading" id="projects-title">
+              Projects
+              <span className="projects-total">
+                {loading ? '…' : projects.length}
+              </span>
+            </h1>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Pick up a page. Keep building.
             </p>
           </div>
           <Button onClick={() => navigate('/projects/new')} type="button">
             <Plus data-icon="inline-start" />
             New project
           </Button>
-        </header>
-
-        {error ? (
-          <p className="border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-            {error}
-          </p>
+        </div>
+        {renaming ? (
+          <RenameProjectDialog
+            onClose={() => setRenaming(null)}
+            onSaved={(next) =>
+              setProjects((current) =>
+                current.map((project) =>
+                  project.id === next.id ? { ...project, ...next } : project,
+                ),
+              )
+            }
+            project={renaming}
+          />
         ) : null}
-
+        <p
+          className="mb-2 text-xs text-muted-foreground"
+          id="library-results"
+          role="status"
+        >
+          {loading
+            ? 'Loading projects…'
+            : `${visibleProjects.length} ${visibleProjects.length === 1 ? 'project' : 'projects'} found`}
+        </p>
+        <div className="projects-tools">
+          <div className="projects-search">
+            <label className="sr-only" htmlFor="project-search">
+              Search projects
+            </label>
+            <Search
+              aria-hidden="true"
+              className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground"
+            />
+            <Input
+              aria-describedby="library-results"
+              className="pl-9"
+              id="project-search"
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Find a project…"
+              type="search"
+              value={query}
+            />
+          </div>
+          <div className="projects-filter-controls">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button aria-label="Filter projects" variant="ghost">
+                  {FILTER_LABELS[filter]}
+                  <ChevronDown data-icon="inline-end" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56">
+                <DropdownMenuGroup>
+                  <DropdownMenuRadioGroup
+                    onValueChange={(value) => setFilter(value as ProjectFilter)}
+                    value={filter}
+                  >
+                    {(Object.keys(FILTER_LABELS) as ProjectFilter[]).map(
+                      (value) => (
+                        <DropdownMenuRadioItem key={value} value={value}>
+                          {FILTER_LABELS[value]}
+                          <span className="ml-auto text-xs text-muted-foreground tabular-nums">
+                            {filterCounts[value]}
+                          </span>
+                        </DropdownMenuRadioItem>
+                      ),
+                    )}
+                  </DropdownMenuRadioGroup>
+                </DropdownMenuGroup>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button aria-label="Sort projects" variant="ghost">
+                  <ArrowDownWideNarrow data-icon="inline-start" />
+                  <span>{SORT_LABELS[sort]}</span>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-48">
+                <DropdownMenuGroup>
+                  <DropdownMenuRadioGroup
+                    onValueChange={(value) => setSort(value as ProjectSort)}
+                    value={sort}
+                  >
+                    {(Object.keys(SORT_LABELS) as ProjectSort[]).map(
+                      (value) => (
+                        <DropdownMenuRadioItem key={value} value={value}>
+                          {SORT_LABELS[value]}
+                        </DropdownMenuRadioItem>
+                      ),
+                    )}
+                  </DropdownMenuRadioGroup>
+                </DropdownMenuGroup>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        </div>
+        {error || actionError ? (
+          <div className="projects-notice" role="alert">
+            <div>
+              <p className="text-sm font-medium text-destructive">
+                {error
+                  ? 'Couldn’t load your projects'
+                  : 'Couldn’t delete this project'}
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {error || actionError}
+              </p>
+            </div>
+            {error ? (
+              <Button
+                disabled={loading}
+                onClick={() => void refresh()}
+                variant="outline"
+              >
+                Try again
+              </Button>
+            ) : (
+              <Button onClick={() => setActionError(null)} variant="ghost">
+                Dismiss
+              </Button>
+            )}
+          </div>
+        ) : null}
         {loading ? (
-          <p className="text-sm text-muted-foreground">Loading projects…</p>
-        ) : projects.length === 0 ? (
+          <div
+            className="flex min-h-64 items-center justify-center gap-3 text-sm text-muted-foreground"
+            role="status"
+          >
+            <LoaderCircle aria-hidden="true" className="size-4 animate-spin" />
+            Opening your projects…
+          </div>
+        ) : projects.length === 0 && !error ? (
           <EmptyState onCreate={() => navigate('/projects/new')} />
-        ) : (
-          <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {projects.map((project) => (
-              <ProjectCard
-                key={project.id}
-                onDelete={handleDelete}
-                onOpen={(id) => navigate(`/projects/${id}`)}
-                project={project}
-                status={statusById[project.id] ?? project.status ?? 'idle'}
-              />
-            ))}
-          </ul>
-        )}
-      </div>
+        ) : visibleProjects.length === 0 && projects.length > 0 ? (
+          <Empty className="min-h-64">
+            <EmptyHeader>
+              <EmptyTitle>
+                {query
+                  ? 'No matching projects'
+                  : filter === 'running'
+                    ? 'Nothing building right now'
+                    : 'No projects need attention'}
+              </EmptyTitle>
+              <EmptyDescription>
+                {query
+                  ? 'Try a different name or clear your filters.'
+                  : 'Choose all projects to return to your pages.'}
+              </EmptyDescription>
+            </EmptyHeader>
+            <EmptyContent>
+              <Button
+                onClick={() => {
+                  setQuery('')
+                  setFilter('all')
+                }}
+                variant="outline"
+              >
+                Clear filters
+              </Button>
+            </EmptyContent>
+          </Empty>
+        ) : visibleProjects.length > 0 ? (
+          <>
+            <div aria-hidden="true" className="project-list-head">
+              <span>Project</span>
+              <span>Last run</span>
+              <span>Edited</span>
+              <span />
+            </div>
+            <ul aria-label="Projects" className="project-list">
+              {visibleProjects.map((project) => (
+                <ProjectRow
+                  deleting={deleting === project.id}
+                  key={project.id}
+                  onDelete={handleDelete}
+                  onRename={() => setRenaming(project)}
+                  project={project}
+                  status={statusFor(project)}
+                />
+              ))}
+            </ul>
+            <p className="projects-results" role="status">
+              {visibleProjects.length === projects.length
+                ? `${projects.length} projects`
+                : `${visibleProjects.length} of ${projects.length} projects`}
+            </p>
+          </>
+        ) : null}
+      </section>
     </main>
   )
 }
 
 function EmptyState({ onCreate }: { onCreate: () => void }) {
   return (
-    <div className="flex flex-col items-center justify-center border border-dashed border-border px-6 py-16 text-center">
-      <span className="mb-4 flex size-12 items-center justify-center border border-border bg-card text-muted-foreground">
-        <FileCode2 className="size-5" />
-      </span>
-      <h2 className="text-base font-medium">No projects yet</h2>
-      <p className="mt-1 max-w-sm text-sm text-muted-foreground">
-        Create your first landing page. Describe a site or paste a reference URL
-        and the agent builds a single-file HTML page.
-      </p>
-      <Button className="mt-5" onClick={onCreate} type="button">
-        <Plus data-icon="inline-start" />
-        New project
-      </Button>
-    </div>
+    <Empty className="min-h-80">
+      <EmptyHeader>
+        <EmptyMedia variant="icon">
+          <FileCode2 />
+        </EmptyMedia>
+        <EmptyTitle>Your first page is one idea away</EmptyTitle>
+        <EmptyDescription>
+          Describe a landing page or bring a reference. Build it, refine it, and
+          download your finished page.
+        </EmptyDescription>
+      </EmptyHeader>
+      <EmptyContent>
+        <Button onClick={onCreate} type="button">
+          <Plus data-icon="inline-start" />
+          Create a project
+        </Button>
+      </EmptyContent>
+    </Empty>
   )
 }
 
@@ -220,117 +569,103 @@ function formatRelative(iso: string): string {
   })
 }
 
-function ProjectCard({
+function ProjectRow({
+  deleting,
   onDelete,
-  onOpen,
+  onRename,
   project,
   status,
 }: {
+  deleting: boolean
   onDelete: (id: string) => void
-  onOpen: (id: string) => void
+  onRename: () => void
   project: ProjectMeta
   status: RunStatus
 }) {
   const title = project.title || 'Untitled'
-
   return (
-    <li className="group relative">
-      <article
-        className={cn(
-          'relative overflow-hidden border border-border bg-card',
-          'transition-colors group-hover:border-foreground/30 group-hover:bg-muted/50',
-        )}
+    <li aria-busy={deleting} className="project-row">
+      <Link
+        aria-label={`Open ${title}`}
+        className="project-row-link"
+        to={`/projects/${project.id}`}
       >
-        <ProjectCardPreview project={project} />
-        <div className="flex items-end gap-3 p-4">
-          <span className="min-w-0 flex-1">
-            <span className="block truncate text-sm font-medium text-foreground">
-              {title}
-            </span>
-            <span className="mt-0.5 flex items-center gap-2 text-xs text-muted-foreground">
-              <StatusPill status={runStatusToPanelStatus(status)} />
-              <span>Updated {formatRelative(project.updatedAt)}</span>
-            </span>
-          </span>
-          <ArrowRight className="size-4 text-muted-foreground transition-colors group-hover:text-foreground" />
-        </div>
-        <button
-          aria-label={`Open ${title}`}
-          className={cn(
-            'absolute inset-0 z-10',
-            'focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:outline-none',
-          )}
-          onClick={() => onOpen(project.id)}
-          type="button"
-        >
-          <span className="sr-only">Open {title}</span>
-        </button>
-      </article>
-      <button
-        aria-label={`Delete ${title}`}
-        className={cn(
-          'absolute top-2 right-2 z-20 inline-flex size-7 items-center justify-center',
-          'border border-border bg-background text-muted-foreground',
-          'opacity-0 transition-opacity hover:bg-destructive/10 hover:text-destructive',
-          'group-hover:opacity-100 focus-visible:opacity-100',
-        )}
-        onClick={(event) => {
-          event.stopPropagation()
-          onDelete(project.id)
-        }}
-        title="Delete project"
-        type="button"
+        <ProjectPreview project={project} />
+        <span className="project-row-title" title={title}>
+          {deleting ? 'Deleting…' : title}
+        </span>
+      </Link>
+      <span className="project-row-status">
+        <StatusPill status={runStatusToPanelStatus(status)} />
+      </span>
+      <time
+        className="project-row-date"
+        dateTime={project.updatedAt}
+        title={new Date(project.updatedAt).toLocaleString()}
       >
-        <Trash2 className="size-3.5" />
-      </button>
+        {formatRelative(project.updatedAt)}
+      </time>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            aria-label={`Actions for ${title}`}
+            className="project-row-menu"
+            disabled={deleting}
+            size="icon-sm"
+            variant="ghost"
+          >
+            <Ellipsis />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-44">
+          <DropdownMenuGroup>
+            <DropdownMenuItem asChild>
+              <Link to={`/projects/${project.id}`}>
+                <ArrowRight />
+                Open editor
+              </Link>
+            </DropdownMenuItem>
+          </DropdownMenuGroup>
+          <DropdownMenuSeparator />
+          <DropdownMenuGroup>
+            <DropdownMenuItem onSelect={onRename}>
+              Rename project
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onSelect={() => onDelete(project.id)}
+              variant="destructive"
+            >
+              <Trash2 />
+              Delete project
+            </DropdownMenuItem>
+          </DropdownMenuGroup>
+        </DropdownMenuContent>
+      </DropdownMenu>
     </li>
   )
 }
 
-function ProjectCardPreview({ project }: { project: ProjectMeta }) {
-  const [failed, setFailed] = useState(false)
-  const [previewHtml, setPreviewHtml] = useState<null | string>(null)
-  const title = project.title || 'Untitled'
-
-  useEffect(() => {
-    let cancelled = false
-
-    setFailed(false)
-    setPreviewHtml(null)
-    void getProject(project.id)
-      .then((fullProject) => {
-        if (!cancelled) {
-          setPreviewHtml(expandProjectImageUrls(fullProject.indexHtml))
-        }
-      })
-      .catch(() => {
-        if (!cancelled) setFailed(true)
-      })
-
-    return () => {
-      cancelled = true
+function readLibraryState(): {
+  filter: ProjectFilter
+  query: string
+  scroll: number
+  sort: ProjectSort
+} {
+  try {
+    const value = JSON.parse(
+      sessionStorage.getItem('landing.library.v1') ?? '{}',
+    )
+    return {
+      filter: ['all', 'attention', 'running'].includes(value.filter)
+        ? value.filter
+        : 'all',
+      query: typeof value.query === 'string' ? value.query : '',
+      scroll: Number.isFinite(value.scroll) ? value.scroll : 0,
+      sort: ['created', 'name', 'updated'].includes(value.sort)
+        ? value.sort
+        : 'updated',
     }
-  }, [project.id, project.updatedAt])
-
-  return (
-    <div className="relative h-40 overflow-hidden border-b border-border bg-background">
-      {previewHtml ? (
-        <iframe
-          className="pointer-events-none size-[334%] origin-top-left scale-[0.3] border-0 bg-background"
-          loading="lazy"
-          sandbox=""
-          srcDoc={previewHtml}
-          tabIndex={-1}
-          title={`Preview of ${title}`}
-        />
-      ) : (
-        <div className="flex h-full flex-col items-center justify-center gap-2 text-muted-foreground">
-          <FileCode2 className="size-5" />
-          <span className="text-xs">
-            {failed ? 'Preview unavailable' : 'Loading preview…'}
-          </span>
-        </div>
-      )}
-    </div>
-  )
+  } catch {
+    return { filter: 'all', query: '', scroll: 0, sort: 'updated' }
+  }
 }

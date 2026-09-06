@@ -3,11 +3,13 @@ import type { LandingTurn } from '@workspace/prompt-panel'
 import { SERVER_URL } from './landing-agent'
 
 export interface AgentEventSubscription {
+  brief?: string
   html: string
   models: { image: string; text: string; vision: string }
   runStartedAt: null | string
   runTurnId: null | string
   status: RunStatus
+  title?: string
   turns: LandingTurn[]
 }
 
@@ -17,11 +19,13 @@ export interface Project extends ProjectMeta {
 }
 
 export interface ProjectInput {
+  creationKey?: string
   textModel?: string
   title?: string
 }
 
 export interface ProjectMeta {
+  brief?: string
   createdAt: string
   hasHtml: boolean
   id: string
@@ -75,6 +79,7 @@ export async function createProject(
 ): Promise<Project> {
   const response = await fetch(`${SERVER_URL}/api/projects`, {
     body: JSON.stringify({
+      creationKey: input.creationKey,
       ...(input.textModel ? { textModel: input.textModel } : {}),
       ...(input.title ? { title: input.title } : {}),
     }),
@@ -95,8 +100,19 @@ export async function deleteProject(id: string): Promise<void> {
 }
 
 /** Trigger a download of the project's portable single-file HTML (images inlined). */
-export function downloadProjectHtml(id: string): void {
-  window.location.href = `${SERVER_URL}/api/projects/${id}/html`
+export async function downloadProjectHtml(id: string): Promise<void> {
+  const response = await fetch(`${SERVER_URL}/api/projects/${id}/html`)
+  if (!response.ok)
+    throw new Error('Could not download HTML. Please try again.')
+  const url = URL.createObjectURL(await response.blob())
+  const link = document.createElement('a')
+  link.href = url
+  link.download =
+    /filename="([^"/\\]+)"/.exec(
+      response.headers.get('content-disposition') ?? '',
+    )?.[1] ?? 'page.html'
+  link.click()
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
 /**
@@ -138,6 +154,25 @@ export function projectEventsUrl(projectId: string): string {
 /** SSE URL for the project-list live status stream. */
 export function projectListEventsUrl(): string {
   return `${SERVER_URL}/api/projects/events`
+}
+
+export async function renameProject(
+  id: string,
+  title: string,
+): Promise<ProjectMeta> {
+  const response = await fetch(`${SERVER_URL}/api/projects/${id}`, {
+    body: JSON.stringify({ title }),
+    headers: { 'content-type': 'application/json' },
+    method: 'PATCH',
+  })
+  const json = (await response.json()) as {
+    error?: string
+    ok: boolean
+    project: ProjectMeta
+  }
+  if (!response.ok || !json.ok)
+    throw new Error(json.error ?? 'Could not rename project')
+  return json.project
 }
 
 /**

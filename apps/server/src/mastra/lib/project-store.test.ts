@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import {
   chmod,
   mkdir,
@@ -53,6 +54,51 @@ afterEach(async () => {
 })
 
 describe('project message storage', () => {
+  it('deduplicates concurrent creation and later retries without resetting saved edits', async () => {
+    const creationKey = randomUUID()
+    const [first, second] = await Promise.all([
+      createProject({ creationKey }),
+      createProject({ creationKey }),
+    ])
+    createdProjectIds.push(first.id)
+    expect(second.id).toBe(first.id)
+    createProjectHtmlStore(first.id).set(
+      '<title>Kept</title><main>Saved edits</main>',
+    )
+    const retried = await createProject({ creationKey })
+    expect(retried.id).toBe(first.id)
+    expect(retried.indexHtml).toContain('Saved edits')
+    expect(retried.title).toBe('Kept')
+    await expect(createProject({ creationKey: '../escape' })).rejects.toThrow(
+      'Invalid creation key',
+    )
+  })
+
+  it('keeps the full brief, derives a readable page title, and preserves manual renames', async () => {
+    const project = await createProject()
+    createdProjectIds.push(project.id)
+    const brief =
+      'Build a quiet portfolio for an independent architect. '.repeat(4)
+    setTitleIfUntitled(project.id, brief)
+    const store = createProjectHtmlStore(project.id)
+    store.set(
+      '<title>Studio &amp; Field &#8212; Architecture</title><main>Portfolio</main>',
+    )
+    expect(await getProject(project.id)).toMatchObject({
+      brief: brief.trim(),
+      title: 'Studio & Field — Architecture',
+      titleSource: 'page',
+    })
+    await updateProjectModel(project.id, { title: 'Untitled' })
+    setTitleIfUntitled(project.id, 'Another request')
+    store.set('<title>A new generated title</title><main>Updated</main>')
+    expect(await getProject(project.id)).toMatchObject({
+      brief: brief.trim(),
+      title: 'Untitled',
+      titleSource: 'user',
+    })
+  })
+
   it('creates projects with empty message history', async () => {
     const project = await createProject()
     createdProjectIds.push(project.id)
@@ -303,7 +349,7 @@ describe('project message storage', () => {
     // could be reverted when the stale snapshot was written back. The fix makes
     // its read-modify-write synchronous; this characterizes the fresh-read
     // contract that fields set by sibling sync writers survive a model PATCH.
-    const project = await createProject({ title: 'Untitled' })
+    const project = await createProject()
     createdProjectIds.push(project.id)
 
     // Simulate a successful edit flipping hasHtml, and a title set from a prompt.

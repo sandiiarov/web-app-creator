@@ -1,7 +1,7 @@
-export const COLLAPSED_HEIGHT = 37
-export const PANEL_HEIGHT = 560
-export const PANEL_WIDTH = 420
-export const PANEL_MARGIN = 8
+export const COLLAPSED_HEIGHT = 132
+export const PANEL_HEIGHT = 360
+export const PANEL_WIDTH = 352
+export const PANEL_MARGIN = 20
 export const PANEL_WIDTH_CSS_VAR = '--landing-panel-width'
 
 /** Minimum horizontal panel width; also the default width. */
@@ -29,9 +29,9 @@ export function clampPanelWidth(
   return Math.min(max, Math.max(MIN_PANEL_WIDTH, Math.round(width)))
 }
 
-/** Maximum horizontal panel width: half the viewport. */
+/** Keep the minimum usable width; allow half the viewport on wider screens. */
 export function maxPanelWidth(): number {
-  return Math.floor(window.innerWidth / 2)
+  return Math.max(MIN_PANEL_WIDTH, Math.floor(window.innerWidth / 2))
 }
 
 export const STATUS_LABELS: Record<PanelStatus, string> = {

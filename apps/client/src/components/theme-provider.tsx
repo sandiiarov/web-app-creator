@@ -1,4 +1,5 @@
 import { KEYBOARD_SHORTCUTS } from '@workspace/prompt-panel'
+import { useMotionPreference } from '@workspace/ui/lib/motion-preference'
 import * as React from 'react'
 
 type ResolvedTheme = 'dark' | 'light'
@@ -19,9 +20,13 @@ type ThemeProviderState = {
 const COLOR_SCHEME_QUERY = '(prefers-color-scheme: dark)'
 const THEME_VALUES = new Set<Theme>(['dark', 'light', 'system'])
 
-const ThemeProviderContext = React.createContext<
-  ThemeProviderState | undefined
->(undefined)
+// Keep providers and consumers on the same context during editor-preserving HMR.
+const ThemeProviderContext =
+  (import.meta.hot?.data.themeContext as
+    | React.Context<ThemeProviderState | undefined>
+    | undefined) ??
+  React.createContext<ThemeProviderState | undefined>(undefined)
+if (import.meta.hot) import.meta.hot.data.themeContext = ThemeProviderContext
 
 export function ThemeProvider({
   children,
@@ -29,6 +34,7 @@ export function ThemeProvider({
   disableTransitionOnChange = true,
   storageKey = 'theme',
 }: ThemeProviderProps) {
+  useMotionPreference()
   const [theme, setThemeState] = React.useState<Theme>(() =>
     getStoredTheme(storageKey, defaultTheme),
   )

@@ -4,14 +4,10 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@workspace/ui/components/popover'
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from '@workspace/ui/components/tooltip'
 import { cn } from '@workspace/ui/lib/utils'
-import { Check, ChevronDown, Search } from 'lucide-react'
+import { ChevronDown, Search } from 'lucide-react'
 import {
+  useId,
   useEffect,
   useRef,
   useState,
@@ -23,6 +19,7 @@ import { AnthropicIcon } from './anthropic-icon'
 import { BytedanceIcon } from './bytedance-icon'
 import { DeepseekIcon } from './deepseek-icon'
 import {
+  formatTokenCount,
   formatTokenPrice,
   LANDING_MODEL_GROUPS,
   type LandingModelPricing,
@@ -133,6 +130,8 @@ export function ModelDropdown({
   onModelsChange,
 }: ModelDropdownProps) {
   const [open, setOpen] = useState(false)
+  const [advanced, setAdvanced] = useState(false)
+  const tabsId = useId()
   const [activeRole, setActiveRole] = useState<LandingModelRole>('text')
   const [query, setQuery] = useState('')
   const inputRef = useRef<HTMLInputElement | null>(null)
@@ -240,52 +239,41 @@ export function ModelDropdown({
           type="button"
           variant="outline"
         >
-          {ROLE_ORDER.map((role, index) => {
-            const option = optionFor(role, models[role])
-            const Logo = option ? MODEL_ICONS[option.id] : undefined
-            const RoleIcon = MODEL_ROLE_META[role].Icon
-            return (
-              <Tooltip key={role} open={open ? false : undefined}>
-                <TooltipTrigger asChild>
-                  <span
-                    className={cn(
-                      'flex items-center gap-1.5 px-1.5',
-                      index > 0 && 'border-l border-border',
-                    )}
-                  >
-                    <RoleIcon
-                      className={cn('size-3', MODEL_ROLE_META[role].color)}
-                    />
-                    {Logo ? <Logo className="size-3" /> : null}
-                  </span>
-                </TooltipTrigger>
-                <TooltipContent side="top">
-                  <RoleIcon
-                    className={cn('size-3.5', MODEL_ROLE_META[role].color)}
-                  />
-                  {MODEL_ROLE_META[role].label}
-                  <span className="text-muted-foreground">·</span>
-                  {Logo ? <Logo className="size-3.5" /> : null}
-                  {option?.label ?? models[role]}
-                </TooltipContent>
-              </Tooltip>
-            )
-          })}
+          <span className="max-w-32 truncate px-1">
+            {optionFor('text', models.text)?.label ?? models.text}
+          </span>
           <ChevronDown data-icon="inline-end" />
         </Button>
       </PopoverTrigger>
       <PopoverContent
         align="start"
-        className="w-80 gap-0 p-0"
+        aria-label="Choose assistant models"
+        className="w-80 gap-0 overflow-hidden p-0"
         onOpenAutoFocus={(event) => {
           event.preventDefault()
           inputRef.current?.focus()
         }}
         sideOffset={6}
       >
+        <div className="flex items-center justify-between gap-2 p-3">
+          <span className="text-sm font-medium">Assistant model</span>
+          <Button
+            aria-expanded={advanced}
+            onClick={() => {
+              setAdvanced(!advanced)
+              setActiveRole('text')
+              setQuery('')
+            }}
+            size="xs"
+            variant="ghost"
+          >
+            Advanced models
+          </Button>
+        </div>
         <div
           aria-label="Model role"
-          className="flex border-b border-border"
+          className={cn(advanced ? 'flex' : 'hidden', 'border-b border-border')}
+          hidden={!advanced}
           role="tablist"
         >
           {ROLE_ORDER.map((role) => {
@@ -293,6 +281,7 @@ export function ModelDropdown({
             const active = role === activeRole
             return (
               <button
+                aria-controls={`${tabsId}-${role}-panel`}
                 aria-selected={active}
                 className={cn(
                   'flex flex-1 items-center justify-center gap-1.5 p-2 text-xs',
@@ -301,12 +290,35 @@ export function ModelDropdown({
                     ? 'bg-accent text-foreground'
                     : 'text-muted-foreground hover:bg-accent/50 hover:text-foreground',
                 )}
+                id={`${tabsId}-${role}-tab`}
                 key={role}
                 onClick={() => {
                   setActiveRole(role)
                   setQuery('')
                 }}
+                onKeyDown={(event) => {
+                  if (
+                    !['ArrowLeft', 'ArrowRight', 'End', 'Home'].includes(
+                      event.key,
+                    )
+                  )
+                    return
+                  event.preventDefault()
+                  const index = ROLE_ORDER.indexOf(role)
+                  const next =
+                    ROLE_ORDER[
+                      event.key === 'Home'
+                        ? 0
+                        : event.key === 'End'
+                          ? 2
+                          : (index + (event.key === 'ArrowRight' ? 1 : 2)) % 3
+                    ]!
+                  setActiveRole(next)
+                  setQuery('')
+                  document.getElementById(`${tabsId}-${next}-tab`)?.focus()
+                }}
                 role="tab"
+                tabIndex={active ? 0 : -1}
                 type="button"
               >
                 <meta.Icon className={cn('size-3.5', meta.color)} />
@@ -315,72 +327,106 @@ export function ModelDropdown({
             )
           })}
         </div>
-        <div
-          aria-label={activeGroup.title}
-          className="max-h-80 overflow-y-auto p-1"
-          onKeyDown={onListKeyDown}
-          ref={listRef}
-          role="radiogroup"
+        <p
+          className="px-3 py-2 text-xs leading-relaxed text-muted-foreground"
+          id={`${tabsId}-help`}
         >
-          {visibleItems.length === 0 ? (
-            <div className="px-2 py-3 text-xs text-muted-foreground">
-              No models match &quot;{query.trim()}&quot;
-            </div>
-          ) : null}
-          {visibleItems.map((item) => {
-            const Icon = item.Icon
-            const pricing = modelPricingFor(item.id, modelPricing)
-            const selected = models[activeRole] === item.id
-            const locked = visionSyncId != null && item.id !== visionSyncId
-            return (
-              <button
-                aria-checked={selected}
-                aria-disabled={locked || undefined}
-                className={cn(
-                  'flex w-full items-center gap-2 rounded-none px-2 py-1.5 text-left text-xs',
-                  'outline-none hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground focus-visible:ring-1 focus-visible:ring-ring/50 focus-visible:ring-inset',
-                  locked &&
-                    'cursor-not-allowed opacity-50 hover:bg-transparent hover:text-muted-foreground',
-                )}
-                data-model-id={item.id}
-                key={item.id}
-                onClick={() => {
-                  if (locked) return
-                  onModelsChange(
-                    selectLandingModel(models, activeRole, item.id, capableIds),
-                  )
-                }}
-                role="radio"
-                tabIndex={item.id === effectiveFocusId ? 0 : -1}
-                type="button"
-              >
-                {Icon ? <Icon className="size-3.5 shrink-0" /> : null}
-                <span className="flex min-w-0 flex-col">
-                  <span className="truncate">{item.label}</span>
-                  {pricing ? (
-                    <span className="truncate text-[10px] text-muted-foreground">
-                      {pricing.image != null ? (
-                        `${formatTokenPrice(pricing.image)} / image`
-                      ) : pricing.imageOutput != null ? (
-                        `${formatTokenPrice(pricing.imageOutput)} / M image tokens`
-                      ) : (
-                        <>
-                          {formatTokenPrice(pricing.input)}/M in ·{' '}
-                          {formatTokenPrice(pricing.output)}/M out
-                          {pricing.cacheRead == null
-                            ? ''
-                            : ` · ${formatTokenPrice(pricing.cacheRead)}/M cache`}
-                        </>
-                      )}
+          {activeRole === 'text'
+            ? 'Plans your page, writes copy, and makes changes.'
+            : activeRole === 'image'
+              ? 'Creates the images used on your page.'
+              : visionSyncId
+                ? 'Your assistant model can see images, so Vision follows it automatically. Choose a different assistant model in Text to change this.'
+                : 'Reads reference images for an assistant that cannot see them directly.'}
+        </p>
+        {advanced
+          ? ROLE_ORDER.filter((role) => role !== activeRole).map((role) => (
+              <div
+                aria-labelledby={`${tabsId}-${role}-tab`}
+                hidden
+                id={`${tabsId}-${role}-panel`}
+                key={role}
+                role="tabpanel"
+              />
+            ))
+          : null}
+        <div
+          aria-labelledby={advanced ? `${tabsId}-${activeRole}-tab` : undefined}
+          id={`${tabsId}-${activeRole}-panel`}
+          role={advanced ? 'tabpanel' : undefined}
+        >
+          <div
+            aria-describedby={`${tabsId}-help`}
+            aria-label={activeGroup.title}
+            className="max-h-[min(20rem,40dvh)] overflow-y-auto p-1"
+            onKeyDown={onListKeyDown}
+            ref={listRef}
+            role="radiogroup"
+          >
+            {visibleItems.length === 0 ? (
+              <div className="px-2 py-3 text-xs text-muted-foreground">
+                No models match &quot;{query.trim()}&quot;
+              </div>
+            ) : null}
+            {visibleItems.map((item) => {
+              const Icon = item.Icon
+              const pricing = modelPricingFor(item.id, modelPricing)
+              const selected = models[activeRole] === item.id
+              const locked = visionSyncId != null && item.id !== visionSyncId
+              return (
+                <button
+                  aria-checked={selected}
+                  aria-disabled={locked || undefined}
+                  className={cn(
+                    'flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs',
+                    'outline-none focus-visible:ring-1 focus-visible:ring-ring/50 focus-visible:ring-inset',
+                    selected
+                      ? 'bg-accent text-accent-foreground'
+                      : 'hover:bg-accent/60 hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground',
+                    locked &&
+                      'cursor-not-allowed opacity-50 hover:bg-transparent hover:text-muted-foreground',
+                  )}
+                  data-model-id={item.id}
+                  key={item.id}
+                  onClick={() => {
+                    if (locked) return
+                    onModelsChange(
+                      selectLandingModel(
+                        models,
+                        activeRole,
+                        item.id,
+                        capableIds,
+                      ),
+                    )
+                  }}
+                  role="radio"
+                  tabIndex={!locked && item.id === effectiveFocusId ? 0 : -1}
+                  type="button"
+                >
+                  {Icon ? <Icon className="size-3.5 shrink-0" /> : null}
+                  <span className="flex min-w-0 flex-col">
+                    <span className="truncate">{item.label}</span>
+                    <span className="text-xs leading-relaxed text-muted-foreground">
+                      {pricing?.contextLength != null
+                        ? `${formatTokenCount(pricing.contextLength)} ctx`
+                        : null}
+                      {pricing
+                        ? pricing.image != null
+                          ? `${pricing.contextLength != null ? ' · ' : ''}${formatTokenPrice(pricing.image)} / image`
+                          : pricing.imageOutput != null
+                            ? `${pricing.contextLength != null ? ' · ' : ''}${formatTokenPrice(pricing.imageOutput)} / M image tokens`
+                            : `${pricing.contextLength != null ? ' · ' : ''}${formatTokenPrice(pricing.input)}/M in · ${formatTokenPrice(pricing.output)}/M out${
+                                pricing.cacheRead == null
+                                  ? ''
+                                  : ` · ${formatTokenPrice(pricing.cacheRead)}/M cache`
+                              }`
+                        : null}
                     </span>
-                  ) : null}
-                </span>
-                {selected ? (
-                  <Check className="ml-auto size-3.5 shrink-0" />
-                ) : null}
-              </button>
-            )
-          })}
+                  </span>
+                </button>
+              )
+            })}
+          </div>
         </div>
         <div className="flex items-center gap-2 border-t border-border px-2 py-1.5">
           <Search className="size-3.5 shrink-0 text-muted-foreground" />

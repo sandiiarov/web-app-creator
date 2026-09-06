@@ -1,14 +1,11 @@
-import {
-  ResizableHandle,
-  ResizablePanel,
-  ResizablePanelGroup,
-} from '@workspace/ui/components/resizable'
+import { Button } from '@workspace/ui/components/button'
 import { cn } from '@workspace/ui/lib/utils'
 import {
   type FormEvent,
   type KeyboardEvent,
   type PointerEvent as ReactPointerEvent,
   type RefObject,
+  type ReactNode,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -32,6 +29,7 @@ import { KEYBOARD_SHORTCUTS } from './keyboard-shortcuts'
 import { PanelBody } from './panel-body'
 import {
   COLLAPSED_HEIGHT,
+  MIN_PANEL_WIDTH,
   PANEL_HEIGHT,
   PANEL_MARGIN,
   PANEL_WIDTH_CSS_VAR,
@@ -40,7 +38,6 @@ import {
   type PanelLayout,
   type PanelPosition,
   type PanelTheme,
-  type PreviewViewport,
 } from './panel-constants'
 import { PanelHeader } from './panel-header'
 import { panelStatus } from './panel-status'
@@ -49,6 +46,7 @@ import {
   readStoredPanelState,
   readStoredPanelWidth,
 } from './panel-storage'
+import { useLauncherDrag } from './use-launcher-drag'
 
 const ACCEPTED_ATTACHMENT_TYPES = new Set<ImageAttachmentMediaType>([
   'image/gif',
@@ -61,34 +59,51 @@ const MAX_ATTACHMENT_SIZE = 8 * 1024 * 1024
 const MAX_ATTACHMENT_TOTAL_SIZE = 16 * 1024 * 1024
 
 export type PromptPanelProps = {
-  canDownload: boolean
+  canSelectElement: boolean
+  connection: 'connecting' | 'live' | 'offline' | 'reconnecting'
+  draft: { attachments: PromptAttachmentInput[]; prompt: string }
+  draftError?: null | string
+  draftReady: boolean
   elementSelectionActive: boolean
+  isStopping: boolean
   isStreaming: boolean
   modelPricing?: Record<string, LandingModelPricing>
   models: LandingModels
   onAllProjects: () => void
-  onDownloadHtml: () => void
+  onDraftChange: (
+    update: (draft: {
+      attachments: PromptAttachmentInput[]
+      prompt: string
+    }) => { attachments: PromptAttachmentInput[]; prompt: string },
+  ) => void
   onElementSelectionToggle: () => void
   onLayoutChange?: (layout: PanelLayout) => void
+  onLocateElement: (selector: string) => void
   onModelsChange: (models: LandingModels) => void
-  onReloadPreview?: () => void
+  onReconnect: () => void
+  onRenameProject: () => void
+  onRetryTurn: (turn: LandingTurn) => void
   onSelectedElementAttachmentConsumed: () => void
-  onSend: (input: LandingAgentSendInput) => void
+  onSend: (input: LandingAgentSendInput) => Promise<boolean>
   onStop: () => void
   onToggleTheme: () => void
-  onViewportChange: (viewport: PreviewViewport) => void
+  pageActions: ReactNode
+  projectSwitcher: ReactNode
+  projectTitle: string
   selectedElementAttachment: ElementAttachmentInput | null
   theme: PanelTheme
   turns: LandingTurn[]
-  viewport: PreviewViewport
 }
 
 type DragState = {
+  moved: boolean
   offsetX: number
   offsetY: number
   pointerX: number
   pointerY: number
   rafId: null | number
+  startX: number
+  startY: number
 }
 
 type ResizeState = {
@@ -102,46 +117,135 @@ type ResizeState = {
 }
 
 export function PromptPanel({
-  canDownload,
+  canSelectElement,
+  connection,
+  draft,
+  draftError,
+  draftReady,
   elementSelectionActive,
+  isStopping,
   isStreaming,
   modelPricing,
   models,
   onAllProjects,
-  onDownloadHtml,
+  onDraftChange,
   onElementSelectionToggle,
   onLayoutChange,
+  onLocateElement,
   onModelsChange,
-  onReloadPreview,
+  onReconnect,
+  onRenameProject,
+  onRetryTurn,
   onSelectedElementAttachmentConsumed,
   onSend,
   onStop,
   onToggleTheme,
-  onViewportChange,
+  pageActions,
+  projectSwitcher,
+  projectTitle,
   selectedElementAttachment,
   theme,
   turns,
-  viewport,
 }: PromptPanelProps) {
   const [collapsed, setCollapsed] = useState(initialPanelCollapsed)
+  const [projectsOpen, setProjectsOpen] = useState(false)
+  const suppressTitleClick = useRef(false)
   const [panelMenuOpen, setPanelMenuOpen] = useState(false)
   const [position, setPosition] = useState<PanelPosition>(initialPanelPosition)
-  const [prompt, setPrompt] = useState('')
-  const [attachments, setAttachments] = useState<PromptAttachmentInput[]>([])
+  const { attachments, prompt } = draft
+  const setPrompt = useCallback(
+    (value: string) =>
+      onDraftChange((current) => ({ ...current, prompt: value })),
+    [onDraftChange],
+  )
+  const setAttachments = useCallback(
+    (
+      value:
+        | ((current: PromptAttachmentInput[]) => PromptAttachmentInput[])
+        | PromptAttachmentInput[],
+    ) =>
+      onDraftChange((current) => ({
+        ...current,
+        attachments:
+          typeof value === 'function' ? value(current.attachments) : value,
+      })),
+    [onDraftChange],
+  )
+  const [mobileExpanded, setMobileExpanded] = useState(false)
+  const [keyboardWidth, setKeyboardWidth] = useState(initialPanelWidth)
+  const [submitting, setSubmitting] = useState(false)
+  const submitLock = useRef(false)
   const [attachmentError, setAttachmentError] = useState<null | string>(null)
   const [dragging, setDragging] = useState(false)
   const [resizing, setResizing] = useState(false)
 
   const sectionRef = useRef<HTMLElement | null>(null)
+  const launcherDrag = useLauncherDrag(sectionRef, collapsed)
+  const wasCollapsed = useRef(collapsed)
   const dragState = useRef<DragState | null>(null)
   const resizeState = useRef<null | ResizeState>(null)
   const widthRef = useRef<number>(initialPanelWidth())
+
+  useEffect(() => {
+    if (wasCollapsed.current === collapsed) return
+    wasCollapsed.current = collapsed
+    let frame = 0
+    const focusVisibleTarget = () => {
+      const target =
+        sectionRef.current?.querySelector<HTMLTextAreaElement>('textarea')
+      if (!target) return
+      // Visibility changes on the next animation frame. Focusing earlier is ignored by the browser.
+      if (getComputedStyle(target).visibility !== 'visible') {
+        frame = requestAnimationFrame(focusVisibleTarget)
+        return
+      }
+      target.focus({ preventScroll: true })
+    }
+    frame = requestAnimationFrame(focusVisibleTarget)
+    return () => cancelAnimationFrame(frame)
+  }, [collapsed])
+
+  const handleSuggestion = useCallback(
+    (value: string) => {
+      setPrompt(value)
+      sectionRef.current
+        ?.querySelector<HTMLTextAreaElement>('textarea')
+        ?.focus()
+    },
+    [setPrompt],
+  )
 
   useLayoutEffect(() => {
     setPanelWidthVar(widthRef.current)
   }, [])
 
-  useClampToViewport(position, setPosition, collapsed, widthRef)
+  useClampToViewport(position, setPosition, false, widthRef)
+  useEffect(() => {
+    const viewport = window.visualViewport
+    const update = () => {
+      const root = document.documentElement
+      root.dataset.assistantKeyboard = String(
+        (viewport?.height ?? window.innerHeight) < window.innerHeight - 100,
+      )
+      root.style.setProperty(
+        '--assistant-visible-height',
+        `${viewport?.height ?? window.innerHeight}px`,
+      )
+      root.style.setProperty(
+        '--assistant-keyboard-inset',
+        `${Math.max(0, window.innerHeight - (viewport?.height ?? window.innerHeight) - (viewport?.offsetTop ?? 0))}px`,
+      )
+    }
+    update()
+    viewport?.addEventListener('resize', update)
+    viewport?.addEventListener('scroll', update)
+    window.addEventListener('resize', update)
+    return () => {
+      viewport?.removeEventListener('resize', update)
+      viewport?.removeEventListener('scroll', update)
+      window.removeEventListener('resize', update)
+    }
+  }, [])
 
   useEffect(() => {
     writeStoredPanelState(position, collapsed, widthRef.current)
@@ -178,24 +282,33 @@ export function PromptPanel({
     attachments,
     onSelectedElementAttachmentConsumed,
     selectedElementAttachment,
+    setAttachments,
   ])
 
   const handleDragStart = useCallback(
-    (event: ReactPointerEvent<HTMLDivElement>) => {
+    (event: ReactPointerEvent<HTMLElement>) => {
       if (
-        event.target instanceof HTMLElement &&
-        event.target.closest('button, input, textarea, a, [role="button"]')
+        event.target instanceof Element &&
+        event.target.closest('button, input, textarea, a, [role="button"]') &&
+        !event.target.closest('[data-panel-drag-handle]')
       ) {
         return
       }
 
-      setDragging(true)
+      if (event.button !== 0 || window.matchMedia('(max-width: 767px)').matches)
+        return
+
+      suppressTitleClick.current = false
       dragState.current = {
+        moved: false,
         offsetX: event.clientX - position.x,
-        offsetY: event.clientY - position.y,
+        offsetY:
+          event.clientY - event.currentTarget.getBoundingClientRect().top,
         pointerX: event.clientX,
         pointerY: event.clientY,
         rafId: null,
+        startX: event.clientX,
+        startY: event.clientY,
       }
       // Capture on the stable handler element (currentTarget), not the volatile
       // event.target child: a mid-drag re-render can unmount the captured child,
@@ -204,16 +317,25 @@ export function PromptPanel({
       // events (including pointerup) even with the cursor outside the window.
       event.currentTarget.setPointerCapture?.(event.pointerId)
     },
-    [position.x, position.y],
+    [position.x],
   )
 
   const handleDragMove = useCallback(
-    (event: ReactPointerEvent<HTMLDivElement>) => {
+    (event: ReactPointerEvent<HTMLElement>) => {
       const state = dragState.current
-      if (!dragging || !state) {
+      if (!state) {
         return
       }
 
+      if (
+        !state.moved &&
+        Math.hypot(event.clientX - state.startX, event.clientY - state.startY) <
+          5
+      )
+        return
+      state.moved = true
+      suppressTitleClick.current = true
+      setDragging(true)
       state.pointerX = event.clientX
       state.pointerY = event.clientY
 
@@ -241,7 +363,7 @@ export function PromptPanel({
         sectionRef.current.style.top = `${next.y}px`
       })
     },
-    [collapsed, dragging],
+    [collapsed],
   )
 
   const handleDragEnd = useCallback(() => {
@@ -251,7 +373,7 @@ export function PromptPanel({
       window.cancelAnimationFrame(state.rafId)
     }
 
-    if (state) {
+    if (state?.moved) {
       setPosition(
         clampPanelPosition(
           {
@@ -268,25 +390,24 @@ export function PromptPanel({
     dragState.current = null
   }, [collapsed])
 
-  const handleLayoutChange = useCallback(
-    (nextLayout: PanelLayout) => {
-      if (nextLayout === 'left-sidebar') {
-        setPosition({ x: 0, y: 0 })
-        return
-      }
+  const handleLayoutChange = useCallback((nextLayout: PanelLayout) => {
+    if (window.innerWidth < 768) return
+    setCollapsed(false)
+    if (nextLayout === 'left-sidebar') {
+      setPosition({ x: 0, y: 0 })
+      return
+    }
 
-      if (nextLayout === 'right-sidebar') {
-        setPosition({ x: rightDockX(widthRef.current), y: 0 })
-        return
-      }
+    if (nextLayout === 'right-sidebar') {
+      setPosition({ x: rightDockX(widthRef.current), y: 0 })
+      return
+    }
 
-      setPosition(floatingPositionFrom(position, widthRef.current))
-    },
-    [position],
-  )
+    setPosition(defaultPanelPosition(widthRef.current))
+  }, [])
 
   const handleResizeStart = useCallback(
-    (event: ReactPointerEvent<HTMLDivElement>, side: 'left' | 'right') => {
+    (event: ReactPointerEvent<HTMLElement>, side: 'left' | 'right') => {
       event.stopPropagation()
       resizeState.current = {
         edge: side,
@@ -304,7 +425,7 @@ export function PromptPanel({
   )
 
   const handleResizeMove = useCallback(
-    (event: ReactPointerEvent<HTMLDivElement>) => {
+    (event: ReactPointerEvent<HTMLElement>) => {
       const state = resizeState.current
       if (!state) return
 
@@ -347,7 +468,7 @@ export function PromptPanel({
   )
 
   const handleResizeEnd = useCallback(
-    (event: ReactPointerEvent<HTMLDivElement>) => {
+    (event: ReactPointerEvent<HTMLElement>) => {
       event.stopPropagation()
       const state = resizeState.current
       if (!state) return
@@ -361,6 +482,7 @@ export function PromptPanel({
       const next = clampPanelWidth(state?.lastWidth ?? widthRef.current)
       resizeState.current = null
       widthRef.current = next
+      setKeyboardWidth(next)
       setResizing(false)
       setPanelWidthVar(next)
 
@@ -373,6 +495,32 @@ export function PromptPanel({
     },
     [collapsed, position],
   )
+
+  const handleResizeKeyDown = (
+    event: KeyboardEvent<HTMLDivElement>,
+    side: 'left' | 'right',
+  ) => {
+    const increase = side === 'right' ? 'ArrowRight' : 'ArrowLeft'
+    if (!['ArrowLeft', 'ArrowRight', 'End', 'Home'].includes(event.key)) return
+    event.preventDefault()
+    const next = clampPanelWidth(
+      event.key === 'Home'
+        ? MIN_PANEL_WIDTH
+        : event.key === 'End'
+          ? maxPanelWidth()
+          : widthRef.current +
+            (event.key === increase ? 1 : -1) * (event.shiftKey ? 48 : 16),
+    )
+    const x =
+      side === 'left'
+        ? Math.max(0, position.x + widthRef.current - next)
+        : position.x
+    widthRef.current = next
+    setKeyboardWidth(next)
+    setPanelWidthVar(next)
+    setPosition(clampPanelPosition({ x, y: position.y }, false, next))
+    writeStoredPanelState({ x, y: position.y }, collapsed, next)
+  }
 
   const handleAllProjects = useCallback(() => {
     onAllProjects()
@@ -394,29 +542,60 @@ export function PromptPanel({
           )
         })
     },
-    [attachments],
+    [attachments, setAttachments],
   )
 
-  const handleRemoveAttachment = useCallback((id: string) => {
-    setAttachments((current) => current.filter((item) => item.id !== id))
-    setAttachmentError(null)
-  }, [])
+  const handleRemoveAttachment = useCallback(
+    (id: string) => {
+      setAttachments((current) => current.filter((item) => item.id !== id))
+      setAttachmentError(null)
+    },
+    [setAttachments],
+  )
 
-  const sendPrompt = useCallback(() => {
+  const sendPrompt = useCallback(async () => {
     const trimmed = prompt.trim()
 
-    if ((!trimmed && attachments.length === 0) || isStreaming) {
+    if (
+      (!trimmed && attachments.length === 0) ||
+      isStreaming ||
+      submitLock.current ||
+      !draftReady ||
+      connection !== 'live'
+    ) {
       return
     }
 
-    onSend({
-      attachments,
-      prompt: trimmed || 'Use the attached attachment as reference.',
-    })
-    setPrompt('')
-    setAttachments([])
-    setAttachmentError(null)
-  }, [attachments, isStreaming, onSend, prompt])
+    submitLock.current = true
+    setSubmitting(true)
+    try {
+      const accepted = await onSend({
+        attachments,
+        prompt: trimmed || 'Use the attached reference.',
+      })
+      if (accepted) {
+        setCollapsed(false)
+        setProjectsOpen(false)
+        onDraftChange((current) =>
+          current.prompt === prompt && current.attachments === attachments
+            ? { attachments: [], prompt: '' }
+            : current,
+        )
+        setAttachmentError(null)
+      }
+    } finally {
+      submitLock.current = false
+      setSubmitting(false)
+    }
+  }, [
+    attachments,
+    isStreaming,
+    onSend,
+    prompt,
+    onDraftChange,
+    draftReady,
+    connection,
+  ])
 
   const stopGeneration = useCallback(() => {
     if (isStreaming) {
@@ -434,7 +613,12 @@ export function PromptPanel({
 
   const handleKeyDown = useCallback(
     (event: KeyboardEvent<HTMLTextAreaElement>) => {
-      if (event.key === 'Enter' && !event.shiftKey) {
+      if (
+        event.key === 'Enter' &&
+        !event.shiftKey &&
+        !event.nativeEvent.isComposing &&
+        event.keyCode !== 229
+      ) {
         event.preventDefault()
         const form = event.currentTarget.form
 
@@ -497,146 +681,202 @@ export function PromptPanel({
     : dockedPanelSide(position, widthRef.current)
   const layout: PanelLayout = dockedSide ? `${dockedSide}-sidebar` : 'floating'
   const status = panelStatus({ isStreaming, turns })
-  const shouldRenderCollapsed = collapsed
   const panelHeight = collapsed
-    ? `${COLLAPSED_HEIGHT}px`
+    ? 'auto'
     : dockedSide
-      ? '100svh'
+      ? '100dvh'
       : `${PANEL_HEIGHT}px`
   const panelStyle = {
     height: panelHeight,
     left: `${position.x}px`,
-    maxHeight: dockedSide ? '100svh' : `calc(100svh - ${PANEL_MARGIN * 2}px)`,
+    maxHeight: dockedSide ? '100dvh' : 'calc(100svh - 40px)',
     maxWidth: '100vw',
-    top: `${position.y}px`,
+    top: `${dockedSide ? 0 : position.y}px`,
     width: `var(${PANEL_WIDTH_CSS_VAR})`,
+    ...(collapsed
+      ? {
+          bottom: 'calc(20px + var(--assistant-keyboard-inset, 0px))',
+          height: 'auto',
+          left: 'auto',
+          maxHeight: 'calc(var(--assistant-visible-height, 100dvh) - 16px)',
+          maxWidth: 'calc(100vw - 16px)',
+          right: 'min(20px, 2.5vw)',
+          top: 'auto',
+          ...launcherDrag.style,
+        }
+      : {}),
   }
 
   return (
-    <section
-      aria-label="Prompt panel"
-      className={cn(
-        'fixed z-30 flex flex-col overflow-hidden border bg-popover/95 text-popover-foreground backdrop-blur-xl',
-        'border-border/80',
-        shouldRenderCollapsed
-          ? 'rounded-none shadow-lg'
-          : 'rounded-none shadow-2xl',
-        dockedSide === 'left' && 'border-y-0 border-l-0',
-        dockedSide === 'right' && 'border-y-0 border-r-0',
-        dragging || resizing ? 'select-none' : '',
-      )}
-      data-landing-prompt-panel=""
-      data-resizing={resizing || undefined}
-      ref={sectionRef}
-      style={panelStyle}
-    >
-      {shouldRenderCollapsed ? (
-        <PanelHeader
-          canDownload={canDownload}
-          collapsed={collapsed}
-          dragging={dragging}
-          layout={layout}
-          onAllProjects={handleAllProjects}
-          onDownloadHtml={onDownloadHtml}
-          onDragEnd={handleDragEnd}
-          onDragMove={handleDragMove}
-          onDragStart={handleDragStart}
-          onLayoutChange={handleLayoutChange}
-          onPanelMenuOpenChange={setPanelMenuOpen}
-          onReloadPreview={onReloadPreview}
-          onToggleCollapsed={() => setCollapsed(false)}
-          onToggleTheme={onToggleTheme}
-          onViewportChange={onViewportChange}
-          panelMenuOpen={panelMenuOpen}
-          status={status}
-          theme={theme}
-          viewport={viewport}
-        />
-      ) : (
+    <>
+      <section
+        aria-labelledby="assistant-title"
+        className={cn(
+          'liquid-panel fixed z-30 flex flex-col overflow-hidden rounded-3xl text-popover-foreground',
+          dockedSide === 'left' && 'rounded-l-none',
+          dockedSide === 'right' && 'rounded-r-none',
+          dragging || resizing ? 'select-none' : '',
+        )}
+        data-collapsed={collapsed}
+        data-dragging={dragging || launcherDrag.dragging || undefined}
+        data-has-attachments={attachments.length > 0 || !!attachmentError}
+        data-landing-prompt-panel=""
+        data-layout={layout}
+        data-mobile-expanded={mobileExpanded}
+        data-projects-open={projectsOpen}
+        data-resizing={resizing || undefined}
+        data-status={status}
+        id="page-assistant"
+        ref={sectionRef}
+        style={panelStyle}
+      >
         <div className="flex h-full min-h-0 flex-col">
           <PanelHeader
-            canDownload={canDownload}
             collapsed={collapsed}
             dragging={dragging}
             layout={layout}
-            onAllProjects={handleAllProjects}
-            onDownloadHtml={onDownloadHtml}
-            onDragEnd={handleDragEnd}
-            onDragMove={handleDragMove}
-            onDragStart={handleDragStart}
+            mobileExpanded={mobileExpanded}
+            onAllProjects={() => {
+              setProjectsOpen((open) => !open)
+              setCollapsed(false)
+            }}
+            onDragEnd={
+              collapsed ? launcherDrag.handlers.onPointerUp : handleDragEnd
+            }
+            onDragKeyDown={
+              collapsed ? launcherDrag.handlers.onKeyDown : undefined
+            }
+            onDragMove={
+              collapsed ? launcherDrag.handlers.onPointerMove : handleDragMove
+            }
+            onDragStart={
+              collapsed ? launcherDrag.handlers.onPointerDown : handleDragStart
+            }
             onLayoutChange={handleLayoutChange}
+            onMobileExpandedChange={setMobileExpanded}
             onPanelMenuOpenChange={setPanelMenuOpen}
-            onReloadPreview={onReloadPreview}
-            onToggleCollapsed={() => setCollapsed(true)}
+            onRenameProject={() => {
+              if (collapsed) {
+                if (launcherDrag.shouldOpen()) setCollapsed(false)
+              } else if (!suppressTitleClick.current) onRenameProject()
+            }}
+            onToggleCollapsed={() => {
+              setProjectsOpen(false)
+              setCollapsed((value) => !value)
+            }}
             onToggleTheme={onToggleTheme}
-            onViewportChange={onViewportChange}
+            pageActions={pageActions}
             panelMenuOpen={panelMenuOpen}
+            projectsOpen={projectsOpen}
+            projectTitle={projectTitle}
             status={status}
+            statusText={
+              connection !== 'live'
+                ? connection === 'offline'
+                  ? 'Disconnected'
+                  : connection === 'connecting'
+                    ? 'Connecting…'
+                    : 'Reconnecting…'
+                : isStopping
+                  ? 'Stopping…'
+                  : undefined
+            }
             theme={theme}
-            viewport={viewport}
           />
-          <ResizablePanelGroup
-            className="min-h-0 flex-1"
-            orientation="vertical"
+          {connection !== 'live' ? (
+            <div
+              className="flex shrink-0 items-center justify-between gap-2 border-b border-border px-4 py-2 text-xs"
+              role="status"
+            >
+              <span>
+                {connection === 'offline'
+                  ? 'Connection lost. Your page and draft are here.'
+                  : connection === 'reconnecting'
+                    ? 'Reconnecting to check the latest changes…'
+                    : 'Opening your project…'}
+              </span>
+              <Button onClick={onReconnect} size="xs" variant="outline">
+                Retry
+              </Button>
+            </div>
+          ) : null}
+          {projectsOpen ? (
+            <div className="assistant-projects-view">{projectSwitcher}</div>
+          ) : null}
+          <div
+            className="assistant-conversation"
+            hidden={collapsed || projectsOpen}
+            id="landing-chat"
           >
-            <ResizablePanel
-              className="min-h-0"
-              defaultSize="70%"
-              id="landing-chat"
-              minSize="30%"
-            >
-              <PanelBody isStreaming={isStreaming} turns={turns} />
-            </ResizablePanel>
-            <ResizableHandle className="bg-border/70" withHandle />
-            <ResizablePanel
-              className="min-h-0 overflow-visible"
-              defaultSize="30%"
-              id="landing-composer"
-              minSize="30%"
-            >
-              <Composer
-                attachmentError={attachmentError}
-                attachments={attachments}
-                disabled={
-                  isStreaming ||
-                  (prompt.trim().length === 0 && attachments.length === 0)
-                }
-                elementSelectionActive={elementSelectionActive}
-                isStreaming={isStreaming}
-                modelPricing={modelPricing}
-                models={models}
-                onAttachFiles={handleAttachFiles}
-                onChange={setPrompt}
-                onElementSelectionToggle={onElementSelectionToggle}
-                onKeyDown={handleKeyDown}
-                onModelsChange={onModelsChange}
-                onRemoveAttachment={handleRemoveAttachment}
-                onStop={onStop}
-                onSubmit={handleSubmit}
-                prompt={prompt}
-                turns={turns}
-              />
-            </ResizablePanel>
-          </ResizablePanelGroup>
+            <PanelBody
+              isStreaming={isStreaming}
+              onRetryTurn={onRetryTurn}
+              onSuggestion={handleSuggestion}
+              retryDisabled={isStreaming || connection !== 'live'}
+              turns={turns}
+            />
+          </div>
+          <div
+            className="assistant-composer-region"
+            hidden={projectsOpen}
+            id="landing-composer"
+          >
+            <Composer
+              attachmentError={attachmentError ?? draftError ?? null}
+              attachments={attachments}
+              canSelectElement={canSelectElement}
+              disabled={
+                isStreaming ||
+                submitting ||
+                !draftReady ||
+                connection !== 'live' ||
+                (prompt.trim().length === 0 && attachments.length === 0)
+              }
+              elementSelectionActive={elementSelectionActive}
+              isStopping={isStopping}
+              isStreaming={isStreaming}
+              modelPricing={modelPricing}
+              models={models}
+              onAttachFiles={handleAttachFiles}
+              onChange={setPrompt}
+              onElementSelectionToggle={onElementSelectionToggle}
+              onKeyDown={handleKeyDown}
+              onLocateElement={(selector) => {
+                onLocateElement(selector)
+                if (window.innerWidth < 768) setCollapsed(true)
+              }}
+              onModelsChange={onModelsChange}
+              onRemoveAttachment={handleRemoveAttachment}
+              onStop={onStop}
+              onSubmit={handleSubmit}
+              prompt={prompt}
+              readOnly={!draftReady || submitting}
+              turns={turns}
+            />
+          </div>
         </div>
-      )}
-      {shouldRenderCollapsed ? null : (
-        <>
-          <PanelResizeHandle
-            onResizeEnd={handleResizeEnd}
-            onResizeMove={handleResizeMove}
-            onResizeStart={handleResizeStart}
-            side="left"
-          />
-          <PanelResizeHandle
-            onResizeEnd={handleResizeEnd}
-            onResizeMove={handleResizeMove}
-            onResizeStart={handleResizeStart}
-            side="right"
-          />
-        </>
-      )}
-    </section>
+        {collapsed ? null : (
+          <>
+            <PanelResizeHandle
+              onKeyDown={handleResizeKeyDown}
+              onResizeEnd={handleResizeEnd}
+              onResizeMove={handleResizeMove}
+              onResizeStart={handleResizeStart}
+              side="left"
+              width={keyboardWidth}
+            />
+            <PanelResizeHandle
+              onKeyDown={handleResizeKeyDown}
+              onResizeEnd={handleResizeEnd}
+              onResizeMove={handleResizeMove}
+              onResizeStart={handleResizeStart}
+              side="right"
+              width={keyboardWidth}
+            />
+          </>
+        )}
+      </section>
+    </>
   )
 }
 
@@ -721,14 +961,8 @@ function createAttachmentId() {
 
 function defaultPanelPosition(width: number): PanelPosition {
   return {
-    x: Math.max(
-      PANEL_MARGIN,
-      Math.min(32, window.innerWidth - width - PANEL_MARGIN),
-    ),
-    y: Math.max(
-      PANEL_MARGIN,
-      Math.min(32, window.innerHeight - PANEL_HEIGHT - PANEL_MARGIN),
-    ),
+    x: Math.max(PANEL_MARGIN, window.innerWidth - width - PANEL_MARGIN),
+    y: Math.max(PANEL_MARGIN, window.innerHeight - PANEL_HEIGHT - PANEL_MARGIN),
   }
 }
 
@@ -763,23 +997,6 @@ async function fileToImageAttachment(
   }
 }
 
-function floatingPositionFrom(
-  position: PanelPosition,
-  width: number,
-): PanelPosition {
-  const dockedSide = dockedPanelSide(position, width)
-
-  if (dockedSide === 'left') {
-    return { x: 16, y: 16 }
-  }
-
-  if (dockedSide === 'right') {
-    return { x: Math.max(0, rightDockX(width) - 16), y: 16 }
-  }
-
-  return defaultPanelPosition(width)
-}
-
 function initialPanelCollapsed(): boolean {
   return readStoredPanelCollapsed() ?? false
 }
@@ -804,35 +1021,48 @@ function isFiniteNumber(value: unknown): value is number {
 }
 
 function PanelResizeHandle({
+  onKeyDown,
   onResizeEnd,
   onResizeMove,
   onResizeStart,
   side,
+  width,
 }: {
-  onResizeEnd: (event: ReactPointerEvent<HTMLDivElement>) => void
-  onResizeMove: (event: ReactPointerEvent<HTMLDivElement>) => void
+  onKeyDown: (
+    event: KeyboardEvent<HTMLDivElement>,
+    side: 'left' | 'right',
+  ) => void
+  onResizeEnd: (event: ReactPointerEvent<HTMLElement>) => void
+  onResizeMove: (event: ReactPointerEvent<HTMLElement>) => void
   onResizeStart: (
-    event: ReactPointerEvent<HTMLDivElement>,
+    event: ReactPointerEvent<HTMLElement>,
     side: 'left' | 'right',
   ) => void
   side: 'left' | 'right'
+  width: number
 }) {
   return (
     <div
+      aria-controls="page-assistant"
       aria-label={
         side === 'left' ? 'Resize panel left edge' : 'Resize panel right edge'
       }
       aria-orientation="vertical"
+      aria-valuemax={maxPanelWidth()}
+      aria-valuemin={MIN_PANEL_WIDTH}
+      aria-valuenow={width}
       className={cn(
         'absolute inset-y-0 z-40 w-1.5 cursor-col-resize touch-none hover:bg-accent/40',
         side === 'left' ? 'left-0' : 'right-0',
       )}
+      onKeyDown={(event) => onKeyDown(event, side)}
       onLostPointerCapture={onResizeEnd}
       onPointerCancel={onResizeEnd}
       onPointerDown={(event) => onResizeStart(event, side)}
       onPointerMove={onResizeMove}
       onPointerUp={onResizeEnd}
       role="separator"
+      tabIndex={0}
     />
   )
 }
@@ -869,6 +1099,7 @@ function readStoredPanelPosition(width: number): null | PanelPosition {
   if (state.layout === 'left-sidebar') return { x: 0, y: 0 }
   if (state.layout === 'right-sidebar') return { x: rightDockX(width), y: 0 }
 
+  if (window.innerWidth < 768) return { x: state.x, y: state.y }
   return clampPanelPosition({ x: state.x, y: state.y }, false, width)
 }
 
@@ -887,21 +1118,55 @@ function useClampToViewport(
   widthRef: RefObject<number>,
 ) {
   useEffect(() => {
+    let previousWidth = window.innerWidth
+    let previousHeight = window.innerHeight
     const onResize = () => {
-      const nextPosition = clampPanelPosition(
-        position,
-        collapsed,
-        widthRef.current,
-      )
-
-      if (nextPosition.x !== position.x || nextPosition.y !== position.y) {
-        setPosition(nextPosition)
+      // Phone presentation is CSS-owned. Preserve the desktop placement.
+      if (window.innerWidth < 768) return
+      const width = widthRef.current
+      const docked =
+        position.y === 0
+          ? position.x === 0
+            ? 'left'
+            : position.x === Math.max(0, previousWidth - width)
+              ? 'right'
+              : null
+          : null
+      if (docked) {
+        previousWidth = window.innerWidth
+        previousHeight = window.innerHeight
+        const x = docked === 'right' ? rightDockX(width) : 0
+        if (x !== position.x) setPosition({ x, y: 0 })
+        return
       }
+      const atRight =
+        Math.abs(position.x + width + PANEL_MARGIN - previousWidth) <=
+        PANEL_MARGIN
+      const atBottom =
+        Math.abs(position.y + PANEL_HEIGHT + PANEL_MARGIN - previousHeight) <=
+        PANEL_MARGIN
+      const nextPosition = clampPanelPosition(
+        {
+          x: atRight
+            ? Math.max(PANEL_MARGIN, window.innerWidth - width - PANEL_MARGIN)
+            : position.x,
+          y: atBottom
+            ? Math.max(
+                PANEL_MARGIN,
+                window.innerHeight - PANEL_HEIGHT - PANEL_MARGIN,
+              )
+            : position.y,
+        },
+        collapsed,
+        width,
+      )
+      previousWidth = window.innerWidth
+      previousHeight = window.innerHeight
+      if (nextPosition.x !== position.x || nextPosition.y !== position.y)
+        setPosition(nextPosition)
     }
-
     onResize()
     window.addEventListener('resize', onResize)
-
     return () => window.removeEventListener('resize', onResize)
   }, [collapsed, position, setPosition, widthRef])
 }

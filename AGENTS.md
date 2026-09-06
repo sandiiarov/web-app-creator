@@ -94,6 +94,14 @@ Default section order:
 
 ## User Preferences
 
+- App design direction: the generated website is the workspace, with a compact floating chat widget that helps build it in place. Use liquid glass, restrained amber actions, smooth purposeful motion, readable light/dark surfaces, and a mobile overlay that preserves the page underneath. All rectangular app surfaces and controls have square corners (0px), including floating/docked/collapsed panels, menus, cards, and the visual proposal; avoid rounded cards and pill-shaped rectangular controls.
+
+- The collapsed chat control remains draggable on desktop and mobile, stays within the visible viewport, and distinguishes a drag from a click to reopen. Preserve expanded docking and restore behavior.
+
+- Keep the small chat panel very compact: a small header, restrained padding and controls, no oversized decorative areas; prioritize conversation and composer space while retaining readable text and reachable actions. Task assignments and delegated briefs must be written in English.
+
+- Use one unified chat panel: Projects, project title, and page actions belong inside its header/menu; do not add a detached auxiliary toolbar. Left- and right-docked chat panels fill the full viewport height without top or bottom gaps; keep the compact header, reachable composer, and scrolling conversation. The approved reference is `.commandcode/design/reconsidered-preview.html`: a 352 × 360 floating panel, plain conversation text, an in-panel project switcher, and a compact resting composer. Preserve this approved composition.
+
 - User requests durable behavior change? record here or relevant child AGENTS.md.
 - Avoid tests asserting Markdown/system-prompt/prose wording. Test executable parsing/loading/inventory contracts + tool behavior; use review + live traces for prompt effectiveness.
 
@@ -112,5 +120,5 @@ Default section order:
 Root-owned paths, no child DOX:
 
 - Workspace orchestration/config: `package.json`, `pnpm-workspace.yaml`, `pnpm-lock.yaml`, `turbo.json`, `.gitignore`, `.fallowrc.jsonc`, `skills-lock.json`, `patches/`.
-- Root docs/assets: `README.md`.
+- Root docs/assets: `README.md`; `.commandcode/design/` contains paired design review reports and the approved isolated interactive reference.
 - `.pi/skills/*` symlinks managed by `.agents/` + root lockfile; edit `.agents/skills/*` sources.

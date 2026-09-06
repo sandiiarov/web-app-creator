@@ -1,24 +1,57 @@
+import { Button } from '@workspace/ui/components/button'
 import {
   Empty,
   EmptyDescription,
-  EmptyMedia,
+  EmptyHeader,
   EmptyTitle,
 } from '@workspace/ui/components/empty'
-import { Sparkles } from 'lucide-react'
+import { ArrowUpRight, Globe2, LayoutTemplate, UserRound } from 'lucide-react'
 
-export function ChatEmptyState() {
+const suggestions = [
+  {
+    icon: UserRound,
+    label: 'A personal portfolio',
+    prompt: 'Build a personal portfolio for me. My name is ',
+  },
+  {
+    icon: LayoutTemplate,
+    label: 'A product landing page',
+    prompt: 'Build a landing page for my product. It helps people ',
+  },
+  {
+    icon: Globe2,
+    label: 'Start from a website',
+    prompt: 'Create a fresh take on this website: ',
+  },
+]
+
+export function ChatEmptyState({
+  onSuggestion,
+}: {
+  onSuggestion: (prompt: string) => void
+}) {
   return (
-    <div className="flex h-full min-h-0 items-center justify-center p-3">
-      <Empty>
-        <EmptyMedia variant="icon">
-          <Sparkles />
-        </EmptyMedia>
-        <EmptyTitle>Describe a landing page</EmptyTitle>
+    <Empty className="assistant-welcome">
+      <EmptyHeader>
+        <EmptyTitle>What are we making?</EmptyTitle>
         <EmptyDescription>
-          Type a prompt below to generate a single-file landing page. The agent
-          reads, edits, and refines the page for you.
+          Describe your page, or choose a starting point.
         </EmptyDescription>
-      </Empty>
-    </div>
+      </EmptyHeader>
+      <div className="assistant-suggestions">
+        {suggestions.map(({ icon: Icon, label, prompt }) => (
+          <Button
+            className="assistant-suggestion"
+            key={label}
+            onClick={() => onSuggestion(prompt)}
+            variant="ghost"
+          >
+            <Icon data-icon="inline-start" />
+            <span>{label}</span>
+            <ArrowUpRight data-icon="inline-end" />
+          </Button>
+        ))}
+      </div>
+    </Empty>
   )
 }

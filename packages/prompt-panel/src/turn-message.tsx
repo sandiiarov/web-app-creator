@@ -1,4 +1,5 @@
 import { Bubble, BubbleContent } from '@workspace/ui/components/bubble'
+import { Button } from '@workspace/ui/components/button'
 import {
   Collapsible,
   CollapsibleContent,
@@ -26,12 +27,34 @@ import {
 import { StreamdownContent } from './streamdown-content'
 import { TurnToolBlock } from './turn-steps'
 
-export function TurnMessage({ turn }: { turn: LandingTurn }) {
+export function TurnMessage({
+  onRetry,
+  retryDisabled,
+  turn,
+}: {
+  onRetry?: (turn: LandingTurn) => void
+  retryDisabled?: boolean
+  turn: LandingTurn
+}) {
+  const activity = turn.parts.filter(
+    (part) => part.type === 'thinking' || part.type === 'tool_call',
+  )
+  const active = activity.at(-1)
+  const summary = turn.isStreaming
+    ? active?.type === 'tool_call'
+      ? active.action || active.tool
+      : 'Thinking through your changes'
+    : turn.stopped
+      ? 'Changes paused'
+      : turn.error
+        ? 'Run needs attention'
+        : 'Changes ready'
+
   return (
-    <div className="flex flex-col gap-2">
+    <div className="assistant-turn flex flex-col gap-3">
       <Message align="end">
         <MessageContent>
-          <Bubble>
+          <Bubble className="assistant-request" variant="tinted">
             <BubbleContent className="wrap-break-word whitespace-pre-wrap">
               <UserPrompt turn={turn} />
             </BubbleContent>
@@ -39,14 +62,36 @@ export function TurnMessage({ turn }: { turn: LandingTurn }) {
         </MessageContent>
       </Message>
 
-      {turn.parts.map((part, index) => (
-        <PartView
-          isStreaming={turn.isStreaming && index === turn.parts.length - 1}
-          key={`${turn.id}-${index}`}
-          part={part}
-        />
-      ))}
+      {turn.parts.map((part, index) =>
+        part.type === 'thinking' || part.type === 'tool_call' ? null : (
+          <PartView
+            isStreaming={turn.isStreaming && index === turn.parts.length - 1}
+            key={`${turn.id}-${index}`}
+            part={part}
+          />
+        ),
+      )}
 
+      {activity.length ? (
+        <Collapsible className="assistant-activity">
+          <CollapsibleTrigger className="flex w-full items-center gap-2 py-1 text-left text-xs text-muted-foreground [&[data-state=open]>svg]:rotate-90">
+            <ChevronRight className="size-3.5 shrink-0 transition-transform" />
+            <span className="line-clamp-2 flex-1">{summary}</span>
+            <span className="shrink-0 text-muted-foreground">
+              {activity.length} {activity.length === 1 ? 'step' : 'steps'}
+            </span>
+          </CollapsibleTrigger>
+          <CollapsibleContent className="flex flex-col gap-2 p-2 pt-0">
+            {activity.map((part, index) => (
+              <PartView
+                isStreaming={turn.isStreaming && part === active}
+                key={`${turn.id}-activity-${index}`}
+                part={part}
+              />
+            ))}
+          </CollapsibleContent>
+        </Collapsible>
+      ) : null}
       {turn.error ? (
         <Message>
           <MessageContent>
@@ -58,13 +103,24 @@ export function TurnMessage({ turn }: { turn: LandingTurn }) {
           </MessageContent>
         </Message>
       ) : null}
+      {(turn.error || turn.stopped) && !turn.isStreaming && onRetry ? (
+        <Button
+          className="self-start"
+          disabled={retryDisabled}
+          onClick={() => onRetry(turn)}
+          size="sm"
+          variant="outline"
+        >
+          {turn.stopped ? 'Continue editing' : 'Edit and retry'}
+        </Button>
+      ) : null}
     </div>
   )
 }
 
 function AttachmentPill({ attachment }: { attachment: PromptAttachmentMeta }) {
   return (
-    <span className="inline-flex max-w-full items-center gap-1 border border-current/20 bg-background/15 px-1.5 py-0.5 text-[11px] leading-5">
+    <span className="inline-flex max-w-full items-center gap-1 border border-current/20 bg-background/15 px-1.5 py-0.5 text-xs leading-5">
       {attachment.kind === 'element' ? <span>SELECTOR</span> : null}
       <span className="truncate">{attachment.name}</span>
       {attachment.kind === 'image' ? (
@@ -102,7 +158,7 @@ function PartView({
       return (
         <Message>
           <MessageContent>
-            <Bubble variant="ghost">
+            <Bubble className="assistant-response" variant="ghost">
               <BubbleContent>
                 <StreamdownContent isStreaming={isStreaming}>
                   {part.text}
@@ -155,7 +211,7 @@ function RetryNotice({
   }, [retry.delayMs, retry.startedAt])
 
   return (
-    <div className="border border-sky-500/45 bg-sky-500/10 px-2.5 py-2 text-[11px] leading-relaxed shadow-[inset_3px_0_0_rgb(14_165_233/0.75)]">
+    <div className="border border-sky-500/45 bg-sky-500/10 px-2.5 py-2 text-xs leading-relaxed shadow-[inset_3px_0_0_rgb(14_165_233/0.75)]">
       <div className="flex items-baseline justify-between gap-3">
         <span className="font-medium text-foreground">Model retry</span>
         <span className="font-mono text-sky-700 tabular-nums dark:text-sky-300">
@@ -198,7 +254,7 @@ function ThinkingBlock({
   return (
     <Collapsible
       className={cn(
-        'overflow-hidden rounded-none border bg-background/50',
+        'overflow-hidden rounded-xl border bg-background/50',
         isStreaming
           ? 'border-sky-500/45 bg-sky-500/10'
           : 'border-border/70 bg-muted/10',
@@ -209,7 +265,7 @@ function ThinkingBlock({
       <CollapsibleTrigger asChild>
         <Marker
           asChild
-          className="min-h-10 px-2 py-1.5 text-[11px] transition-colors hover:bg-muted/30 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:outline-none"
+          className="min-h-10 px-2 py-1.5 text-xs transition-colors hover:bg-muted/30 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:outline-none"
         >
           <button
             aria-label={`${open ? 'Hide' : 'Show'} thinking details`}

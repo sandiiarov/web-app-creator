@@ -1,5 +1,14 @@
 const PREVIEW_BASE_TAG = '<base href="about:srcdoc" data-preview-base="true" />'
 
+/** The server's untouched starter document should show the app's empty canvas.
+ * Match only its plain body; styled, scripted, and populated pages stay intact. */
+export function isStarterPreview(html: string): boolean {
+  if (/<(?:style|script|link)\b/i.test(html)) return false
+  return /<body\b[^>]*>\s*<main>\s*<p>Your landing page will appear here\.<\/p>\s*<\/main>\s*<\/body>/i.test(
+    html,
+  )
+}
+
 export function preparePreviewSrcDoc(html: string): string {
   const repaired = closeUnclosedStyleTags(html)
   if (repaired.includes('data-preview-base="true"')) return repaired

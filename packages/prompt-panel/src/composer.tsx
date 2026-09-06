@@ -1,4 +1,12 @@
 import { Button } from '@workspace/ui/components/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogTrigger,
+} from '@workspace/ui/components/dialog'
 import { Textarea } from '@workspace/ui/components/textarea'
 import {
   Tooltip,
@@ -23,8 +31,10 @@ import { SpendPopover } from './spend-popover'
 export const Composer = memo(function Composer({
   attachmentError,
   attachments,
+  canSelectElement,
   disabled,
   elementSelectionActive,
+  isStopping,
   isStreaming,
   modelPricing,
   models,
@@ -32,17 +42,21 @@ export const Composer = memo(function Composer({
   onChange,
   onElementSelectionToggle,
   onKeyDown,
+  onLocateElement,
   onModelsChange,
   onRemoveAttachment,
   onStop,
   onSubmit,
   prompt,
+  readOnly,
   turns,
 }: {
   attachmentError: null | string
   attachments: PromptAttachmentInput[]
+  canSelectElement: boolean
   disabled: boolean
   elementSelectionActive: boolean
+  isStopping: boolean
   isStreaming: boolean
   modelPricing?: Record<string, LandingModelPricing>
   models: LandingModels
@@ -50,57 +64,69 @@ export const Composer = memo(function Composer({
   onChange: (value: string) => void
   onElementSelectionToggle: () => void
   onKeyDown: (event: KeyboardEvent<HTMLTextAreaElement>) => void
+  onLocateElement: (selector: string) => void
   onModelsChange: (models: LandingModels) => void
   onRemoveAttachment: (id: string) => void
   onStop: () => void
   onSubmit: (event: FormEvent<HTMLFormElement>) => void
   prompt: string
+  readOnly: boolean
   turns: LandingTurn[]
 }) {
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
   return (
     <form
-      className="h-full min-h-0 border-t border-border/70 bg-background/35 p-2"
+      className="glass-composer"
+      data-streaming={isStreaming}
       onSubmit={onSubmit}
     >
-      <div className="flex h-full min-h-0 flex-col rounded-none border border-border bg-background shadow-sm focus-within:border-ring focus-within:ring-2 focus-within:ring-ring/30">
+      <div className="composer-input">
         <span className="sr-only" id="landing-prompt-hint">
           Press Enter to send from the prompt. Press Shift and Enter for a new
           line. Press {KEYBOARD_SHORTCUTS.send.title} to send from anywhere.
         </span>
+        <label className="sr-only" htmlFor="landing-prompt">
+          Ask for a change
+        </label>
         <Textarea
           aria-describedby="landing-prompt-hint"
           aria-label="Prompt"
-          className="min-h-0 flex-1 resize-none border-0 bg-transparent p-3 text-sm leading-relaxed shadow-none focus-visible:ring-0"
+          className="resize-none border-0 bg-transparent text-sm leading-relaxed shadow-none focus-visible:ring-0"
+          id="landing-prompt"
           onChange={(event) => onChange(event.target.value)}
           onKeyDown={onKeyDown}
-          placeholder="Describe the landing page to build or refine..."
-          rows={4}
+          placeholder="Ask for a change…"
+          readOnly={readOnly}
+          rows={2}
           value={prompt}
         />
         {attachments.length > 0 || attachmentError ? (
-          <div className="flex shrink-0 flex-col gap-1 border-t border-border/60 px-2 py-1.5">
+          <div className="composer-attachments flex min-h-0 shrink flex-col gap-1 overflow-y-auto border-t border-border/60 px-2 py-1.5">
+            {attachmentError ? (
+              <p
+                className="text-xs leading-relaxed text-destructive"
+                role="alert"
+              >
+                {attachmentError}
+              </p>
+            ) : null}
             {attachments.length > 0 ? (
               <div className="flex flex-wrap gap-1">
                 {attachments.map((attachment) => (
                   <AttachmentChip
                     attachment={attachment}
-                    disabled={isStreaming}
+                    disabled={readOnly}
                     key={attachment.id}
+                    onLocate={onLocateElement}
                     onRemove={onRemoveAttachment}
                   />
                 ))}
               </div>
             ) : null}
-            {attachmentError ? (
-              <p className="text-[11px] leading-relaxed text-destructive">
-                {attachmentError}
-              </p>
-            ) : null}
           </div>
         ) : null}
-        <div className="flex shrink-0 items-center justify-between gap-2 border-t border-border/60 p-2">
+        <div className="composer-toolbar flex shrink-0 flex-wrap items-center justify-between gap-2 p-2">
           <div className="flex min-w-0 items-center gap-1.5">
             <input
               accept="image/png,image/jpeg,image/webp,image/gif"
@@ -123,20 +149,22 @@ export const Composer = memo(function Composer({
                         : 'Select element from preview'
                     }
                     aria-pressed={elementSelectionActive}
-                    disabled={isStreaming}
+                    disabled={readOnly || !canSelectElement}
                     onClick={onElementSelectionToggle}
                     size="icon-xs"
                     type="button"
-                    variant={elementSelectionActive ? 'default' : 'outline'}
+                    variant={elementSelectionActive ? 'default' : 'ghost'}
                   >
                     <MousePointerClick />
                   </Button>
                 </span>
               </TooltipTrigger>
               <TooltipContent side="top">
-                {elementSelectionActive
-                  ? 'Cancel element selection'
-                  : 'Select element from preview'}
+                {!canSelectElement
+                  ? 'Build a page first to select an element'
+                  : elementSelectionActive
+                    ? 'Cancel element selection'
+                    : 'Select element from preview'}
               </TooltipContent>
             </Tooltip>
             <Tooltip>
@@ -144,7 +172,7 @@ export const Composer = memo(function Composer({
                 <span className="inline-flex">
                   <Button
                     aria-label="Attach image"
-                    disabled={isStreaming}
+                    disabled={readOnly}
                     onClick={() => fileInputRef.current?.click()}
                     size="icon-xs"
                     type="button"
@@ -156,7 +184,7 @@ export const Composer = memo(function Composer({
               </TooltipTrigger>
               <TooltipContent side="top">
                 Attach image
-                <span className="ml-2 text-background/80">
+                <span className="ml-2 text-popover-foreground/60">
                   PNG, JPEG, WEBP, or GIF
                 </span>
               </TooltipContent>
@@ -168,13 +196,16 @@ export const Composer = memo(function Composer({
             />
             <SpendPopover turns={turns} />
           </div>
-          <div>
+          <div className="ml-auto flex shrink-0 items-center gap-2">
             {isStreaming ? (
               <Tooltip>
                 <TooltipTrigger asChild>
                   <span className="inline-flex">
                     <Button
-                      aria-label="Stop generation"
+                      aria-label={
+                        isStopping ? 'Stopping generation' : 'Stop generation'
+                      }
+                      disabled={isStopping}
                       onClick={onStop}
                       size="icon-sm"
                       type="button"
@@ -187,7 +218,7 @@ export const Composer = memo(function Composer({
                 <TooltipContent side="top">
                   Stop generation
                   <KeyboardShortcut
-                    className="ml-0 text-background opacity-80"
+                    className="ml-0 text-popover-foreground/60"
                     shortcut={KEYBOARD_SHORTCUTS.stop}
                   />
                 </TooltipContent>
@@ -199,6 +230,7 @@ export const Composer = memo(function Composer({
                     <Button
                       aria-label="Send prompt"
                       className={cn(
+                        'composer-send',
                         disabled && 'cursor-not-allowed opacity-60',
                       )}
                       disabled={disabled}
@@ -212,7 +244,7 @@ export const Composer = memo(function Composer({
                 <TooltipContent side="top">
                   Send prompt
                   <KeyboardShortcut
-                    className="ml-0 text-background opacity-80"
+                    className="ml-0 text-popover-foreground/60"
                     shortcut={KEYBOARD_SHORTCUTS.send}
                   />
                 </TooltipContent>
@@ -228,23 +260,67 @@ export const Composer = memo(function Composer({
 function AttachmentChip({
   attachment,
   disabled,
+  onLocate,
   onRemove,
 }: {
   attachment: PromptAttachmentInput
   disabled: boolean
+  onLocate: (selector: string) => void
   onRemove: (id: string) => void
 }) {
   return (
-    <span className="inline-flex max-w-full items-center gap-1 border border-border bg-muted/45 px-1.5 py-0.5 text-[11px] leading-5 text-muted-foreground">
+    <span className="inline-flex w-full min-w-0 items-center gap-1 rounded-lg border border-border bg-muted/45 px-1.5 py-0.5 text-xs leading-5 text-muted-foreground">
       {attachment.kind === 'element' ? (
-        <span className="shrink-0 text-foreground">SELECTOR</span>
-      ) : null}
-      <span className="truncate text-foreground">{attachment.name}</span>
-      {attachment.kind === 'image' ? (
-        <span className="shrink-0">
-          {formatAttachmentSize(attachment.size)}
-        </span>
-      ) : null}
+        <Button
+          aria-label={`Locate ${attachment.name} on page`}
+          className="min-w-0 flex-1 justify-start px-1"
+          onClick={() => onLocate(attachment.selector)}
+          size="xs"
+          title={`Locate on page: ${attachment.selector}`}
+          type="button"
+          variant="ghost"
+        >
+          <MousePointerClick className="size-3 shrink-0" />
+          <span className="truncate">{attachment.name}</span>
+        </Button>
+      ) : (
+        <Dialog>
+          <DialogTrigger asChild>
+            <button
+              aria-label={`Preview ${attachment.name}`}
+              className="flex min-w-0 flex-1 items-center gap-2 text-left"
+              type="button"
+            >
+              <img
+                alt=""
+                className="size-8 shrink-0 rounded-sm object-cover"
+                src={attachment.dataUrl}
+              />
+              <span className="min-w-0">
+                <span className="block truncate text-foreground">
+                  {attachment.name}
+                </span>
+                <span className="block text-xs">
+                  {formatAttachmentSize(attachment.size)}
+                </span>
+              </span>
+            </button>
+          </DialogTrigger>
+          <DialogContent className="max-w-3xl">
+            <DialogHeader>
+              <DialogTitle className="break-all">{attachment.name}</DialogTitle>
+              <DialogDescription>
+                Attached reference · {formatAttachmentSize(attachment.size)}
+              </DialogDescription>
+            </DialogHeader>
+            <img
+              alt={attachment.name}
+              className="max-h-[70dvh] w-full object-contain"
+              src={attachment.dataUrl}
+            />
+          </DialogContent>
+        </Dialog>
+      )}
       <Button
         aria-label={`Remove ${attachment.name}`}
         className="size-5 text-muted-foreground hover:text-foreground"
