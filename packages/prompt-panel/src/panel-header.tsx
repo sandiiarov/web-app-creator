@@ -5,7 +5,17 @@ import {
   TooltipTrigger,
 } from '@workspace/ui/components/tooltip'
 import { cn } from '@workspace/ui/lib/utils'
-import { ArrowLeft, ChevronUp, FolderOpen, Minus } from 'lucide-react'
+import {
+  ArrowLeft,
+  Check,
+  ChevronUp,
+  CircleAlert,
+  FolderOpen,
+  LoaderCircle,
+  Minus,
+  Pause,
+  WifiOff,
+} from 'lucide-react'
 import { type ReactNode, type KeyboardEvent, type PointerEvent } from 'react'
 
 import { KeyboardShortcut } from './keyboard-shortcut'
@@ -16,6 +26,7 @@ import { STATUS_LABELS } from './panel-constants'
 
 export function PanelHeader({
   collapsed,
+  connection,
   dragging,
   layout,
   mobileExpanded,
@@ -39,6 +50,7 @@ export function PanelHeader({
   theme,
 }: {
   collapsed: boolean
+  connection: 'connecting' | 'live' | 'offline' | 'reconnecting'
   dragging: boolean
   layout: PanelLayout
   mobileExpanded: boolean
@@ -62,6 +74,20 @@ export function PanelHeader({
   theme: PanelTheme
 }) {
   const label = statusText ?? STATUS_LABELS[status]
+  const busy =
+    connection === 'connecting' ||
+    connection === 'reconnecting' ||
+    status === 'generating'
+  const StatusIcon =
+    connection === 'offline'
+      ? WifiOff
+      : busy
+        ? LoaderCircle
+        : status === 'error'
+          ? CircleAlert
+          : status === 'stopped'
+            ? Pause
+            : Check
   return (
     <header
       className={cn(
@@ -132,11 +158,20 @@ export function PanelHeader({
           <span
             aria-label={label}
             className="assistant-connection"
-            data-connection={statusText ? 'pending' : 'live'}
+            data-connection={connection}
             data-status={status}
+            onPointerDown={(event) => event.stopPropagation()}
             role="status"
             tabIndex={0}
-          />
+          >
+            <StatusIcon
+              aria-hidden="true"
+              className={cn(
+                'size-3.5',
+                busy && connection !== 'offline' && 'animate-spin',
+              )}
+            />
+          </span>
         </TooltipTrigger>
         <TooltipContent>{label}</TooltipContent>
       </Tooltip>

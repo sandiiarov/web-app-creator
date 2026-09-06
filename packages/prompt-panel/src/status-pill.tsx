@@ -12,7 +12,7 @@ const DOT_CLASS: Record<PanelStatus, string> = {
 
 const PILL_VARIANT: Record<PanelStatus, string> = {
   done: 'border-success/20 bg-success/10 text-success-foreground',
-  error: 'border-destructive/35 bg-destructive/10 text-destructive',
+  error: 'border-destructive/35 bg-destructive/10 text-destructive-foreground',
   generating: 'border-info/20 bg-info/10 text-info-foreground',
   ready: 'border-border bg-muted/40 text-muted-foreground',
   stopped: 'border-border bg-background text-muted-foreground',

@@ -181,14 +181,46 @@ export function PromptPanel({
 
   const sectionRef = useRef<HTMLElement | null>(null)
   const launcherDrag = useLauncherDrag(sectionRef, collapsed)
+  const {
+    capturePosition: captureCompactPosition,
+    getPosition: getCompactPosition,
+  } = launcherDrag
   const wasCollapsed = useRef(collapsed)
   const dragState = useRef<DragState | null>(null)
   const resizeState = useRef<null | ResizeState>(null)
   const widthRef = useRef<number>(initialPanelWidth())
 
+  const placementRef = useRef({ collapsed, position })
+  placementRef.current = { collapsed, position }
+
+  const setPanelCollapsed = useCallback(
+    (next: boolean) => {
+      const current = placementRef.current
+      if (next === current.collapsed) return
+      const compactPosition = getCompactPosition()
+      if (next) {
+        // Capture before hiding the conversation: never jump to an old launcher location.
+        captureCompactPosition()
+      } else if (
+        window.innerWidth >= 768 &&
+        !dockedPanelSide(current.position, widthRef.current) &&
+        compactPosition
+      ) {
+        // Floating panels reopen where they were dragged, clamped only if the larger panel needs room.
+        setPosition(
+          clampPanelPosition(compactPosition, false, widthRef.current),
+        )
+      }
+      placementRef.current = { ...current, collapsed: next }
+      setCollapsed(next)
+    },
+    [captureCompactPosition, getCompactPosition],
+  )
+
   useEffect(() => {
     if (wasCollapsed.current === collapsed) return
     wasCollapsed.current = collapsed
+    if (collapsed) return
     let frame = 0
     const focusVisibleTarget = () => {
       const target =
@@ -310,12 +342,13 @@ export function PromptPanel({
         startX: event.clientX,
         startY: event.clientY,
       }
-      // Capture on the stable handler element (currentTarget), not the volatile
-      // event.target child: a mid-drag re-render can unmount the captured child,
-      // which silently releases capture and strands the drag. The same element
-      // owns onPointerMove/Up/LostPointerCapture below, so it keeps receiving
-      // events (including pointerup) even with the cursor outside the window.
-      event.currentTarget.setPointerCapture?.(event.pointerId)
+      // Keep clicks on the stable title button; its pointer events bubble to the header.
+      const capture =
+        event.target instanceof Element
+          ? (event.target.closest<HTMLElement>('[data-panel-drag-handle]') ??
+            event.currentTarget)
+          : event.currentTarget
+      capture.setPointerCapture(event.pointerId)
     },
     [position.x],
   )
@@ -390,21 +423,24 @@ export function PromptPanel({
     dragState.current = null
   }, [collapsed])
 
-  const handleLayoutChange = useCallback((nextLayout: PanelLayout) => {
-    if (window.innerWidth < 768) return
-    setCollapsed(false)
-    if (nextLayout === 'left-sidebar') {
-      setPosition({ x: 0, y: 0 })
-      return
-    }
+  const handleLayoutChange = useCallback(
+    (nextLayout: PanelLayout) => {
+      if (window.innerWidth < 768) return
+      setPanelCollapsed(false)
+      if (nextLayout === 'left-sidebar') {
+        setPosition({ x: 0, y: 0 })
+        return
+      }
 
-    if (nextLayout === 'right-sidebar') {
-      setPosition({ x: rightDockX(widthRef.current), y: 0 })
-      return
-    }
+      if (nextLayout === 'right-sidebar') {
+        setPosition({ x: rightDockX(widthRef.current), y: 0 })
+        return
+      }
 
-    setPosition(defaultPanelPosition(widthRef.current))
-  }, [])
+      setPosition(defaultPanelPosition(widthRef.current))
+    },
+    [setPanelCollapsed],
+  )
 
   const handleResizeStart = useCallback(
     (event: ReactPointerEvent<HTMLElement>, side: 'left' | 'right') => {
@@ -574,7 +610,7 @@ export function PromptPanel({
         prompt: trimmed || 'Use the attached reference.',
       })
       if (accepted) {
-        setCollapsed(false)
+        setPanelCollapsed(false)
         setProjectsOpen(false)
         onDraftChange((current) =>
           current.prompt === prompt && current.attachments === attachments
@@ -595,6 +631,7 @@ export function PromptPanel({
     onDraftChange,
     draftReady,
     connection,
+    setPanelCollapsed,
   ])
 
   const stopGeneration = useCallback(() => {
@@ -656,9 +693,9 @@ export function PromptPanel({
   )
   useHotkeys(
     KEYBOARD_SHORTCUTS.panelToggle.hotkey,
-    () => setCollapsed((nextCollapsed) => !nextCollapsed),
+    () => setPanelCollapsed(!collapsed),
     { enableOnFormTags: true, preventDefault: true },
-    [],
+    [collapsed, setPanelCollapsed],
   )
   useHotkeys(
     KEYBOARD_SHORTCUTS.send.hotkey,
@@ -733,19 +770,21 @@ export function PromptPanel({
         <div className="flex h-full min-h-0 flex-col">
           <PanelHeader
             collapsed={collapsed}
+            connection={connection}
             dragging={dragging}
             layout={layout}
             mobileExpanded={mobileExpanded}
             onAllProjects={() => {
               setProjectsOpen((open) => !open)
-              setCollapsed(false)
+              setPanelCollapsed(false)
             }}
             onDragEnd={
               collapsed ? launcherDrag.handlers.onPointerUp : handleDragEnd
             }
-            onDragKeyDown={
-              collapsed ? launcherDrag.handlers.onKeyDown : undefined
-            }
+            onDragKeyDown={(event) => {
+              if (collapsed) launcherDrag.handlers.onKeyDown(event)
+              else suppressTitleClick.current = false
+            }}
             onDragMove={
               collapsed ? launcherDrag.handlers.onPointerMove : handleDragMove
             }
@@ -757,12 +796,12 @@ export function PromptPanel({
             onPanelMenuOpenChange={setPanelMenuOpen}
             onRenameProject={() => {
               if (collapsed) {
-                if (launcherDrag.shouldOpen()) setCollapsed(false)
+                if (launcherDrag.shouldOpen()) setPanelCollapsed(false)
               } else if (!suppressTitleClick.current) onRenameProject()
             }}
             onToggleCollapsed={() => {
               setProjectsOpen(false)
-              setCollapsed((value) => !value)
+              setPanelCollapsed(!collapsed)
             }}
             onToggleTheme={onToggleTheme}
             pageActions={pageActions}
@@ -843,7 +882,7 @@ export function PromptPanel({
               onKeyDown={handleKeyDown}
               onLocateElement={(selector) => {
                 onLocateElement(selector)
-                if (window.innerWidth < 768) setCollapsed(true)
+                if (window.innerWidth < 768) setPanelCollapsed(true)
               }}
               onModelsChange={onModelsChange}
               onRemoveAttachment={handleRemoveAttachment}

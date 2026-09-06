@@ -121,4 +121,5 @@ Root-owned paths, no child DOX:
 
 - Workspace orchestration/config: `package.json`, `pnpm-workspace.yaml`, `pnpm-lock.yaml`, `turbo.json`, `.gitignore`, `.fallowrc.jsonc`, `skills-lock.json`, `patches/`.
 - Root docs/assets: `README.md`; `.commandcode/design/` contains paired design review reports and the approved isolated interactive reference.
+- `.commandcode/design/interface-review.md` — panel and project-library interface findings, implemented refinements, verification coverage, and limits.
 - `.pi/skills/*` symlinks managed by `.agents/` + root lockfile; edit `.agents/skills/*` sources.

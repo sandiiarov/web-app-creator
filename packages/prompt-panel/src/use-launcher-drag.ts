@@ -3,6 +3,7 @@ import {
   type KeyboardEvent,
   type PointerEvent,
   type RefObject,
+  useCallback,
   useEffect,
   useLayoutEffect,
   useRef,
@@ -13,7 +14,7 @@ import type { PanelPosition } from './panel-constants'
 
 const STORAGE_KEY = 'landing.promptPanel.launcher.v1'
 
-/** Independent launcher placement preserves the expanded panel's docking choice. */
+/** Compact placement starts at the visible panel and remains independently draggable. */
 export function useLauncherDrag(
   ref: RefObject<HTMLElement | null>,
   enabled: boolean,
@@ -55,7 +56,7 @@ export function useLauncherDrag(
     }
   }
 
-  function commit(next: PanelPosition) {
+  const commit = useCallback((next: PanelPosition) => {
     positionRef.current = next
     setPosition(next)
     try {
@@ -63,7 +64,12 @@ export function useLauncherDrag(
     } catch {
       /* Placement remains usable when storage is unavailable. */
     }
-  }
+  }, [])
+
+  const capturePosition = useCallback(() => {
+    const rect = ref.current?.getBoundingClientRect()
+    if (rect) commit({ x: rect.left, y: rect.top })
+  }, [commit, ref])
 
   useLayoutEffect(() => {
     if (!enabled) return
@@ -83,7 +89,7 @@ export function useLauncherDrag(
       window.visualViewport?.removeEventListener('resize', update)
       window.visualViewport?.removeEventListener('scroll', update)
     }
-  }, [enabled, ref])
+  }, [commit, enabled, ref])
 
   useEffect(
     () => () => {
@@ -98,8 +104,13 @@ export function useLauncherDrag(
     if (!element) return
     const rect = element.getBoundingClientRect()
     suppressClick.current = false
+    const capture =
+      event.target instanceof Element
+        ? (event.target.closest<HTMLElement>('[data-panel-drag-handle]') ??
+          event.currentTarget)
+        : event.currentTarget
     gesture.current = {
-      capture: event.currentTarget,
+      capture,
       element,
       moved: false,
       next: { x: rect.left, y: rect.top },
@@ -107,7 +118,7 @@ export function useLauncherDrag(
       pointerId: event.pointerId,
       start: { x: event.clientX, y: event.clientY },
     }
-    event.currentTarget.setPointerCapture(event.pointerId)
+    capture.setPointerCapture(event.pointerId)
   }
 
   function onPointerMove(event: PointerEvent<HTMLElement>) {
@@ -170,8 +181,12 @@ export function useLauncherDrag(
     )
   }
 
+  const getPosition = useCallback(() => positionRef.current, [])
+
   return {
+    capturePosition,
     dragging,
+    getPosition,
     handlers: {
       onKeyDown,
       onLostPointerCapture: finish,

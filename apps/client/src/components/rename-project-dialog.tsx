@@ -20,6 +20,11 @@ export function RenameProjectDialog({
   onSaved: (project: ProjectMeta) => void
   project: Pick<ProjectMeta, 'id' | 'title'>
 }) {
+  const [returnFocus] = useState(() =>
+    document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null,
+  )
   const [title, setTitle] = useState(project.title)
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<null | string>(null)
@@ -30,7 +35,17 @@ export function RenameProjectDialog({
       }}
       open
     >
-      <DialogContent>
+      <DialogContent
+        onCloseAutoFocus={(event) => {
+          event.preventDefault()
+          const target =
+            returnFocus?.isConnected && returnFocus !== document.body
+              ? returnFocus
+              : (document.getElementById(`project-actions-${project.id}`) ??
+                document.querySelector<HTMLElement>('[data-panel-drag-handle]'))
+          target?.focus({ preventScroll: true })
+        }}
+      >
         <DialogHeader>
           <DialogTitle>Rename project</DialogTitle>
           <DialogDescription>
@@ -62,6 +77,7 @@ export function RenameProjectDialog({
           <label className="flex flex-col gap-2 text-sm" htmlFor="project-name">
             Project name
             <Input
+              className="project-name-input"
               disabled={pending}
               id="project-name"
               maxLength={120}
@@ -71,7 +87,7 @@ export function RenameProjectDialog({
             />
           </label>
           {error ? (
-            <p className="text-sm text-destructive" role="alert">
+            <p className="text-sm text-destructive-foreground" role="alert">
               {error}
             </p>
           ) : null}

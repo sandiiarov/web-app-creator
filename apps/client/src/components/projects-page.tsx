@@ -99,7 +99,7 @@ export function NewProjectPage() {
     return (
       <main className="grid min-h-svh place-items-center bg-background p-6 text-center">
         <div>
-          <p className="text-sm text-destructive">{error}</p>
+          <p className="text-sm text-destructive-foreground">{error}</p>
           <Button
             className="mt-4 mr-2"
             onClick={() => {
@@ -322,9 +322,6 @@ export function ProjectsPage() {
           <div>
             <h1 className="projects-heading" id="projects-title">
               Projects
-              <span className="projects-total">
-                {loading ? '…' : projects.length}
-              </span>
             </h1>
             <p className="mt-2 text-sm text-muted-foreground">
               Pick up a page. Keep building.
@@ -348,38 +345,34 @@ export function ProjectsPage() {
             project={renaming}
           />
         ) : null}
-        <p
-          className="mb-2 text-xs text-muted-foreground"
-          id="library-results"
-          role="status"
-        >
-          {loading
-            ? 'Loading projects…'
-            : `${visibleProjects.length} ${visibleProjects.length === 1 ? 'project' : 'projects'} found`}
-        </p>
         <div className="projects-tools">
           <div className="projects-search">
-            <label className="sr-only" htmlFor="project-search">
+            <label className="projects-search-label" htmlFor="project-search">
               Search projects
             </label>
-            <Search
-              aria-hidden="true"
-              className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground"
-            />
-            <Input
-              aria-describedby="library-results"
-              className="pl-9"
-              id="project-search"
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="Find a project…"
-              type="search"
-              value={query}
-            />
+            <div className="relative">
+              <Search
+                aria-hidden="true"
+                className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground"
+              />
+              <Input
+                aria-describedby="library-results"
+                className="pl-9"
+                id="project-search"
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Search by name or brief…"
+                type="search"
+                value={query}
+              />
+            </div>
           </div>
           <div className="projects-filter-controls">
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button aria-label="Filter projects" variant="ghost">
+                <Button
+                  aria-label={`Filter projects: ${FILTER_LABELS[filter]}`}
+                  variant="ghost"
+                >
                   {FILTER_LABELS[filter]}
                   <ChevronDown data-icon="inline-end" />
                 </Button>
@@ -406,7 +399,10 @@ export function ProjectsPage() {
             </DropdownMenu>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button aria-label="Sort projects" variant="ghost">
+                <Button
+                  aria-label={`Sort projects: ${SORT_LABELS[sort]}`}
+                  variant="ghost"
+                >
                   <ArrowDownWideNarrow data-icon="inline-start" />
                   <span>{SORT_LABELS[sort]}</span>
                 </Button>
@@ -430,10 +426,34 @@ export function ProjectsPage() {
             </DropdownMenu>
           </div>
         </div>
+        <div className="projects-results">
+          <p aria-atomic="true" id="library-results" role="status">
+            {loading
+              ? 'Loading projects…'
+              : error
+                ? 'Projects unavailable'
+                : visibleProjects.length === projects.length
+                  ? `${projects.length} ${projects.length === 1 ? 'project' : 'projects'}`
+                  : `${visibleProjects.length} of ${projects.length} projects`}
+          </p>
+          {query || filter !== 'all' ? (
+            <Button
+              onClick={() => {
+                setQuery('')
+                setFilter('all')
+                document.getElementById('project-search')?.focus()
+              }}
+              size="xs"
+              variant="ghost"
+            >
+              Clear filters
+            </Button>
+          ) : null}
+        </div>
         {error || actionError ? (
           <div className="projects-notice" role="alert">
             <div>
-              <p className="text-sm font-medium text-destructive">
+              <p className="text-sm font-medium text-destructive-foreground">
                 {error
                   ? 'Couldn’t load your projects'
                   : 'Couldn’t delete this project'}
@@ -479,7 +499,7 @@ export function ProjectsPage() {
               </EmptyTitle>
               <EmptyDescription>
                 {query
-                  ? 'Try a different name or clear your filters.'
+                  ? 'Try another name or a word from your brief.'
                   : 'Choose all projects to return to your pages.'}
               </EmptyDescription>
             </EmptyHeader>
@@ -515,11 +535,6 @@ export function ProjectsPage() {
                 />
               ))}
             </ul>
-            <p className="projects-results" role="status">
-              {visibleProjects.length === projects.length
-                ? `${projects.length} projects`
-                : `${visibleProjects.length} of ${projects.length} projects`}
-            </p>
           </>
         ) : null}
       </section>
@@ -591,8 +606,15 @@ function ProjectRow({
         to={`/projects/${project.id}`}
       >
         <ProjectPreview project={project} />
-        <span className="project-row-title" title={title}>
-          {deleting ? 'Deleting…' : title}
+        <span className="project-row-copy">
+          <span className="project-row-title" title={title}>
+            {deleting ? 'Deleting…' : title}
+          </span>
+          {project.brief && project.brief !== title ? (
+            <span className="project-row-brief" title={project.brief}>
+              {project.brief}
+            </span>
+          ) : null}
         </span>
       </Link>
       <span className="project-row-status">
@@ -611,6 +633,7 @@ function ProjectRow({
             aria-label={`Actions for ${title}`}
             className="project-row-menu"
             disabled={deleting}
+            id={`project-actions-${project.id}`}
             size="icon-sm"
             variant="ghost"
           >

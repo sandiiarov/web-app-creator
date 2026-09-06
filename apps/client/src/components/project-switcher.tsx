@@ -61,20 +61,22 @@ export function ProjectSwitcher({
         <h2>Your projects</h2>
         <Button
           aria-label={
-            alphabetical ? 'Sort by recent edits' : 'Sort projects by name'
+            alphabetical
+              ? 'Name A–Z. Switch to recent edits'
+              : 'Recent edits. Switch to name A–Z'
           }
           onClick={() => setAlphabetical((value) => !value)}
           size="xs"
           variant="ghost"
         >
-          {alphabetical ? 'Name A–Z' : 'Recent ↓'}
+          {alphabetical ? 'Name A–Z' : 'Recent edits'}
         </Button>
       </div>
       <Input
-        aria-label="Search projects"
+        aria-label="Search projects by name or brief"
         autoFocus
         onChange={(event) => setQuery(event.target.value)}
-        placeholder="Find a project…"
+        placeholder="Search projects…"
         type="search"
         value={query}
       />
@@ -104,8 +106,10 @@ export function ProjectSwitcher({
             >
               <ProjectPreview project={project} />
               <span>
-                <strong>{project.title || 'Untitled'}</strong>
-                <small>
+                <strong title={project.title || 'Untitled'}>
+                  {project.title || 'Untitled'}
+                </strong>
+                <small title={project.brief || undefined}>
                   {project.status === 'running'
                     ? 'Building…'
                     : project.brief || 'Open your page'}

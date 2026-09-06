@@ -107,7 +107,7 @@ export function TurnToolBlock({ step }: { step: ToolCallPart }) {
             <span
               className={cn(
                 'block text-left text-xs leading-tight font-semibold text-foreground',
-                isError && 'text-destructive',
+                isError && 'text-destructive-foreground',
               )}
             >
               {label}
@@ -115,7 +115,7 @@ export function TurnToolBlock({ step }: { step: ToolCallPart }) {
             <span
               className={cn(
                 'mt-1 line-clamp-2 text-left text-xs leading-snug wrap-break-word whitespace-pre-wrap text-muted-foreground',
-                isError && 'text-destructive/85',
+                isError && 'text-destructive-foreground',
               )}
             >
               {action}
@@ -210,7 +210,7 @@ function DisclosureIcon({
       className={cn(
         'mt-0.5 ml-auto inline-flex shrink-0 items-center text-muted-foreground transition-colors',
         isActiveState(state) && 'text-sky-700 dark:text-sky-300',
-        state === 'error' && 'text-destructive',
+        state === 'error' && 'text-destructive-foreground',
       )}
     >
       <ChevronRight
@@ -357,7 +357,7 @@ function ToolBodyText({
       className={cn(
         'text-xs leading-relaxed wrap-break-word whitespace-pre-wrap text-muted-foreground',
         tone === 'default' && 'text-foreground/85',
-        tone === 'error' && 'text-destructive',
+        tone === 'error' && 'text-destructive-foreground',
       )}
     >
       {children}
@@ -372,7 +372,7 @@ function ToolIcon({ Icon, state }: { Icon: LucideIcon; state: ToolCallState }) {
       className={cn(
         'mt-0.5 text-muted-foreground transition-colors',
         active && 'text-sky-700 dark:text-sky-300',
-        state === 'error' && 'text-destructive',
+        state === 'error' && 'text-destructive-foreground',
       )}
     >
       {active ? <LoaderCircle className="animate-spin" /> : <Icon />}

@@ -90,7 +90,10 @@ export function EditorPageActions({
         </DropdownMenuItem>
       </DropdownMenuGroup>
       {exportError ? (
-        <p className="px-2 py-1 text-xs text-destructive" role="alert">
+        <p
+          className="px-2 py-1 text-xs text-destructive-foreground"
+          role="alert"
+        >
           {exportError}
         </p>
       ) : null}
