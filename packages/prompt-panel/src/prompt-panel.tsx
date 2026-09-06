@@ -201,12 +201,9 @@ export function PromptPanel({
       if (next) {
         // Capture before hiding the conversation: never jump to an old launcher location.
         captureCompactPosition()
-      } else if (
-        window.innerWidth >= 768 &&
-        !dockedPanelSide(current.position, widthRef.current) &&
-        compactPosition
-      ) {
-        // Floating panels reopen where they were dragged, clamped only if the larger panel needs room.
+      } else if (window.innerWidth >= 768 && compactPosition) {
+        // The compact position owns restoration, including dragging away from a dock.
+        // An untouched dock still restores because its captured position is the dock origin.
         setPosition(
           clampPanelPosition(compactPosition, false, widthRef.current),
         )
