@@ -33,9 +33,9 @@ export function ChatEmptyState({
   return (
     <Empty className="assistant-welcome">
       <EmptyHeader>
-        <EmptyTitle>What are we making?</EmptyTitle>
+        <EmptyTitle>Let’s build your page.</EmptyTitle>
         <EmptyDescription>
-          Describe your page, or choose a starting point.
+          Start with an idea or a reference. Refine it right here.
         </EmptyDescription>
       </EmptyHeader>
       <div className="assistant-suggestions">

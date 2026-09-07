@@ -18,10 +18,22 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from '@workspace/ui/components/empty'
-import { Input } from '@workspace/ui/components/input'
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupInput,
+} from '@workspace/ui/components/input-group'
+import {
+  ToggleGroup,
+  ToggleGroupItem,
+} from '@workspace/ui/components/toggle-group'
 import {
   ArrowRight,
   ArrowDownWideNarrow,
+  CircleAlert,
+  FolderOpen,
+  LayoutGrid,
+  List,
   ChevronDown,
   Ellipsis,
   FileCode2,
@@ -53,6 +65,7 @@ import { useTheme } from './theme-provider'
 
 type ProjectFilter = 'all' | 'attention' | 'running'
 type ProjectSort = 'created' | 'name' | 'updated'
+type ProjectView = 'gallery' | 'list'
 const FILTER_LABELS: Record<ProjectFilter, string> = {
   all: 'All projects',
   attention: 'Needs attention',
@@ -141,6 +154,7 @@ export function ProjectsPage() {
     () => readLibraryState().filter,
   )
   const [sort, setSort] = useState<ProjectSort>(() => readLibraryState().sort)
+  const [view, setView] = useState<ProjectView>(() => readLibraryState().view)
   const [renaming, setRenaming] = useState<null | ProjectMeta>(null)
   const [deleting, setDeleting] = useState<null | string>(null)
   const restoredScroll = useRef(false)
@@ -148,12 +162,12 @@ export function ProjectsPage() {
     try {
       sessionStorage.setItem(
         'landing.library.v1',
-        JSON.stringify({ ...readLibraryState(), filter, query, sort }),
+        JSON.stringify({ ...readLibraryState(), filter, query, sort, view }),
       )
     } catch {
       /* Storage is optional for library preferences. */
     }
-  }, [query, filter, sort])
+  }, [query, filter, sort, view])
   const [actionError, setActionError] = useState<null | string>(null)
   const [projects, setProjects] = useState<ProjectMeta[]>([])
   const [statusById, setStatusById] = useState<Record<string, RunStatus>>({})
@@ -286,17 +300,65 @@ export function ProjectsPage() {
     )
 
   return (
-    <main className="projects-workspace min-h-svh text-foreground">
-      <header className="projects-masthead">
-        <div className="projects-container flex items-center justify-between gap-4">
-          <div className="flex min-w-0 items-center gap-3">
-            <span className="workspace-mark shrink-0">
-              <PanelsTopLeft aria-hidden="true" className="size-4" />
-            </span>
-            <span className="truncate text-sm font-semibold tracking-tight">
-              Web App Creator
-            </span>
-          </div>
+    <main
+      className="projects-workspace min-h-svh text-foreground"
+      data-view={view}
+    >
+      <a className="projects-skip" href="#projects-title">
+        Skip to projects
+      </a>
+      <aside aria-label="Workspace" className="projects-rail">
+        <Link className="projects-brand" to="/">
+          <span className="workspace-mark">
+            <PanelsTopLeft aria-hidden="true" />
+          </span>
+          <span>
+            Web App <br />
+            Creator
+            <span className="projects-brand-caption">Your website studio</span>
+          </span>
+        </Link>
+        <div className="projects-rail-section">
+          <span className="projects-eyebrow">Workspace</span>
+          <ToggleGroup
+            aria-label="Filter projects"
+            className="projects-nav"
+            onValueChange={(value) => {
+              if (value) setFilter(value as ProjectFilter)
+            }}
+            orientation="vertical"
+            spacing={0}
+            type="single"
+            value={filter}
+          >
+            {(['all', 'running', 'attention'] as const).map((value) => {
+              const Icon =
+                value === 'all'
+                  ? FolderOpen
+                  : value === 'running'
+                    ? LoaderCircle
+                    : CircleAlert
+              return (
+                <ToggleGroupItem
+                  aria-label={`${FILTER_LABELS[value]}: ${filterCounts[value]}`}
+                  key={value}
+                  value={value}
+                >
+                  <Icon aria-hidden="true" />
+                  <span>{FILTER_LABELS[value]}</span>
+                  <span className="projects-nav-count">
+                    {loading ? '—' : filterCounts[value]}
+                  </span>
+                </ToggleGroupItem>
+              )
+            })}
+          </ToggleGroup>
+        </div>
+        <div className="projects-rail-footer">
+          <span className="projects-rail-note">
+            An idea. A conversation.
+            <br />A website of your own.
+          </span>
           <Button
             aria-label="Toggle color theme"
             onClick={() =>
@@ -306,25 +368,24 @@ export function ProjectsPage() {
                   : 'dark',
               )
             }
-            size="icon"
+            size="sm"
             variant="ghost"
           >
             <Sun className="hidden dark:block" />
             <Moon className="dark:hidden" />
+            <span>Appearance</span>
           </Button>
         </div>
-      </header>
-      <section
-        aria-labelledby="projects-title"
-        className="projects-container projects-library"
-      >
+      </aside>
+      <section aria-labelledby="projects-title" className="projects-library">
         <div className="projects-intro">
           <div>
-            <h1 className="projects-heading" id="projects-title">
+            <p className="projects-eyebrow">Your workspace</p>
+            <h1 className="projects-heading" id="projects-title" tabIndex={-1}>
               Projects
             </h1>
-            <p className="mt-2 text-sm text-muted-foreground">
-              Pick up a page. Keep building.
+            <p className="projects-intro-description">
+              From the first idea to the final detail.
             </p>
           </div>
           <Button onClick={() => navigate('/projects/new')} type="button">
@@ -350,57 +411,61 @@ export function ProjectsPage() {
             <label className="projects-search-label" htmlFor="project-search">
               Search projects
             </label>
-            <div className="relative">
-              <Search
-                aria-hidden="true"
-                className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground"
-              />
-              <Input
+            <InputGroup>
+              <InputGroupAddon>
+                <Search aria-hidden="true" />
+              </InputGroupAddon>
+              <InputGroupInput
                 aria-describedby="library-results"
-                className="pl-9"
                 id="project-search"
                 onChange={(event) => setQuery(event.target.value)}
                 placeholder="Search by name or brief…"
                 type="search"
                 value={query}
               />
-            </div>
+            </InputGroup>
           </div>
           <div className="projects-filter-controls">
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  aria-label={`Filter projects: ${FILTER_LABELS[filter]}`}
-                  variant="ghost"
-                >
-                  {FILTER_LABELS[filter]}
-                  <ChevronDown data-icon="inline-end" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-56">
-                <DropdownMenuGroup>
-                  <DropdownMenuRadioGroup
-                    onValueChange={(value) => setFilter(value as ProjectFilter)}
-                    value={filter}
+            <div className="projects-mobile-filter">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    aria-label={`Filter projects: ${FILTER_LABELS[filter]}`}
+                    variant="ghost"
                   >
-                    {(Object.keys(FILTER_LABELS) as ProjectFilter[]).map(
-                      (value) => (
-                        <DropdownMenuRadioItem key={value} value={value}>
-                          {FILTER_LABELS[value]}
-                          <span className="ml-auto text-xs text-muted-foreground tabular-nums">
-                            {filterCounts[value]}
-                          </span>
-                        </DropdownMenuRadioItem>
-                      ),
-                    )}
-                  </DropdownMenuRadioGroup>
-                </DropdownMenuGroup>
-              </DropdownMenuContent>
-            </DropdownMenu>
+                    {FILTER_LABELS[filter]}
+                    <ChevronDown data-icon="inline-end" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56">
+                  <DropdownMenuGroup>
+                    <DropdownMenuRadioGroup
+                      onValueChange={(value) =>
+                        setFilter(value as ProjectFilter)
+                      }
+                      value={filter}
+                    >
+                      {(Object.keys(FILTER_LABELS) as ProjectFilter[]).map(
+                        (value) => (
+                          <DropdownMenuRadioItem key={value} value={value}>
+                            {FILTER_LABELS[value]}
+                            <span className="ml-auto text-xs text-muted-foreground tabular-nums">
+                              {filterCounts[value]}
+                            </span>
+                          </DropdownMenuRadioItem>
+                        ),
+                      )}
+                    </DropdownMenuRadioGroup>
+                  </DropdownMenuGroup>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button
                   aria-label={`Sort projects: ${SORT_LABELS[sort]}`}
+                  className="projects-sort-trigger"
+                  title={SORT_LABELS[sort]}
                   variant="ghost"
                 >
                   <ArrowDownWideNarrow data-icon="inline-start" />
@@ -424,6 +489,32 @@ export function ProjectsPage() {
                 </DropdownMenuGroup>
               </DropdownMenuContent>
             </DropdownMenu>
+            <ToggleGroup
+              aria-label="Project view"
+              className="projects-view-control"
+              onValueChange={(value) => {
+                if (value) setView(value as ProjectView)
+              }}
+              spacing={0}
+              type="single"
+              value={view}
+              variant="outline"
+            >
+              <ToggleGroupItem
+                aria-label="Gallery view"
+                title="Gallery view"
+                value="gallery"
+              >
+                <LayoutGrid />
+              </ToggleGroupItem>
+              <ToggleGroupItem
+                aria-label="List view"
+                title="List view"
+                value="list"
+              >
+                <List />
+              </ToggleGroupItem>
+            </ToggleGroup>
           </div>
         </div>
         <div className="projects-results">
@@ -599,13 +690,22 @@ function ProjectRow({
 }) {
   const title = project.title || 'Untitled'
   return (
-    <li aria-busy={deleting} className="project-row">
+    <li
+      aria-busy={deleting}
+      className="project-row"
+      data-generating={status === 'running'}
+    >
       <Link
         aria-label={`Open ${title}`}
         className="project-row-link"
         to={`/projects/${project.id}`}
       >
-        <ProjectPreview project={project} />
+        <div className="project-preview-wrap">
+          <ProjectPreview project={project} />
+          <span aria-hidden="true" className="project-open-affordance">
+            Open project <ArrowRight />
+          </span>
+        </div>
         <span className="project-row-copy">
           <span className="project-row-title" title={title}>
             {deleting ? 'Deleting…' : title}
@@ -673,6 +773,7 @@ function readLibraryState(): {
   query: string
   scroll: number
   sort: ProjectSort
+  view: ProjectView
 } {
   try {
     const value = JSON.parse(
@@ -687,8 +788,15 @@ function readLibraryState(): {
       sort: ['created', 'name', 'updated'].includes(value.sort)
         ? value.sort
         : 'updated',
+      view: value.view === 'list' ? 'list' : 'gallery',
     }
   } catch {
-    return { filter: 'all', query: '', scroll: 0, sort: 'updated' }
+    return {
+      filter: 'all',
+      query: '',
+      scroll: 0,
+      sort: 'updated',
+      view: 'gallery',
+    }
   }
 }

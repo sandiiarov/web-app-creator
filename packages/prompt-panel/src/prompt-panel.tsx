@@ -702,11 +702,23 @@ export function PromptPanel({
   )
   useHotkeys(
     KEYBOARD_SHORTCUTS.stop.hotkey,
-    () => stopGeneration(),
+    (event) => {
+      // Escape belongs to the open overlay before it belongs to generation.
+      if (
+        event.defaultPrevented ||
+        (event.key === 'Escape' &&
+          event.target instanceof Element &&
+          event.target.closest(
+            '[role="dialog"], [role="menu"], [role="listbox"], [data-slot="popover-content"]',
+          ))
+      )
+        return
+      event.preventDefault()
+      stopGeneration()
+    },
     {
       enabled: isStreaming,
       enableOnFormTags: true,
-      preventDefault: true,
     },
     [isStreaming, stopGeneration],
   )

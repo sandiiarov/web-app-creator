@@ -24,6 +24,7 @@ import {
   type ThinkingPart,
   type TurnPart,
 } from './domain'
+import { RunElapsed } from './run-elapsed'
 import { StreamdownContent } from './streamdown-content'
 import { TurnToolBlock } from './turn-steps'
 
@@ -40,6 +41,7 @@ export function TurnMessage({
     (part) => part.type === 'thinking' || part.type === 'tool_call',
   )
   const active = activity.at(-1)
+  const streamingPart = turn.parts.findLast((part) => part.type !== 'stats')
   const summary = turn.isStreaming
     ? active?.type === 'tool_call'
       ? active.action || active.tool
@@ -51,8 +53,11 @@ export function TurnMessage({
         : 'Changes ready'
 
   return (
-    <div className="assistant-turn flex flex-col gap-3">
-      <Message align="end">
+    <div
+      className="assistant-turn flex flex-col gap-3"
+      data-streaming={turn.isStreaming}
+    >
+      <Message align="start">
         <MessageContent>
           <Bubble className="assistant-request" variant="tinted">
             <BubbleContent className="wrap-break-word whitespace-pre-wrap">
@@ -62,36 +67,49 @@ export function TurnMessage({
         </MessageContent>
       </Message>
 
-      {turn.parts.map((part, index) =>
-        part.type === 'thinking' || part.type === 'tool_call' ? null : (
-          <PartView
-            isStreaming={turn.isStreaming && index === turn.parts.length - 1}
-            key={`${turn.id}-${index}`}
-            part={part}
-          />
-        ),
-      )}
-
       {activity.length ? (
-        <Collapsible className="assistant-activity">
+        <Collapsible
+          className="assistant-activity"
+          data-streaming={turn.isStreaming}
+        >
           <CollapsibleTrigger className="flex w-full items-center gap-2 py-1 text-left text-xs text-muted-foreground [&[data-state=open]>svg]:rotate-90">
             <ChevronRight className="size-3.5 shrink-0 transition-transform" />
             <span className="line-clamp-2 flex-1">{summary}</span>
-            <span className="shrink-0 text-muted-foreground">
+            <RunElapsed turn={turn} />
+            <span className="sr-only">
               {activity.length} {activity.length === 1 ? 'step' : 'steps'}
             </span>
           </CollapsibleTrigger>
           <CollapsibleContent className="flex flex-col gap-2 p-2 pt-0">
             {activity.map((part, index) => (
               <PartView
-                isStreaming={turn.isStreaming && part === active}
+                isStreaming={turn.isStreaming && part === streamingPart}
                 key={`${turn.id}-activity-${index}`}
                 part={part}
               />
             ))}
           </CollapsibleContent>
         </Collapsible>
+      ) : turn.isStreaming ? (
+        <div
+          className="assistant-activity assistant-activity-pending"
+          data-streaming="true"
+          role="status"
+        >
+          <span>Preparing your changes</span>
+          <RunElapsed turn={turn} />
+        </div>
       ) : null}
+      {turn.parts.map((part, index) =>
+        part.type === 'thinking' || part.type === 'tool_call' ? null : (
+          <PartView
+            isStreaming={turn.isStreaming && part === streamingPart}
+            key={`${turn.id}-${index}`}
+            part={part}
+          />
+        ),
+      )}
+
       {turn.error ? (
         <Message>
           <MessageContent>
@@ -158,7 +176,11 @@ function PartView({
       return (
         <Message>
           <MessageContent>
-            <Bubble className="assistant-response" variant="ghost">
+            <Bubble
+              className="assistant-response"
+              data-streaming={isStreaming}
+              variant="ghost"
+            >
               <BubbleContent>
                 <StreamdownContent isStreaming={isStreaming}>
                   {part.text}

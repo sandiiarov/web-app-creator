@@ -58,7 +58,9 @@ export function ProjectSwitcher({
   return (
     <section aria-label="Project switcher" className="project-switcher">
       <div className="project-switcher-heading">
-        <h2>Your projects</h2>
+        <h2>
+          <label htmlFor="switch-project-search">Switch project</label>
+        </h2>
         <Button
           aria-label={
             alphabetical
@@ -75,6 +77,7 @@ export function ProjectSwitcher({
       <Input
         aria-label="Search projects by name or brief"
         autoFocus
+        id="switch-project-search"
         onChange={(event) => setQuery(event.target.value)}
         placeholder="Search projects…"
         type="search"
@@ -112,7 +115,9 @@ export function ProjectSwitcher({
                 <small title={project.brief || undefined}>
                   {project.status === 'running'
                     ? 'Building…'
-                    : project.brief || 'Open your page'}
+                    : project.id === currentProjectId
+                      ? 'Current project'
+                      : project.brief || 'Open your page'}
                 </small>
               </span>
             </Link>
@@ -134,7 +139,7 @@ export function ProjectSwitcher({
         </Button>
         <Button asChild size="xs" variant="ghost">
           <Link to="/">
-            All projects
+            Open library
             <ArrowUpRight />
           </Link>
         </Button>

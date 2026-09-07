@@ -1,4 +1,5 @@
 import { Button } from '@workspace/ui/components/button'
+import { ProgressBlob } from '@workspace/ui/components/progress-blob'
 import {
   Tooltip,
   TooltipContent,
@@ -164,13 +165,17 @@ export function PanelHeader({
             role="status"
             tabIndex={0}
           >
-            <StatusIcon
-              aria-hidden="true"
-              className={cn(
-                'size-3.5',
-                busy && connection !== 'offline' && 'animate-spin',
-              )}
-            />
+            {collapsed && busy && connection === 'live' ? (
+              <ProgressBlob />
+            ) : (
+              <StatusIcon
+                aria-hidden="true"
+                className={cn(
+                  'size-3.5',
+                  busy && connection !== 'offline' && 'animate-spin',
+                )}
+              />
+            )}
           </span>
         </TooltipTrigger>
         <TooltipContent>{label}</TooltipContent>

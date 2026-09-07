@@ -9,6 +9,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@workspace/ui/components/dropdown-menu'
+import { RangeSlider } from '@workspace/ui/components/range-slider'
 import {
   Tooltip,
   TooltipContent,
@@ -194,27 +195,16 @@ export function PanelSettingsMenu({
           className="flex flex-col gap-3 p-2"
           onKeyDown={(event) => event.stopPropagation()}
         >
-          <label
-            className="flex justify-between text-xs font-medium"
-            htmlFor="workspace-motion"
-          >
-            Motion
-            <span className="font-normal text-muted-foreground capitalize">
-              {motion === 'none' ? 'Off' : motion}
-            </span>
-          </label>
-          <input
-            aria-valuetext={motion}
-            className="w-full cursor-pointer accent-primary"
-            id="workspace-motion"
+          <RangeSlider
+            label="Motion"
             max={3}
-            min={0}
-            onChange={(event) =>
-              setMotion(MOTION_PREFERENCES[Number(event.target.value)]!)
-            }
-            step={1}
-            type="range"
+            onValueChange={(value) => setMotion(MOTION_PREFERENCES[value]!)}
             value={MOTION_PREFERENCES.indexOf(motion)}
+            valueLabel={
+              motion === 'none'
+                ? 'Off'
+                : motion.charAt(0).toUpperCase() + motion.slice(1)
+            }
           />
           <p className="text-xs leading-relaxed text-muted-foreground">
             Always respects your device’s reduced-motion setting.

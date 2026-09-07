@@ -1,12 +1,5 @@
 import { Button } from '@workspace/ui/components/button'
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogTrigger,
-} from '@workspace/ui/components/dialog'
+import { MediaModal } from '@workspace/ui/components/media-modal'
 import { Textarea } from '@workspace/ui/components/textarea'
 import {
   Tooltip,
@@ -86,8 +79,8 @@ export const Composer = memo(function Composer({
           Press Enter to send from the prompt. Press Shift and Enter for a new
           line. Press {KEYBOARD_SHORTCUTS.send.title} to send from anywhere.
         </span>
-        <label className="sr-only" htmlFor="landing-prompt">
-          Ask for a change
+        <label className="composer-label" htmlFor="landing-prompt">
+          {turns.length ? 'Make a change' : 'Describe your website'}
         </label>
         <Textarea
           aria-describedby="landing-prompt-hint"
@@ -96,7 +89,11 @@ export const Composer = memo(function Composer({
           id="landing-prompt"
           onChange={(event) => onChange(event.target.value)}
           onKeyDown={onKeyDown}
-          placeholder="Ask for a change…"
+          placeholder={
+            turns.length
+              ? 'What should we change next?'
+              : 'A portfolio, a product, a new idea…'
+          }
           readOnly={readOnly}
           rows={2}
           value={prompt}
@@ -176,7 +173,7 @@ export const Composer = memo(function Composer({
                     onClick={() => fileInputRef.current?.click()}
                     size="icon-xs"
                     type="button"
-                    variant="outline"
+                    variant="ghost"
                   >
                     <Paperclip />
                   </Button>
@@ -284,42 +281,21 @@ function AttachmentChip({
           <span className="truncate">{attachment.name}</span>
         </Button>
       ) : (
-        <Dialog>
-          <DialogTrigger asChild>
-            <button
-              aria-label={`Preview ${attachment.name}`}
-              className="flex min-w-0 flex-1 items-center gap-2 text-left"
-              type="button"
-            >
-              <img
-                alt=""
-                className="size-8 shrink-0 rounded-sm object-cover"
-                src={attachment.dataUrl}
-              />
-              <span className="min-w-0">
-                <span className="block truncate text-foreground">
-                  {attachment.name}
-                </span>
-                <span className="block text-xs">
-                  {formatAttachmentSize(attachment.size)}
-                </span>
-              </span>
-            </button>
-          </DialogTrigger>
-          <DialogContent className="max-w-3xl">
-            <DialogHeader>
-              <DialogTitle className="break-all">{attachment.name}</DialogTitle>
-              <DialogDescription>
-                Attached reference · {formatAttachmentSize(attachment.size)}
-              </DialogDescription>
-            </DialogHeader>
-            <img
-              alt={attachment.name}
-              className="max-h-[70dvh] w-full object-contain"
-              src={attachment.dataUrl}
-            />
-          </DialogContent>
-        </Dialog>
+        <MediaModal
+          alt={attachment.name}
+          className="attachment-media"
+          description={`Attached reference · ${formatAttachmentSize(attachment.size)}`}
+          src={attachment.dataUrl}
+        >
+          <span className="min-w-0">
+            <span className="block truncate text-foreground">
+              {attachment.name}
+            </span>
+            <span className="block text-xs">
+              {formatAttachmentSize(attachment.size)}
+            </span>
+          </span>
+        </MediaModal>
       )}
       <Button
         aria-label={`Remove ${attachment.name}`}

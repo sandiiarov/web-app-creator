@@ -7,7 +7,7 @@
 
 ## Ownership
 
-- `src/landing-preview.tsx`: `LandingPreview` component + `LandingPreviewProps`; empty preview is an open dotted canvas with product identity, a blank-page heading, and direction to the assistant, styled by `packages/ui` globals; controls `html` → `srcDoc` + morph, optional element picker (generates stable CSS selector on selection), opt-in preview diagnostics. Exports `buildStableSelector(doc, element)` for testability.
+- `src/landing-preview.tsx`: `LandingPreview` component + `LandingPreviewProps`; empty preview is a ruled canvas with product identity, a concise starting prompt, an abstract page outline, and direction to the assistant, styled by `packages/ui` globals; controls `html` → `srcDoc` + morph, optional element picker (generates stable CSS selector on selection), opt-in preview diagnostics. Exports `buildStableSelector(doc, element)` for testability.
 - `src/preview-morph.ts`: DOM morphing via `morphdom` (catalog dep); `parsePreviewRoot` + `preparePreviewMorphHtml` build target doc; `getScriptSignature` / `shouldRerunScriptsAfterMorph` / `rerunPreviewScripts` handle script re-execution (morphdom doesn't run scripts).
 - `src/preview-srcdoc.ts`: `isStarterPreview` recognizes only the unstyled server starter body so clients can display the empty canvas and disable export until real content exists; `preparePreviewSrcDoc` base-tag injection + unclosed-`<style>` repair (closes unbalanced `<style>` before `<body>` so parser keeps body content out of head) used by both initial `srcDoc` + morph targets.
 - `src/index.ts`: public barrel over preview utils + component for non-React-boundary consumers.

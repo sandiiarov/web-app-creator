@@ -18,6 +18,21 @@ export function ProjectPreview({ project }: { project: ProjectMeta }) {
   useEffect(() => {
     const element = previewRef.current
     if (!element) return
+    // Every thumbnail shows the same desktop viewport, at its actual available scale.
+    const observer = new ResizeObserver(([entry]) => {
+      if (entry)
+        element.style.setProperty(
+          '--project-preview-scale',
+          String(entry.contentRect.width / 1440),
+        )
+    })
+    observer.observe(element)
+    return () => observer.disconnect()
+  }, [])
+
+  useEffect(() => {
+    const element = previewRef.current
+    if (!element) return
     const observer = new IntersectionObserver(
       ([entry]) => {
         if (entry?.isIntersecting) {
@@ -59,14 +74,14 @@ export function ProjectPreview({ project }: { project: ProjectMeta }) {
   return (
     <div
       aria-hidden="true"
-      className="project-thumbnail relative overflow-hidden border border-border bg-background/40"
+      className="project-thumbnail"
       inert
       ref={previewRef}
     >
-      <div className="relative h-full overflow-hidden">
+      <div className="project-thumbnail-content">
         {previewHtml ? (
           <iframe
-            className="pointer-events-none size-[1000%] origin-top-left scale-[0.1] border-0 bg-background"
+            className="project-thumbnail-frame"
             loading="lazy"
             sandbox=""
             srcDoc={previewHtml}

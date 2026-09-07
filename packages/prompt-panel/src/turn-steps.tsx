@@ -3,14 +3,8 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@workspace/ui/components/collapsible'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from '@workspace/ui/components/dialog'
 import { MarkerIcon } from '@workspace/ui/components/marker'
+import { MediaModal } from '@workspace/ui/components/media-modal'
 import { Separator } from '@workspace/ui/components/separator'
 import { cn } from '@workspace/ui/lib/utils'
 import type { LucideIcon } from 'lucide-react'
@@ -263,42 +257,17 @@ function humanizeToolName(tool: string) {
 }
 
 function ImageThumbnail({ image }: { image: ToolCallImage }) {
-  const [open, setOpen] = useState(false)
   return (
-    <Dialog onOpenChange={setOpen} open={open}>
-      <figure className="group/thumb min-w-0">
-        <button
-          className="block w-full cursor-zoom-in"
-          onClick={() => setOpen(true)}
-          type="button"
-        >
-          <img
-            alt={image.alt}
-            className="max-h-40 w-full border border-border/70 bg-muted/20 object-contain transition-opacity hover:opacity-90"
-            loading="lazy"
-            src={image.url}
-          />
-        </button>
-        <figcaption className="mt-1 flex items-center justify-center gap-1 text-xs leading-tight text-muted-foreground/75">
-          <ViewportBadge alt={image.alt} />
-        </figcaption>
-      </figure>
-      <DialogContent
-        // className="max-w-[90vw] gap-0 border-border/70 p-1 sm:max-w-200"
-        onCloseAutoFocus={(e) => e.preventDefault()}
-      >
-        <DialogHeader>
-          <DialogTitle>{image.alt}</DialogTitle>
-        </DialogHeader>
-        <DialogDescription>
-          <img
-            alt={image.alt}
-            className="max-h-[80vh] w-full object-contain"
-            src={image.url}
-          />
-        </DialogDescription>
-      </DialogContent>
-    </Dialog>
+    <figure className="tool-image-preview">
+      <MediaModal
+        alt={image.alt}
+        description="Generated page reference"
+        src={image.url}
+      />
+      <figcaption>
+        <ViewportBadge alt={image.alt} />
+      </figcaption>
+    </figure>
   )
 }
 

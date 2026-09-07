@@ -729,17 +729,21 @@ function LandingEmptyState({ className }: { className?: string }) {
     <div className={`landing-empty ${className ?? 'h-svh w-screen border-0'}`}>
       <div className="landing-empty-brand">Web App Creator</div>
       <div className="landing-empty-content">
-        <div aria-hidden="true" className="canvas-corner" />
-        <span className="landing-empty-kicker">A blank page. All yours.</span>
+        <span className="landing-empty-kicker">Your canvas is ready</span>
         <h2>
-          Your next
+          Make room
           <br />
-          <span>great idea.</span>
+          <span>for your idea.</span>
         </h2>
         <p>
-          It starts with a conversation. Tell your assistant what you want to
-          build, and watch it take shape.
+          Describe a website in the chat. Your page will take shape here, ready
+          for every next change.
         </p>
+        <div aria-hidden="true" className="canvas-outline">
+          <span />
+          <span />
+          <span />
+        </div>
       </div>
     </div>
   )
