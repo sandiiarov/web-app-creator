@@ -9,6 +9,7 @@ import {
   PromptPanel,
   readStoredPanelLayout,
 } from '@workspace/prompt-panel'
+import { PreviewViewportMenu } from '@workspace/prompt-panel/components/panel-command-menu'
 import { Button } from '@workspace/ui/components/button'
 import { cn } from '@workspace/ui/lib/utils'
 import { ArrowLeft } from 'lucide-react'
@@ -17,7 +18,10 @@ import { useNavigate } from 'react-router-dom'
 
 import { useTheme } from '#components/theme-provider'
 
-import { EditorPageActions } from './components/editor-page-actions'
+import {
+  EditorPageActions,
+  PreviewRefreshButton,
+} from './components/editor-page-actions'
 import { ErrorBanner } from './components/error-banner'
 import { ProjectSwitcher } from './components/project-switcher'
 import { RenameProjectDialog } from './components/rename-project-dialog'
@@ -278,13 +282,24 @@ function useEditorPageRender({ projectId }: EditorPageProps) {
             exportError={exportError}
             exporting={exporting}
             onDownloadHtml={handleExport}
-            onReloadPreview={handleReloadPreview}
             onRename={() => setRenaming(true)}
-            onViewportChange={setViewport}
-            refreshed={refreshed}
-            viewport={viewport}
           />
         }
+        pageHeaderActions={{
+          refresh: (
+            <PreviewRefreshButton
+              disabled={!previewHtml}
+              onRefresh={handleReloadPreview}
+              refreshed={refreshed}
+            />
+          ),
+          viewport: (
+            <PreviewViewportMenu
+              onViewportChange={setViewport}
+              viewport={viewport}
+            />
+          ),
+        }}
         projectSwitcher={<ProjectSwitcher currentProjectId={projectId} />}
         projectTitle={landing.title}
         selectedElementAttachment={selectedElementAttachment}

@@ -1,5 +1,4 @@
 import { Button } from '@workspace/ui/components/button'
-import { ProgressBlob } from '@workspace/ui/components/progress-blob'
 import { cn } from '@workspace/ui/lib/utils'
 import {
   type FormEvent,
@@ -35,7 +34,6 @@ import {
   MIN_PANEL_WIDTH,
   MIN_PANEL_HEIGHT,
   PANEL_HEIGHT_CSS_VAR,
-  STATUS_LABELS,
   PANEL_HEIGHT,
   PANEL_MARGIN,
   PANEL_WIDTH_CSS_VAR,
@@ -96,6 +94,7 @@ export type PromptPanelProps = {
   onStop: () => void
   onToggleTheme: () => void
   pageActions: ReactNode
+  pageHeaderActions?: { refresh: ReactNode; viewport: ReactNode }
   projectSwitcher: ReactNode
   projectTitle: string
   selectedElementAttachment: ElementAttachmentInput | null
@@ -150,6 +149,7 @@ export function PromptPanel({
   onStop,
   onToggleTheme,
   pageActions,
+  pageHeaderActions,
   projectSwitcher,
   projectTitle,
   selectedElementAttachment,
@@ -158,7 +158,6 @@ export function PromptPanel({
 }: PromptPanelProps) {
   const [collapsed, setCollapsed] = useState(initialPanelCollapsed)
   const [projectsOpen, setProjectsOpen] = useState(false)
-  const [panelMenuOpen, setPanelMenuOpen] = useState(false)
   const [position, setPosition] = useState<PanelPosition>(initialPanelPosition)
   const { attachments, prompt } = draft
   const draftRevision = useRef(0)
@@ -241,13 +240,12 @@ export function PromptPanel({
     (next: boolean) => {
       const current = placementRef.current
       if (next === current.collapsed) return
-      const compactPosition = getCompactPosition()
+      const compactPosition = getCompactPosition(widthRef.current)
       if (next) {
-        // Capture before hiding the conversation: never jump to an old launcher location.
+        // Keep the visible top-right corner fixed while the panel contracts.
         captureCompactPosition()
       } else if (window.innerWidth >= 768 && compactPosition) {
-        // The compact position owns restoration, including dragging away from a dock.
-        // An untouched dock still restores because its captured position is the dock origin.
+        // Restore from the compact top-right corner; an untouched dock keeps its side.
         setPosition(
           clampPanelPosition(
             compactPosition,
@@ -268,7 +266,7 @@ export function PromptPanel({
     wasCollapsed.current = collapsed
     if (collapsed) {
       sectionRef.current
-        ?.querySelector<HTMLButtonElement>('.assistant-launcher')
+        ?.querySelector<HTMLButtonElement>('[data-panel-toggle]')
         ?.focus({ preventScroll: true })
       return
     }
@@ -398,7 +396,7 @@ export function PromptPanel({
         startX: event.clientX,
         startY: event.clientY,
       }
-      // Capture the stable title element; its pointer events bubble to the header.
+      // Capture the stable header rather than a volatile child.
       const capture =
         event.target instanceof Element
           ? (event.target.closest<HTMLElement>('[data-panel-drag-handle]') ??
@@ -912,13 +910,13 @@ export function PromptPanel({
     ...(collapsed
       ? {
           bottom: 'calc(20px + var(--assistant-keyboard-inset, 0px))',
-          height: `${COLLAPSED_HEIGHT}px`,
+          height: 'auto',
           left: 'auto',
           maxHeight: 'calc(var(--assistant-visible-height, 100dvh) - 16px)',
           maxWidth: 'calc(100vw - 16px)',
           right: 'min(20px, 2.5vw)',
           top: 'auto',
-          width: `${COLLAPSED_HEIGHT}px`,
+          width: 'max-content',
           ...launcherDrag.style,
         }
       : {}),
@@ -927,8 +925,7 @@ export function PromptPanel({
   return (
     <>
       <section
-        aria-label={collapsed ? projectTitle : undefined}
-        aria-labelledby={collapsed ? undefined : 'assistant-title'}
+        aria-label={projectTitle}
         className={cn(
           'liquid-panel fixed z-30 flex flex-col overflow-hidden rounded-3xl text-popover-foreground',
           dockedSide === 'left' && 'rounded-l-none',
@@ -948,67 +945,58 @@ export function PromptPanel({
         ref={sectionRef}
         style={panelStyle}
       >
-        {collapsed ? (
-          <button
-            aria-controls="landing-chat"
-            aria-expanded={false}
-            aria-label={`Show conversation for ${projectTitle}. ${connection === 'live' ? STATUS_LABELS[status] : connection}`}
-            className="assistant-launcher"
-            data-active={isStreaming && connection === 'live'}
-            data-attention={status === 'error' || connection === 'offline'}
-            data-panel-drag-handle=""
-            onClick={() => {
-              if (launcherDrag.shouldOpen()) setPanelCollapsed(false)
-            }}
-            title={`${connection === 'live' ? STATUS_LABELS[status] : connection} · Drag to move. Click to open.`}
-            type="button"
-            {...launcherDrag.handlers}
-          >
-            <ProgressBlob />
-          </button>
-        ) : null}
-        <div className="flex h-full min-h-0 flex-col" hidden={collapsed}>
-          <PanelHeader
-            collapsed={collapsed}
-            compactionPercent={compactionPercent}
-            connection={connection}
-            dragging={dragging}
-            layout={layout}
-            mobileExpanded={mobileExpanded}
-            onAllProjects={() => {
-              setProjectsOpen((open) => !open)
-              setPanelCollapsed(false)
-            }}
-            onCompactionPercentChange={onCompactionPercentChange}
-            onDragEnd={handleDragEnd}
-            onDragMove={handleDragMove}
-            onDragStart={handleDragStart}
-            onLayoutChange={handleLayoutChange}
-            onMobileExpandedChange={setMobileExpanded}
-            onPanelMenuOpenChange={setPanelMenuOpen}
-            onToggleCollapsed={() => {
-              setProjectsOpen(false)
-              setPanelCollapsed(!collapsed)
-            }}
-            onToggleTheme={onToggleTheme}
-            pageActions={pageActions}
-            panelMenuOpen={panelMenuOpen}
-            projectsOpen={projectsOpen}
-            projectTitle={projectTitle}
-            status={status}
-            statusText={
-              connection !== 'live'
-                ? connection === 'offline'
-                  ? 'Disconnected'
-                  : connection === 'connecting'
-                    ? 'Connecting…'
-                    : 'Reconnecting…'
-                : isStopping
-                  ? 'Stopping…'
-                  : undefined
-            }
-            theme={theme}
-          />
+        <PanelHeader
+          collapsed={collapsed}
+          compactionPercent={compactionPercent}
+          connection={connection}
+          dragging={dragging || launcherDrag.dragging}
+          layout={layout}
+          mobileExpanded={mobileExpanded}
+          onAllProjects={() => {
+            setProjectsOpen((open) => collapsed || !open)
+            setPanelCollapsed(false)
+          }}
+          onCompactionPercentChange={onCompactionPercentChange}
+          onDragEnd={
+            collapsed ? launcherDrag.handlers.onPointerUp : handleDragEnd
+          }
+          onDragMove={
+            collapsed ? launcherDrag.handlers.onPointerMove : handleDragMove
+          }
+          onDragStart={
+            collapsed ? launcherDrag.handlers.onPointerDown : handleDragStart
+          }
+          onLauncherKeyDown={
+            collapsed ? launcherDrag.handlers.onKeyDown : undefined
+          }
+          onLayoutChange={handleLayoutChange}
+          onMobileExpandedChange={(expanded) => {
+            setMobileExpanded(expanded)
+            setPanelCollapsed(false)
+          }}
+          onToggleCollapsed={() => {
+            setProjectsOpen(false)
+            setPanelCollapsed(!collapsed)
+          }}
+          onToggleTheme={onToggleTheme}
+          pageActions={pageActions}
+          pageHeaderActions={pageHeaderActions}
+          projectsOpen={projectsOpen}
+          status={status}
+          statusText={
+            connection !== 'live'
+              ? connection === 'offline'
+                ? 'Disconnected'
+                : connection === 'connecting'
+                  ? 'Connecting…'
+                  : 'Reconnecting…'
+              : isStopping
+                ? 'Stopping…'
+                : undefined
+          }
+          theme={theme}
+        />
+        <div className="flex min-h-0 flex-1 flex-col" hidden={collapsed}>
           {connection !== 'live' ? (
             <div
               className="flex shrink-0 items-center justify-between gap-2 border-b border-border px-4 py-2 text-xs"

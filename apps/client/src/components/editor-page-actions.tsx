@@ -1,37 +1,29 @@
-import type { PreviewViewport } from '@workspace/prompt-panel'
+import { Button } from '@workspace/ui/components/button'
 import {
   DropdownMenuGroup,
   DropdownMenuItem,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
   DropdownMenuSeparator,
-  DropdownMenuSub,
-  DropdownMenuSubContent,
-  DropdownMenuSubTrigger,
 } from '@workspace/ui/components/dropdown-menu'
-import { Download, Monitor, Pencil, RefreshCw } from 'lucide-react'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@workspace/ui/components/tooltip'
+import { Download, Pencil, RefreshCw } from 'lucide-react'
 
-/** Page actions are composed inside the assistant's settings menu. */
+/** Secondary page actions live inside the assistant's panel layout menu. */
 export function EditorPageActions({
   canDownload,
   exportError,
   exporting,
   onDownloadHtml,
-  onReloadPreview,
   onRename,
-  onViewportChange,
-  refreshed,
-  viewport,
 }: {
   canDownload: boolean
   exportError: null | string
   exporting: boolean
   onDownloadHtml: () => void
-  onReloadPreview: () => void
   onRename: () => void
-  onViewportChange: (viewport: PreviewViewport) => void
-  refreshed: boolean
-  viewport: PreviewViewport
 }) {
   return (
     <>
@@ -39,40 +31,6 @@ export function EditorPageActions({
         <DropdownMenuItem onSelect={onRename}>
           <Pencil />
           Rename project
-        </DropdownMenuItem>
-        <DropdownMenuSub>
-          <DropdownMenuSubTrigger>
-            <Monitor />
-            Preview width
-          </DropdownMenuSubTrigger>
-          <DropdownMenuSubContent>
-            <DropdownMenuRadioGroup
-              onValueChange={(value) =>
-                onViewportChange(value as PreviewViewport)
-              }
-              value={viewport}
-            >
-              <DropdownMenuRadioItem value="desktop">
-                Desktop · Full width
-              </DropdownMenuRadioItem>
-              <DropdownMenuRadioItem value="tablet">
-                Tablet · 768px
-              </DropdownMenuRadioItem>
-              <DropdownMenuRadioItem value="mobile">
-                Mobile · 390px
-              </DropdownMenuRadioItem>
-            </DropdownMenuRadioGroup>
-          </DropdownMenuSubContent>
-        </DropdownMenuSub>
-        <DropdownMenuItem
-          disabled={!canDownload}
-          onSelect={(event) => {
-            event.preventDefault()
-            onReloadPreview()
-          }}
-        >
-          <RefreshCw className={refreshed ? 'animate-spin' : undefined} />
-          {refreshed ? 'Preview refreshed' : 'Refresh preview'}
         </DropdownMenuItem>
         <DropdownMenuItem
           disabled={!canDownload || exporting}
@@ -98,9 +56,44 @@ export function EditorPageActions({
         </p>
       ) : null}
       <span className="sr-only" role="status">
-        {refreshed ? 'Preview refreshed' : exporting ? 'Downloading HTML' : ''}
+        {exporting ? 'Downloading HTML' : ''}
       </span>
       <DropdownMenuSeparator />
+    </>
+  )
+}
+
+export function PreviewRefreshButton({
+  disabled,
+  onRefresh,
+  refreshed,
+}: {
+  disabled: boolean
+  onRefresh: () => void
+  refreshed: boolean
+}) {
+  return (
+    <>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            aria-label="Refresh preview"
+            disabled={disabled}
+            onClick={onRefresh}
+            size="icon-sm"
+            type="button"
+            variant="ghost"
+          >
+            <RefreshCw className={refreshed ? 'animate-spin' : undefined} />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>
+          {refreshed ? 'Preview refreshed' : 'Refresh preview'}
+        </TooltipContent>
+      </Tooltip>
+      <span className="sr-only" role="status">
+        {refreshed ? 'Preview refreshed' : ''}
+      </span>
     </>
   )
 }

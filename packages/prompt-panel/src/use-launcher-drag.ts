@@ -21,8 +21,10 @@ export function useLauncherDrag(
 ) {
   const [position, setPosition] = useState<null | PanelPosition>(readPosition)
   const [dragging, setDragging] = useState(false)
+  const [size, setSize] = useState<null | { height: number; width: number }>(
+    null,
+  )
   const positionRef = useRef(position)
-  const suppressClick = useRef(false)
   const gesture = useRef<null | {
     capture: HTMLElement
     element: HTMLElement
@@ -38,25 +40,28 @@ export function useLauncherDrag(
     const viewport = window.visualViewport
     const left = viewport?.offsetLeft ?? 0
     const top = viewport?.offsetTop ?? 0
+    const size = compactPanelSize(element)
     return {
       x: Math.max(
         left,
         Math.min(
           next.x,
-          left + (viewport?.width ?? window.innerWidth) - element.offsetWidth,
+          left + (viewport?.width ?? window.innerWidth) - size.width,
         ),
       ),
       y: Math.max(
         top,
         Math.min(
           next.y,
-          top + (viewport?.height ?? window.innerHeight) - element.offsetHeight,
+          top + (viewport?.height ?? window.innerHeight) - size.height,
         ),
       ),
     }
   }
 
   const commit = useCallback((next: PanelPosition) => {
+    if (positionRef.current?.x === next.x && positionRef.current.y === next.y)
+      return
     positionRef.current = next
     setPosition(next)
     try {
@@ -66,16 +71,29 @@ export function useLauncherDrag(
     }
   }, [])
 
+  const measure = useCallback((element: HTMLElement) => {
+    const next = compactPanelSize(element)
+    setSize((current) =>
+      current?.width === next.width && current.height === next.height
+        ? current
+        : next,
+    )
+    return next
+  }, [])
+
   const capturePosition = useCallback(() => {
-    const rect = ref.current?.getBoundingClientRect()
-    if (rect) commit({ x: rect.left, y: rect.top })
-  }, [commit, ref])
+    const element = ref.current
+    if (!element) return
+    const rect = element.getBoundingClientRect()
+    commit({ x: rect.right - measure(element).width, y: rect.top })
+  }, [commit, measure, ref])
 
   useLayoutEffect(() => {
     if (!enabled) return
     const update = () => {
-      if (positionRef.current && ref.current)
-        commit(clamp(positionRef.current, ref.current))
+      if (!ref.current) return
+      measure(ref.current)
+      if (positionRef.current) commit(clamp(positionRef.current, ref.current))
     }
     update()
     const observer = new ResizeObserver(update)
@@ -89,7 +107,7 @@ export function useLauncherDrag(
       window.visualViewport?.removeEventListener('resize', update)
       window.visualViewport?.removeEventListener('scroll', update)
     }
-  }, [commit, enabled, ref])
+  }, [commit, enabled, measure, ref])
 
   useEffect(
     () => () => {
@@ -103,7 +121,6 @@ export function useLauncherDrag(
     const element = ref.current
     if (!element) return
     const rect = element.getBoundingClientRect()
-    suppressClick.current = false
     const capture =
       event.target instanceof Element
         ? (event.target.closest<HTMLElement>('[data-panel-drag-handle]') ??
@@ -129,7 +146,6 @@ export function useLauncherDrag(
     if (!current.moved && Math.hypot(dx, dy) < 5) return
     if (!current.moved) {
       current.moved = true
-      suppressClick.current = true
       setDragging(true)
     }
     current.next = clamp(
@@ -163,7 +179,6 @@ export function useLauncherDrag(
   }
 
   function onKeyDown(event: KeyboardEvent<HTMLElement>) {
-    suppressClick.current = false
     const delta = event.shiftKey ? 48 : 16
     const direction = {
       ArrowDown: { x: 0, y: delta },
@@ -181,7 +196,19 @@ export function useLauncherDrag(
     )
   }
 
-  const getPosition = useCallback(() => positionRef.current, [])
+  const getPosition = useCallback(
+    (expandedWidth: number) => {
+      const position = positionRef.current
+      const element = ref.current
+      return position && element
+        ? {
+            x: position.x + compactPanelSize(element).width - expandedWidth,
+            y: position.y,
+          }
+        : position
+    },
+    [ref],
+  )
 
   return {
     capturePosition,
@@ -195,15 +222,44 @@ export function useLauncherDrag(
       onPointerMove,
       onPointerUp: finish,
     },
-    shouldOpen: () => !suppressClick.current,
-    style: position
-      ? ({
-          bottom: 'auto',
-          left: position.x,
-          right: 'auto',
-          top: position.y,
-        } satisfies CSSProperties)
-      : undefined,
+    // Freeze numeric dimensions so revealed content cannot change an auto-size animation's starting geometry.
+    style: {
+      ...size,
+      ...(position
+        ? {
+            bottom: 'auto',
+            left: position.x,
+            right: 'auto',
+            top: position.y,
+          }
+        : {}),
+    } satisfies CSSProperties,
+  }
+}
+
+function compactPanelSize(element: HTMLElement) {
+  const header = element.querySelector<HTMLElement>('.panel-header')
+  const row = element.querySelector<HTMLElement>('.panel-header-controls')
+  const logo = element.querySelector<HTMLElement>('.assistant-logo')
+  const actions = element.querySelector<HTMLElement>('[data-panel-actions]')
+  if (!header || !row || !logo || !actions)
+    return { height: element.offsetHeight, width: element.offsetWidth }
+  const chrome = getComputedStyle(header)
+  const border = getComputedStyle(element)
+  const pixels = (value: string) => Number.parseFloat(value) || 0
+  return {
+    height:
+      header.offsetHeight +
+      pixels(border.borderLeftWidth) +
+      pixels(border.borderRightWidth),
+    width:
+      logo.offsetWidth +
+      actions.offsetWidth +
+      pixels(getComputedStyle(row).columnGap) +
+      pixels(chrome.paddingLeft) +
+      pixels(chrome.paddingRight) +
+      pixels(border.borderLeftWidth) +
+      pixels(border.borderRightWidth),
   }
 }
 

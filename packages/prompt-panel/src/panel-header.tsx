@@ -1,26 +1,17 @@
 import { Button } from '@workspace/ui/components/button'
+import { ProgressBlob } from '@workspace/ui/components/progress-blob'
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from '@workspace/ui/components/tooltip'
 import { cn } from '@workspace/ui/lib/utils'
-import {
-  ArrowLeft,
-  Check,
-  ChevronUp,
-  CircleAlert,
-  FolderOpen,
-  LoaderCircle,
-  Minus,
-  Pause,
-  WifiOff,
-} from 'lucide-react'
-import { type ReactNode, type PointerEvent } from 'react'
+import { ArrowLeft, ChevronUp, FolderOpen, Minus } from 'lucide-react'
+import { type KeyboardEvent, type ReactNode, type PointerEvent } from 'react'
 
 import { KeyboardShortcut } from './keyboard-shortcut'
 import { KEYBOARD_SHORTCUTS } from './keyboard-shortcuts'
-import { PanelLayoutMenu, PanelSettingsMenu } from './panel-command-menu'
+import { PanelLayoutMenu } from './panel-command-menu'
 import type { PanelLayout, PanelStatus, PanelTheme } from './panel-constants'
 import { STATUS_LABELS } from './panel-constants'
 
@@ -36,15 +27,14 @@ export function PanelHeader({
   onDragEnd,
   onDragMove,
   onDragStart,
+  onLauncherKeyDown,
   onLayoutChange,
   onMobileExpandedChange,
-  onPanelMenuOpenChange,
   onToggleCollapsed,
   onToggleTheme,
   pageActions,
-  panelMenuOpen,
+  pageHeaderActions,
   projectsOpen,
-  projectTitle,
   status,
   statusText,
   theme,
@@ -60,148 +50,116 @@ export function PanelHeader({
   onDragEnd: (event: PointerEvent<HTMLElement>) => void
   onDragMove: (event: PointerEvent<HTMLElement>) => void
   onDragStart: (event: PointerEvent<HTMLElement>) => void
+  onLauncherKeyDown?: (event: KeyboardEvent<HTMLElement>) => void
   onLayoutChange: (layout: PanelLayout) => void
   onMobileExpandedChange: (value: boolean) => void
-  onPanelMenuOpenChange: (open: boolean) => void
   onToggleCollapsed: () => void
   onToggleTheme: () => void
   pageActions: ReactNode
-  panelMenuOpen: boolean
+  pageHeaderActions?: { refresh: ReactNode; viewport: ReactNode }
   projectsOpen: boolean
-  projectTitle: string
   status: PanelStatus
   statusText?: string
   theme: PanelTheme
 }) {
   const label = statusText ?? STATUS_LABELS[status]
-  const busy =
-    connection === 'connecting' ||
-    connection === 'reconnecting' ||
-    status === 'generating'
-  const StatusIcon =
-    connection === 'offline'
-      ? WifiOff
-      : busy
-        ? LoaderCircle
-        : status === 'error'
-          ? CircleAlert
-          : status === 'stopped'
-            ? Pause
-            : Check
+
   return (
     <header
       className={cn(
         'panel-header',
         dragging ? 'cursor-grabbing' : 'cursor-grab',
       )}
+      data-collapsed={collapsed}
       onLostPointerCapture={onDragEnd}
       onPointerCancel={onDragEnd}
       onPointerDown={(event) => {
-        if (
-          event.target instanceof Element &&
-          event.target.closest('button') &&
-          !event.target.closest('[data-panel-drag-handle]')
-        )
+        if (event.target instanceof Element && event.target.closest('button'))
           return
         onDragStart(event)
       }}
       onPointerMove={onDragMove}
       onPointerUp={onDragEnd}
     >
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            aria-expanded={projectsOpen}
-            aria-label={projectsOpen ? 'Back to conversation' : 'Open projects'}
-            onClick={onAllProjects}
-            size="icon-sm"
-            variant="ghost"
-          >
-            {projectsOpen ? <ArrowLeft /> : <FolderOpen />}
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent>
-          {projectsOpen ? 'Back to conversation' : 'Projects'}
-        </TooltipContent>
-      </Tooltip>
-      <h1
-        aria-label={projectTitle}
-        className="min-w-0 flex-1"
-        id="assistant-title"
-        title={projectTitle}
-      >
+      <div className="panel-header-controls">
         <span
-          className="assistant-project-title"
+          aria-label={`Web App Creator. ${label}${collapsed ? '. Use arrow keys to move the panel.' : ''}`}
+          className="assistant-logo"
+          data-active={status === 'generating' && connection === 'live'}
+          data-attention={status === 'error' || connection === 'offline'}
           data-panel-drag-handle=""
-          title="Drag to move"
+          onKeyDown={onLauncherKeyDown}
+          role="img"
+          tabIndex={collapsed ? 0 : undefined}
+          title={`Web App Creator · ${label}`}
         >
-          <span className="truncate">
-            {projectTitle === 'Untitled' ? 'New project' : projectTitle}
-          </span>
+          <ProgressBlob />
         </span>
-      </h1>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <span
-            aria-label={label}
-            className="assistant-connection"
-            data-connection={connection}
-            data-status={status}
-            onPointerDown={(event) => event.stopPropagation()}
-            role="status"
-            tabIndex={0}
-          >
-            <StatusIcon
-              aria-hidden="true"
-              className={cn(
-                'size-3.5',
-                busy && connection !== 'offline' && 'animate-spin',
-              )}
-            />
-          </span>
-        </TooltipTrigger>
-        <TooltipContent>{label}</TooltipContent>
-      </Tooltip>
-      <div
-        className="flex items-center gap-0.5"
-        onPointerDown={(event) => event.stopPropagation()}
-      >
-        <PanelLayoutMenu
-          layout={layout}
-          mobileExpanded={mobileExpanded}
-          onLayoutChange={onLayoutChange}
-          onMobileExpandedChange={onMobileExpandedChange}
-          onOpenChange={onPanelMenuOpenChange}
-          open={panelMenuOpen}
-        />
-        <PanelSettingsMenu
-          compactionPercent={compactionPercent}
-          onCompactionPercentChange={onCompactionPercentChange}
-          onToggleTheme={onToggleTheme}
-          pageActions={pageActions}
-          theme={theme}
-        />
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              aria-controls="landing-chat"
-              aria-expanded={!collapsed}
-              aria-label={
-                collapsed ? 'Show conversation' : 'Minimize conversation'
-              }
-              onClick={onToggleCollapsed}
-              size="icon-sm"
-              type="button"
-              variant="ghost"
-            >
-              {collapsed ? <ChevronUp /> : <Minus />}
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>
-            {collapsed ? 'Show conversation' : 'Minimize conversation'}
-            <KeyboardShortcut shortcut={KEYBOARD_SHORTCUTS.panelToggle} />
-          </TooltipContent>
-        </Tooltip>
+        <span className="sr-only" role="status">
+          {label}
+        </span>
+        <div
+          className="ml-auto flex items-center gap-0.5"
+          data-panel-actions=""
+          onPointerDown={(event) => event.stopPropagation()}
+        >
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                aria-expanded={projectsOpen && !collapsed}
+                aria-label={
+                  projectsOpen && !collapsed
+                    ? 'Back to conversation'
+                    : 'Open projects'
+                }
+                onClick={onAllProjects}
+                size="icon-sm"
+                type="button"
+                variant="ghost"
+              >
+                {projectsOpen && !collapsed ? <ArrowLeft /> : <FolderOpen />}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              {projectsOpen && !collapsed ? 'Back to conversation' : 'Projects'}
+            </TooltipContent>
+          </Tooltip>
+          {pageHeaderActions?.refresh}
+          <PanelLayoutMenu
+            compactionPercent={compactionPercent}
+            layout={layout}
+            mobileExpanded={mobileExpanded}
+            onCompactionPercentChange={onCompactionPercentChange}
+            onLayoutChange={onLayoutChange}
+            onMobileExpandedChange={onMobileExpandedChange}
+            onToggleTheme={onToggleTheme}
+            pageActions={pageActions}
+            theme={theme}
+          />
+          {pageHeaderActions?.viewport}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                aria-controls="landing-chat"
+                aria-expanded={!collapsed}
+                aria-label={
+                  collapsed ? 'Show conversation' : 'Minimize conversation'
+                }
+                data-panel-toggle=""
+                onClick={onToggleCollapsed}
+                size="icon-sm"
+                type="button"
+                variant="ghost"
+              >
+                {collapsed ? <ChevronUp /> : <Minus />}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              {collapsed ? 'Show conversation' : 'Minimize conversation'}
+              <KeyboardShortcut shortcut={KEYBOARD_SHORTCUTS.panelToggle} />
+            </TooltipContent>
+          </Tooltip>
+        </div>
       </div>
     </header>
   )

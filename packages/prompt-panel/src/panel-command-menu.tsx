@@ -7,6 +7,9 @@ import {
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from '@workspace/ui/components/dropdown-menu'
 import { RangeSlider } from '@workspace/ui/components/range-slider'
@@ -55,27 +58,30 @@ const PREVIEW_VIEWPORT_LABELS: Record<PreviewViewport, string> = {
 }
 
 export function PanelLayoutMenu({
+  compactionPercent,
   layout,
   mobileExpanded,
+  onCompactionPercentChange,
   onLayoutChange,
   onMobileExpandedChange,
-  onOpenChange,
-  open,
+  onToggleTheme,
+  pageActions,
+  theme,
 }: {
+  compactionPercent: number
   layout: PanelLayout
   mobileExpanded: boolean
+  onCompactionPercentChange: (percent: number) => void
   onLayoutChange: (layout: PanelLayout) => void
   onMobileExpandedChange: (value: boolean) => void
-  onOpenChange: (open: boolean) => void
-  open: boolean
+  onToggleTheme: () => void
+  pageActions: ReactNode
+  theme: PanelTheme
 }) {
-  const selectLayout = (nextLayout: PanelLayout) => {
-    onLayoutChange(nextLayout)
-    onOpenChange(false)
-  }
+  const [open, setOpen] = useState(false)
 
   return (
-    <DropdownMenu onOpenChange={onOpenChange} open={open}>
+    <DropdownMenu onOpenChange={setOpen} open={open}>
       <Tooltip open={open ? false : undefined}>
         <TooltipTrigger asChild>
           <DropdownMenuTrigger asChild>
@@ -89,7 +95,7 @@ export function PanelLayoutMenu({
             </Button>
           </DropdownMenuTrigger>
         </TooltipTrigger>
-        <TooltipContent side="bottom">Panel</TooltipContent>
+        <TooltipContent side="bottom">Panel layout</TooltipContent>
       </Tooltip>
       <DropdownMenuContent
         align="end"
@@ -99,10 +105,9 @@ export function PanelLayoutMenu({
       >
         <DropdownMenuRadioGroup
           className="md:hidden"
-          onValueChange={(value) => {
+          onValueChange={(value) =>
             onMobileExpandedChange(value === 'expanded')
-            onOpenChange(false)
-          }}
+          }
           value={mobileExpanded ? 'expanded' : 'compact'}
         >
           <DropdownMenuRadioItem value="compact">
@@ -113,7 +118,7 @@ export function PanelLayoutMenu({
           </DropdownMenuRadioItem>
         </DropdownMenuRadioGroup>
         <DropdownMenuGroup className="hidden md:block">
-          <DropdownMenuItem onSelect={() => selectLayout('left-sidebar')}>
+          <DropdownMenuItem onSelect={() => onLayoutChange('left-sidebar')}>
             <PanelLeft />
             Left sidebar
             <KeyboardShortcut
@@ -121,7 +126,7 @@ export function PanelLayoutMenu({
               shortcut={KEYBOARD_SHORTCUTS.layoutLeft}
             />
           </DropdownMenuItem>
-          <DropdownMenuItem onSelect={() => selectLayout('right-sidebar')}>
+          <DropdownMenuItem onSelect={() => onLayoutChange('right-sidebar')}>
             <PanelRight />
             Right sidebar
             <KeyboardShortcut
@@ -129,7 +134,7 @@ export function PanelLayoutMenu({
               shortcut={KEYBOARD_SHORTCUTS.layoutRight}
             />
           </DropdownMenuItem>
-          <DropdownMenuItem onSelect={() => selectLayout('floating')}>
+          <DropdownMenuItem onSelect={() => onLayoutChange('floating')}>
             <AppWindow />
             Floating
             <KeyboardShortcut
@@ -138,105 +143,24 @@ export function PanelLayoutMenu({
             />
           </DropdownMenuItem>
         </DropdownMenuGroup>
-      </DropdownMenuContent>
-    </DropdownMenu>
-  )
-}
-
-export function PanelSettingsMenu({
-  compactionPercent,
-  onCompactionPercentChange,
-  onToggleTheme,
-  pageActions,
-  theme,
-}: {
-  compactionPercent: number
-  onCompactionPercentChange: (percent: number) => void
-  onToggleTheme: () => void
-  pageActions: ReactNode
-  theme: PanelTheme
-}) {
-  const [open, setOpen] = useState(false)
-  const ThemeIcon = themeToggleIcon(theme)
-  const [motion, setMotion] = useMotionPreference()
-
-  return (
-    <DropdownMenu onOpenChange={setOpen} open={open}>
-      <Tooltip open={open ? false : undefined}>
-        <TooltipTrigger asChild>
-          <DropdownMenuTrigger asChild>
-            <Button
-              aria-label="Open panel settings"
-              size="icon-sm"
-              type="button"
-              variant="ghost"
-            >
-              <Settings />
-            </Button>
-          </DropdownMenuTrigger>
-        </TooltipTrigger>
-        <TooltipContent side="bottom">Settings</TooltipContent>
-      </Tooltip>
-      <DropdownMenuContent
-        align="end"
-        className="w-52"
-        onKeyDown={(event) => event.stopPropagation()}
-        sideOffset={6}
-      >
+        <DropdownMenuSeparator />
         {pageActions}
         <DropdownMenuGroup>
-          <DropdownMenuItem onSelect={onToggleTheme}>
-            <ThemeIcon />
-            Toggle theme
-            <KeyboardShortcut
-              className="ml-auto shrink-0"
-              shortcut={KEYBOARD_SHORTCUTS.themeToggle}
-            />
-          </DropdownMenuItem>
+          <DropdownMenuSub>
+            <DropdownMenuSubTrigger>
+              <Settings />
+              Settings
+            </DropdownMenuSubTrigger>
+            <DropdownMenuSubContent className="w-60">
+              <PanelSettingsContent
+                compactionPercent={compactionPercent}
+                onCompactionPercentChange={onCompactionPercentChange}
+                onToggleTheme={onToggleTheme}
+                theme={theme}
+              />
+            </DropdownMenuSubContent>
+          </DropdownMenuSub>
         </DropdownMenuGroup>
-        <DropdownMenuSeparator />
-        <div
-          className="flex flex-col gap-3 p-2"
-          onKeyDown={(event) => event.stopPropagation()}
-        >
-          <RangeSlider
-            label="Motion"
-            max={3}
-            onValueChange={(value) => setMotion(MOTION_PREFERENCES[value]!)}
-            value={MOTION_PREFERENCES.indexOf(motion)}
-            valueLabel={
-              motion === 'none'
-                ? 'Off'
-                : motion.charAt(0).toUpperCase() + motion.slice(1)
-            }
-          />
-          <p className="text-xs leading-relaxed text-muted-foreground">
-            Always respects your device’s reduced-motion setting.
-          </p>
-        </div>
-        <DropdownMenuSeparator />
-        <details className="p-2" onKeyDown={(event) => event.stopPropagation()}>
-          <summary className="cursor-pointer text-xs font-medium">
-            Advanced
-          </summary>
-          <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
-            Summarize older conversation when context fills up. Key decisions
-            stay available to the assistant; your chat history stays visible.
-          </p>
-          <div className="mt-3">
-            <RangeSlider
-              label="Context used"
-              max={100}
-              min={1}
-              onValueChange={onCompactionPercentChange}
-              suffix="%"
-              value={compactionPercent}
-            />
-          </div>
-          <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
-            Lower values summarize sooner. Default: 80%.
-          </p>
-        </details>
       </DropdownMenuContent>
     </DropdownMenu>
   )
@@ -303,6 +227,79 @@ export function PreviewViewportMenu({
   )
 }
 
+function PanelSettingsContent({
+  compactionPercent,
+  onCompactionPercentChange,
+  onToggleTheme,
+  theme,
+}: {
+  compactionPercent: number
+  onCompactionPercentChange: (percent: number) => void
+  onToggleTheme: () => void
+  theme: PanelTheme
+}) {
+  const ThemeIcon = themeToggleIcon(theme)
+  const [motion, setMotion] = useMotionPreference()
+
+  return (
+    <>
+      <DropdownMenuGroup>
+        <DropdownMenuItem onSelect={onToggleTheme}>
+          <ThemeIcon />
+          Toggle theme
+          <KeyboardShortcut
+            className="ml-auto shrink-0"
+            shortcut={KEYBOARD_SHORTCUTS.themeToggle}
+          />
+        </DropdownMenuItem>
+      </DropdownMenuGroup>
+      <DropdownMenuSeparator />
+      <div
+        className="flex flex-col gap-3 p-2"
+        onKeyDown={(event) => event.stopPropagation()}
+      >
+        <RangeSlider
+          label="Motion"
+          max={3}
+          onValueChange={(value) => setMotion(MOTION_PREFERENCES[value]!)}
+          value={MOTION_PREFERENCES.indexOf(motion)}
+          valueLabel={
+            motion === 'none'
+              ? 'Off'
+              : motion.charAt(0).toUpperCase() + motion.slice(1)
+          }
+        />
+        <p className="text-xs leading-relaxed text-muted-foreground">
+          Always respects your device’s reduced-motion setting.
+        </p>
+      </div>
+      <DropdownMenuSeparator />
+      <details className="p-2" onKeyDown={(event) => event.stopPropagation()}>
+        <summary className="cursor-pointer text-xs font-medium">
+          Advanced
+        </summary>
+        <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
+          Summarize older conversation when context fills up. Key decisions stay
+          available to the assistant; your chat history stays visible.
+        </p>
+        <div className="mt-3">
+          <RangeSlider
+            label="Context used"
+            max={100}
+            min={1}
+            onValueChange={onCompactionPercentChange}
+            suffix="%"
+            value={compactionPercent}
+          />
+        </div>
+        <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
+          Lower values summarize sooner. Default: 80%.
+        </p>
+      </details>
+    </>
+  )
+}
+
 function previewViewportIcon(viewport: PreviewViewport) {
   if (viewport === 'mobile') return Smartphone
   if (viewport === 'tablet') return Tablet
@@ -312,6 +309,5 @@ function previewViewportIcon(viewport: PreviewViewport) {
 function themeToggleIcon(theme: PanelTheme) {
   if (theme === 'dark') return Sun
   if (theme === 'light') return Moon
-
   return Monitor
 }
