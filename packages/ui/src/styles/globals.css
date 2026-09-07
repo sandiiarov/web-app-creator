@@ -2167,25 +2167,18 @@
   width: 56px;
   height: 56px;
   padding: 0;
-  border: 1px solid var(--glass-highlight);
-  background: var(--widget-surface);
-  background-image: var(--glass-sheen);
-  box-shadow:
-    0 4px 12px -5px oklch(0 0 0 / 0.28),
-    inset 0 1px 0 var(--glass-highlight);
-  backdrop-filter: blur(20px) saturate(1.2);
-  -webkit-backdrop-filter: blur(20px) saturate(1.2);
+  border: 0;
+  background: transparent;
+  box-shadow: none;
   cursor: grab;
   touch-action: none;
   outline: none;
-  transition:
-    border-color 160ms,
-    box-shadow 160ms;
 }
 .assistant-launcher .progress-blob {
   width: 34px;
   height: 34px;
   overflow: visible;
+  filter: drop-shadow(0 5px 5px oklch(0 0 0 / 0.45));
 }
 .assistant-launcher[data-active='false'] .progress-blob-body {
   animation: none;
@@ -2193,22 +2186,12 @@
 .assistant-launcher[data-attention='true'] {
   --primary: var(--destructive);
 }
-.assistant-launcher:hover {
-  border-color: color-mix(in srgb, var(--primary) 55%, var(--glass-highlight));
-}
 .assistant-launcher:focus-visible {
   outline: 2px solid var(--ring);
   outline-offset: 3px;
 }
 .assistant-launcher:active {
   cursor: grabbing;
-}
-@media (prefers-reduced-transparency: reduce) {
-  .assistant-launcher {
-    background: var(--popover);
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
-  }
 }
 .assistant-height-handle {
   position: absolute;
