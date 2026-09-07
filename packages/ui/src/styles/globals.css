@@ -1955,10 +1955,28 @@
   }
 }
 
-/* The organic core moves only while the collapsed assistant is working. */
+/* Offset layers move independently while the collapsed assistant is working. */
+.progress-blob {
+  --blob-back: color-mix(
+    in oklab,
+    var(--primary) 18%,
+    var(--primary-foreground)
+  );
+  --blob-middle: color-mix(
+    in oklab,
+    var(--primary) 55%,
+    var(--primary-foreground)
+  );
+}
 .progress-blob-body {
   transform-origin: 40px 40px;
   animation: blob-breathe 3.6s ease-in-out infinite;
+}
+.progress-blob-back {
+  animation-delay: -2.4s;
+}
+.progress-blob-middle {
+  animation-delay: -1.2s;
 }
 @keyframes blob-breathe {
   0%,
@@ -2183,8 +2201,8 @@
     box-shadow 160ms;
 }
 .assistant-launcher .progress-blob {
-  width: 34px;
-  height: 34px;
+  width: 40px;
+  height: 40px;
   overflow: visible;
 }
 .assistant-launcher[data-active='false'] .progress-blob-body {
