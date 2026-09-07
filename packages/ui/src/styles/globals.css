@@ -1957,6 +1957,7 @@
 
 /* Centered layers move independently while the collapsed assistant is working. */
 .progress-blob {
+  isolation: isolate;
   display: grid;
   place-items: center;
   width: 48px;
@@ -1977,19 +1978,26 @@
   overflow: visible;
 }
 .progress-blob-layer-back {
+  --blob-rotation: -12deg;
+  z-index: 0;
   width: 48px;
   height: 48px;
   filter: drop-shadow(0 5px 6px oklch(0 0 0 / 0.3));
 }
 .progress-blob-layer-middle {
+  --blob-rotation: 5deg;
+  z-index: 1;
   width: 40px;
   height: 40px;
 }
 .progress-blob-layer-front {
+  --blob-rotation: 16deg;
+  z-index: 2;
   width: 32px;
   height: 32px;
 }
 .progress-blob-body {
+  rotate: var(--blob-rotation);
   transform-origin: 40px 40px;
   animation: blob-breathe 3.6s ease-in-out infinite;
 }
