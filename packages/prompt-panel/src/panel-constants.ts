@@ -1,4 +1,6 @@
-export const COLLAPSED_HEIGHT = 132
+export const COLLAPSED_HEIGHT = 56
+export const MIN_PANEL_HEIGHT = 240
+export const PANEL_HEIGHT_CSS_VAR = '--landing-panel-height'
 export const PANEL_HEIGHT = 360
 export const PANEL_WIDTH = 352
 export const PANEL_MARGIN = 20

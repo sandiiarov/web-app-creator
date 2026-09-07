@@ -237,9 +237,9 @@ export function ModelDropdown({
           className="px-1"
           size="xs"
           type="button"
-          variant="outline"
+          variant="ghost"
         >
-          <span className="max-w-32 truncate px-1">
+          <span className="max-w-32 truncate">
             {optionFor('text', models.text)?.label ?? models.text}
           </span>
           <ChevronDown data-icon="inline-end" />

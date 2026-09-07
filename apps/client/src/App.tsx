@@ -257,7 +257,6 @@ function useEditorPageRender({ projectId }: EditorPageProps) {
         }
         onModelsChange={landing.setModels}
         onReconnect={landing.reconnect}
-        onRenameProject={() => setRenaming(true)}
         onRetryTurn={handleRetryTurn}
         onSelectedElementAttachmentConsumed={() =>
           setSelectedElementAttachment(null)

@@ -46,7 +46,7 @@ export function SpendPopover({ turns }: { turns: LandingTurn[] }) {
           aria-label={`Project spend: ${triggerCost}`}
           size="xs"
           type="button"
-          variant="outline"
+          variant="ghost"
         >
           <span className="font-mono tabular-nums">{triggerCost}</span>
         </Button>

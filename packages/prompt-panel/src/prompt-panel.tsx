@@ -1,4 +1,5 @@
 import { Button } from '@workspace/ui/components/button'
+import { ProgressBlob } from '@workspace/ui/components/progress-blob'
 import { cn } from '@workspace/ui/lib/utils'
 import {
   type FormEvent,
@@ -30,6 +31,9 @@ import { PanelBody } from './panel-body'
 import {
   COLLAPSED_HEIGHT,
   MIN_PANEL_WIDTH,
+  MIN_PANEL_HEIGHT,
+  PANEL_HEIGHT_CSS_VAR,
+  STATUS_LABELS,
   PANEL_HEIGHT,
   PANEL_MARGIN,
   PANEL_WIDTH_CSS_VAR,
@@ -40,6 +44,7 @@ import {
   type PanelTheme,
 } from './panel-constants'
 import { PanelHeader } from './panel-header'
+import { resizePanelHeight } from './panel-height'
 import { panelStatus } from './panel-status'
 import {
   PANEL_POSITION_STORAGE_KEY,
@@ -81,7 +86,6 @@ export type PromptPanelProps = {
   onLocateElement: (selector: string) => void
   onModelsChange: (models: LandingModels) => void
   onReconnect: () => void
-  onRenameProject: () => void
   onRetryTurn: (turn: LandingTurn) => void
   onSelectedElementAttachmentConsumed: () => void
   onSend: (input: LandingAgentSendInput) => Promise<boolean>
@@ -134,7 +138,6 @@ export function PromptPanel({
   onLocateElement,
   onModelsChange,
   onReconnect,
-  onRenameProject,
   onRetryTurn,
   onSelectedElementAttachmentConsumed,
   onSend,
@@ -149,7 +152,6 @@ export function PromptPanel({
 }: PromptPanelProps) {
   const [collapsed, setCollapsed] = useState(initialPanelCollapsed)
   const [projectsOpen, setProjectsOpen] = useState(false)
-  const suppressTitleClick = useRef(false)
   const [panelMenuOpen, setPanelMenuOpen] = useState(false)
   const [position, setPosition] = useState<PanelPosition>(initialPanelPosition)
   const { attachments, prompt } = draft
@@ -189,6 +191,15 @@ export function PromptPanel({
   const dragState = useRef<DragState | null>(null)
   const resizeState = useRef<null | ResizeState>(null)
   const widthRef = useRef<number>(initialPanelWidth())
+  const heightRef = useRef(initialPanelHeight())
+  const [keyboardHeight, setKeyboardHeight] = useState(initialPanelHeight)
+  const verticalResize = useRef<null | {
+    edge: 'bottom' | 'top'
+    height: number
+    next: { height: number; top: number }
+    startY: number
+    top: number
+  }>(null)
 
   const placementRef = useRef({ collapsed, position })
   placementRef.current = { collapsed, position }
@@ -205,7 +216,12 @@ export function PromptPanel({
         // The compact position owns restoration, including dragging away from a dock.
         // An untouched dock still restores because its captured position is the dock origin.
         setPosition(
-          clampPanelPosition(compactPosition, false, widthRef.current),
+          clampPanelPosition(
+            compactPosition,
+            false,
+            widthRef.current,
+            heightRef.current,
+          ),
         )
       }
       placementRef.current = { ...current, collapsed: next }
@@ -217,7 +233,12 @@ export function PromptPanel({
   useEffect(() => {
     if (wasCollapsed.current === collapsed) return
     wasCollapsed.current = collapsed
-    if (collapsed) return
+    if (collapsed) {
+      sectionRef.current
+        ?.querySelector<HTMLButtonElement>('.assistant-launcher')
+        ?.focus({ preventScroll: true })
+      return
+    }
     let frame = 0
     const focusVisibleTarget = () => {
       const target =
@@ -246,9 +267,10 @@ export function PromptPanel({
 
   useLayoutEffect(() => {
     setPanelWidthVar(widthRef.current)
+    setPanelHeightVar(heightRef.current)
   }, [])
 
-  useClampToViewport(position, setPosition, false, widthRef)
+  useClampToViewport(position, setPosition, false, widthRef, heightRef)
   useEffect(() => {
     const viewport = window.visualViewport
     const update = () => {
@@ -277,7 +299,12 @@ export function PromptPanel({
   }, [])
 
   useEffect(() => {
-    writeStoredPanelState(position, collapsed, widthRef.current)
+    writeStoredPanelState(
+      position,
+      collapsed,
+      widthRef.current,
+      heightRef.current,
+    )
   }, [collapsed, position])
 
   useEffect(() => {
@@ -327,7 +354,6 @@ export function PromptPanel({
       if (event.button !== 0 || window.matchMedia('(max-width: 767px)').matches)
         return
 
-      suppressTitleClick.current = false
       dragState.current = {
         moved: false,
         offsetX: event.clientX - position.x,
@@ -339,7 +365,7 @@ export function PromptPanel({
         startX: event.clientX,
         startY: event.clientY,
       }
-      // Keep clicks on the stable title button; its pointer events bubble to the header.
+      // Capture the stable title element; its pointer events bubble to the header.
       const capture =
         event.target instanceof Element
           ? (event.target.closest<HTMLElement>('[data-panel-drag-handle]') ??
@@ -364,7 +390,6 @@ export function PromptPanel({
       )
         return
       state.moved = true
-      suppressTitleClick.current = true
       setDragging(true)
       state.pointerX = event.clientX
       state.pointerY = event.clientY
@@ -388,6 +413,7 @@ export function PromptPanel({
           },
           collapsed,
           widthRef.current,
+          heightRef.current,
         )
         sectionRef.current.style.left = `${next.x}px`
         sectionRef.current.style.top = `${next.y}px`
@@ -412,6 +438,7 @@ export function PromptPanel({
           },
           collapsed,
           widthRef.current,
+          heightRef.current,
         ),
       )
     }
@@ -434,7 +461,7 @@ export function PromptPanel({
         return
       }
 
-      setPosition(defaultPanelPosition(widthRef.current))
+      setPosition(defaultPanelPosition(widthRef.current, heightRef.current))
     },
     [setPanelCollapsed],
   )
@@ -523,7 +550,7 @@ export function PromptPanel({
         const nextLeft = Math.max(0, startLeft + startWidth - next)
         setPosition({ x: nextLeft, y: position.y })
       } else {
-        writeStoredPanelState(position, collapsed, next)
+        writeStoredPanelState(position, collapsed, next, heightRef.current)
       }
     },
     [collapsed, position],
@@ -551,8 +578,99 @@ export function PromptPanel({
     widthRef.current = next
     setKeyboardWidth(next)
     setPanelWidthVar(next)
-    setPosition(clampPanelPosition({ x, y: position.y }, false, next))
-    writeStoredPanelState({ x, y: position.y }, collapsed, next)
+    setPosition(
+      clampPanelPosition({ x, y: position.y }, false, next, heightRef.current),
+    )
+    writeStoredPanelState(
+      { x, y: position.y },
+      collapsed,
+      next,
+      heightRef.current,
+    )
+  }
+
+  const commitHeight = (next: { height: number; top: number }) => {
+    heightRef.current = next.height
+    setKeyboardHeight(next.height)
+    setPanelHeightVar(next.height)
+    const nextPosition = { x: position.x, y: next.top }
+    setPosition(nextPosition)
+    writeStoredPanelState(
+      nextPosition,
+      collapsed,
+      widthRef.current,
+      next.height,
+    )
+  }
+  const handleVerticalStart = (
+    event: ReactPointerEvent<HTMLDivElement>,
+    edge: 'bottom' | 'top',
+  ) => {
+    if (event.button !== 0 || !event.isPrimary || !sectionRef.current) return
+    event.stopPropagation()
+    const bounds = sectionRef.current.getBoundingClientRect()
+    verticalResize.current = {
+      edge,
+      height: bounds.height,
+      next: { height: bounds.height, top: bounds.top },
+      startY: event.clientY,
+      top: bounds.top,
+    }
+    setResizing(true)
+    event.currentTarget.setPointerCapture(event.pointerId)
+  }
+  const handleVerticalMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const current = verticalResize.current
+    if (!current || !sectionRef.current) return
+    current.next = resizePanelHeight(
+      current.edge,
+      current.top,
+      current.height,
+      event.clientY - current.startY,
+      window.innerHeight,
+      dockedPanelSide({ x: position.x, y: 0 }, widthRef.current) ? 1 : 0,
+    )
+    setPanelHeightVar(current.next.height)
+    sectionRef.current.style.top = `${current.next.top}px`
+  }
+  const handleVerticalEnd = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const current = verticalResize.current
+    if (!current) return
+    event.stopPropagation()
+    verticalResize.current = null
+    commitHeight(current.next)
+    setResizing(false)
+    if (event.currentTarget.hasPointerCapture(event.pointerId))
+      event.currentTarget.releasePointerCapture(event.pointerId)
+  }
+  const handleVerticalKeyDown = (
+    event: KeyboardEvent<HTMLDivElement>,
+    edge: 'bottom' | 'top',
+  ) => {
+    if (
+      !['ArrowDown', 'ArrowUp', 'End', 'Home'].includes(event.key) ||
+      !sectionRef.current
+    )
+      return
+    event.preventDefault()
+    const bounds = sectionRef.current.getBoundingClientRect()
+    const direction = edge === 'bottom' ? 1 : -1
+    const delta =
+      event.key === 'Home'
+        ? (MIN_PANEL_HEIGHT - bounds.height) * direction
+        : event.key === 'End'
+          ? window.innerHeight * direction
+          : (event.key === 'ArrowDown' ? 1 : -1) * (event.shiftKey ? 48 : 16)
+    commitHeight(
+      resizePanelHeight(
+        edge,
+        bounds.top,
+        bounds.height,
+        delta,
+        window.innerHeight,
+        dockedPanelSide({ x: position.x, y: 0 }, widthRef.current) ? 1 : 0,
+      ),
+    )
   }
 
   const handleAllProjects = useCallback(() => {
@@ -731,23 +849,24 @@ export function PromptPanel({
     ? 'auto'
     : dockedSide
       ? '100dvh'
-      : `${PANEL_HEIGHT}px`
+      : `var(${PANEL_HEIGHT_CSS_VAR})`
   const panelStyle = {
     height: panelHeight,
     left: `${position.x}px`,
-    maxHeight: dockedSide ? '100dvh' : 'calc(100svh - 40px)',
+    maxHeight: '100dvh',
     maxWidth: '100vw',
     top: `${dockedSide ? 0 : position.y}px`,
     width: `var(${PANEL_WIDTH_CSS_VAR})`,
     ...(collapsed
       ? {
           bottom: 'calc(20px + var(--assistant-keyboard-inset, 0px))',
-          height: 'auto',
+          height: `${COLLAPSED_HEIGHT}px`,
           left: 'auto',
           maxHeight: 'calc(var(--assistant-visible-height, 100dvh) - 16px)',
           maxWidth: 'calc(100vw - 16px)',
           right: 'min(20px, 2.5vw)',
           top: 'auto',
+          width: `${COLLAPSED_HEIGHT}px`,
           ...launcherDrag.style,
         }
       : {}),
@@ -756,7 +875,8 @@ export function PromptPanel({
   return (
     <>
       <section
-        aria-labelledby="assistant-title"
+        aria-label={collapsed ? projectTitle : undefined}
+        aria-labelledby={collapsed ? undefined : 'assistant-title'}
         className={cn(
           'liquid-panel fixed z-30 flex flex-col overflow-hidden rounded-3xl text-popover-foreground',
           dockedSide === 'left' && 'rounded-l-none',
@@ -776,7 +896,26 @@ export function PromptPanel({
         ref={sectionRef}
         style={panelStyle}
       >
-        <div className="flex h-full min-h-0 flex-col">
+        {collapsed ? (
+          <button
+            aria-controls="landing-chat"
+            aria-expanded={false}
+            aria-label={`Show conversation for ${projectTitle}. ${connection === 'live' ? STATUS_LABELS[status] : connection}`}
+            className="assistant-launcher"
+            data-active={isStreaming && connection === 'live'}
+            data-attention={status === 'error' || connection === 'offline'}
+            data-panel-drag-handle=""
+            onClick={() => {
+              if (launcherDrag.shouldOpen()) setPanelCollapsed(false)
+            }}
+            title={`${connection === 'live' ? STATUS_LABELS[status] : connection} · Drag to move. Click to open.`}
+            type="button"
+            {...launcherDrag.handlers}
+          >
+            <ProgressBlob />
+          </button>
+        ) : null}
+        <div className="flex h-full min-h-0 flex-col" hidden={collapsed}>
           <PanelHeader
             collapsed={collapsed}
             connection={connection}
@@ -787,27 +926,12 @@ export function PromptPanel({
               setProjectsOpen((open) => !open)
               setPanelCollapsed(false)
             }}
-            onDragEnd={
-              collapsed ? launcherDrag.handlers.onPointerUp : handleDragEnd
-            }
-            onDragKeyDown={(event) => {
-              if (collapsed) launcherDrag.handlers.onKeyDown(event)
-              else suppressTitleClick.current = false
-            }}
-            onDragMove={
-              collapsed ? launcherDrag.handlers.onPointerMove : handleDragMove
-            }
-            onDragStart={
-              collapsed ? launcherDrag.handlers.onPointerDown : handleDragStart
-            }
+            onDragEnd={handleDragEnd}
+            onDragMove={handleDragMove}
+            onDragStart={handleDragStart}
             onLayoutChange={handleLayoutChange}
             onMobileExpandedChange={setMobileExpanded}
             onPanelMenuOpenChange={setPanelMenuOpen}
-            onRenameProject={() => {
-              if (collapsed) {
-                if (launcherDrag.shouldOpen()) setPanelCollapsed(false)
-              } else if (!suppressTitleClick.current) onRenameProject()
-            }}
             onToggleCollapsed={() => {
               setProjectsOpen(false)
               setPanelCollapsed(!collapsed)
@@ -903,6 +1027,33 @@ export function PromptPanel({
             />
           </div>
         </div>
+        {!collapsed && !dockedSide
+          ? (['top', 'bottom'] as const).map((edge) => (
+              <div
+                aria-controls="page-assistant"
+                aria-label={`Resize panel ${edge} edge`}
+                aria-orientation="horizontal"
+                aria-valuemax={window.innerHeight}
+                aria-valuemin={Math.min(MIN_PANEL_HEIGHT, window.innerHeight)}
+                aria-valuenow={Math.min(keyboardHeight, window.innerHeight)}
+                className={cn(
+                  'assistant-height-handle',
+                  edge === 'top'
+                    ? 'assistant-height-handle-top'
+                    : 'assistant-height-handle-bottom',
+                )}
+                key={edge}
+                onKeyDown={(event) => handleVerticalKeyDown(event, edge)}
+                onLostPointerCapture={handleVerticalEnd}
+                onPointerCancel={handleVerticalEnd}
+                onPointerDown={(event) => handleVerticalStart(event, edge)}
+                onPointerMove={handleVerticalMove}
+                onPointerUp={handleVerticalEnd}
+                role="separator"
+                tabIndex={0}
+              />
+            ))
+          : null}
         {collapsed ? null : (
           <>
             <PanelResizeHandle
@@ -983,13 +1134,14 @@ function clampPanelPosition(
   position: PanelPosition,
   collapsed: boolean,
   width: number,
+  floatingHeight = PANEL_HEIGHT,
 ): PanelPosition {
   const dockedSide = dockedPanelSide(position, width)
   const height = collapsed
     ? COLLAPSED_HEIGHT
     : dockedSide
       ? window.innerHeight
-      : PANEL_HEIGHT
+      : floatingHeight
   const maxX = rightDockX(width)
   const maxY = Math.max(0, window.innerHeight - height)
   const x = dockedSide === 'right' ? maxX : Math.min(position.x, maxX)
@@ -1007,10 +1159,13 @@ function createAttachmentId() {
     : `image-${Date.now()}-${Math.random().toString(16).slice(2)}`
 }
 
-function defaultPanelPosition(width: number): PanelPosition {
+function defaultPanelPosition(
+  width: number,
+  height = initialPanelHeight(),
+): PanelPosition {
   return {
     x: Math.max(PANEL_MARGIN, window.innerWidth - width - PANEL_MARGIN),
-    y: Math.max(PANEL_MARGIN, window.innerHeight - PANEL_HEIGHT - PANEL_MARGIN),
+    y: Math.max(0, window.innerHeight - height - PANEL_MARGIN),
   }
 }
 
@@ -1047,6 +1202,13 @@ async function fileToImageAttachment(
 
 function initialPanelCollapsed(): boolean {
   return readStoredPanelCollapsed() ?? false
+}
+
+function initialPanelHeight(): number {
+  const value = readStoredPanelState()?.height
+  return typeof value === 'number' && Number.isFinite(value)
+    ? Math.max(MIN_PANEL_HEIGHT, value)
+    : PANEL_HEIGHT
 }
 
 function initialPanelPosition(): PanelPosition {
@@ -1148,11 +1310,23 @@ function readStoredPanelPosition(width: number): null | PanelPosition {
   if (state.layout === 'right-sidebar') return { x: rightDockX(width), y: 0 }
 
   if (window.innerWidth < 768) return { x: state.x, y: state.y }
-  return clampPanelPosition({ x: state.x, y: state.y }, false, width)
+  return clampPanelPosition(
+    { x: state.x, y: state.y },
+    false,
+    width,
+    initialPanelHeight(),
+  )
 }
 
 function rightDockX(width: number) {
   return Math.max(0, window.innerWidth - Math.min(width, window.innerWidth))
+}
+
+function setPanelHeightVar(height: number) {
+  document.documentElement.style.setProperty(
+    PANEL_HEIGHT_CSS_VAR,
+    `${height}px`,
+  )
 }
 
 function setPanelWidthVar(width: number) {
@@ -1164,6 +1338,7 @@ function useClampToViewport(
   setPosition: (next: PanelPosition) => void,
   collapsed: boolean,
   widthRef: RefObject<number>,
+  heightRef: RefObject<number>,
 ) {
   useEffect(() => {
     let previousWidth = window.innerWidth
@@ -1172,6 +1347,7 @@ function useClampToViewport(
       // Phone presentation is CSS-owned. Preserve the desktop placement.
       if (window.innerWidth < 768) return
       const width = widthRef.current
+      const height = Math.min(heightRef.current, window.innerHeight)
       const docked =
         position.y === 0
           ? position.x === 0
@@ -1191,22 +1367,29 @@ function useClampToViewport(
         Math.abs(position.x + width + PANEL_MARGIN - previousWidth) <=
         PANEL_MARGIN
       const atBottom =
-        Math.abs(position.y + PANEL_HEIGHT + PANEL_MARGIN - previousHeight) <=
-        PANEL_MARGIN
+        Math.abs(
+          position.y +
+            Math.min(heightRef.current, previousHeight) +
+            PANEL_MARGIN -
+            previousHeight,
+        ) <= PANEL_MARGIN
       const nextPosition = clampPanelPosition(
         {
-          x: atRight
-            ? Math.max(PANEL_MARGIN, window.innerWidth - width - PANEL_MARGIN)
-            : position.x,
-          y: atBottom
-            ? Math.max(
-                PANEL_MARGIN,
-                window.innerHeight - PANEL_HEIGHT - PANEL_MARGIN,
-              )
-            : position.y,
+          x:
+            atRight && window.innerWidth !== previousWidth
+              ? Math.max(PANEL_MARGIN, window.innerWidth - width - PANEL_MARGIN)
+              : position.x,
+          y:
+            atBottom && window.innerHeight !== previousHeight
+              ? Math.max(
+                  PANEL_MARGIN,
+                  window.innerHeight - height - PANEL_MARGIN,
+                )
+              : position.y,
         },
         collapsed,
         width,
+        height,
       )
       previousWidth = window.innerWidth
       previousHeight = window.innerHeight
@@ -1216,13 +1399,14 @@ function useClampToViewport(
     onResize()
     window.addEventListener('resize', onResize)
     return () => window.removeEventListener('resize', onResize)
-  }, [collapsed, position, setPosition, widthRef])
+  }, [collapsed, position, setPosition, widthRef, heightRef])
 }
 
 function writeStoredPanelState(
   position: PanelPosition,
   collapsed: boolean,
   width: number,
+  height: number,
 ) {
   try {
     const dockedSide = dockedPanelSide(position, width)
@@ -1232,7 +1416,7 @@ function writeStoredPanelState(
 
     window.localStorage.setItem(
       PANEL_POSITION_STORAGE_KEY,
-      JSON.stringify({ ...position, collapsed, layout, width }),
+      JSON.stringify({ ...position, collapsed, height, layout, width }),
     )
   } catch {
     // Ignore storage errors from private mode or blocked localStorage.

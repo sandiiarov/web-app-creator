@@ -9,6 +9,7 @@ export const PANEL_POSITION_STORAGE_KEY = 'landing.promptPanel.position.v2'
 
 export type StoredPanelState = Partial<PanelPosition> & {
   collapsed?: boolean
+  height?: number
   layout?: PanelLayout
   width?: number
 }

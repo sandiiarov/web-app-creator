@@ -9,11 +9,11 @@ export function ProgressBlob() {
         <radialGradient cx="28%" cy="22%" id={`${id}-light`} r="80%">
           <stop offset="0" stopColor="var(--blob-light)" />
           <stop offset="0.4" stopColor="var(--primary)" />
-          <stop offset="1" stopColor="var(--blob-shade)" />
+          <stop offset="1" stopColor="var(--primary)" />
         </radialGradient>
         <radialGradient cx="70%" cy="70%" id={`${id}-rim`} r="65%">
           <stop offset="0" stopColor="var(--blob-light)" stopOpacity="0" />
-          <stop offset="1" stopColor="var(--blob-light)" stopOpacity="0.6" />
+          <stop offset="1" stopColor="var(--blob-light)" stopOpacity="0.25" />
         </radialGradient>
       </defs>
       <g className="progress-blob-body">
@@ -29,12 +29,20 @@ export function ProgressBlob() {
           cx="29"
           cy="24"
           fill="var(--blob-light)"
-          opacity="0.6"
+          opacity="0.25"
           rx="10"
           ry="5"
           transform="rotate(-35 29 24)"
         />
       </g>
+      <path
+        d="m27 32 8 8-8 8m14 0h12"
+        fill="none"
+        stroke="var(--primary-foreground)"
+        strokeLinecap="square"
+        strokeLinejoin="miter"
+        strokeWidth="3.5"
+      />
     </svg>
   )
 }

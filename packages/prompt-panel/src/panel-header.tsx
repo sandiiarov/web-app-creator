@@ -1,5 +1,4 @@
 import { Button } from '@workspace/ui/components/button'
-import { ProgressBlob } from '@workspace/ui/components/progress-blob'
 import {
   Tooltip,
   TooltipContent,
@@ -17,7 +16,7 @@ import {
   Pause,
   WifiOff,
 } from 'lucide-react'
-import { type ReactNode, type KeyboardEvent, type PointerEvent } from 'react'
+import { type ReactNode, type PointerEvent } from 'react'
 
 import { KeyboardShortcut } from './keyboard-shortcut'
 import { KEYBOARD_SHORTCUTS } from './keyboard-shortcuts'
@@ -33,13 +32,11 @@ export function PanelHeader({
   mobileExpanded,
   onAllProjects,
   onDragEnd,
-  onDragKeyDown,
   onDragMove,
   onDragStart,
   onLayoutChange,
   onMobileExpandedChange,
   onPanelMenuOpenChange,
-  onRenameProject,
   onToggleCollapsed,
   onToggleTheme,
   pageActions,
@@ -57,13 +54,11 @@ export function PanelHeader({
   mobileExpanded: boolean
   onAllProjects: () => void
   onDragEnd: (event: PointerEvent<HTMLElement>) => void
-  onDragKeyDown?: (event: KeyboardEvent<HTMLElement>) => void
   onDragMove: (event: PointerEvent<HTMLElement>) => void
   onDragStart: (event: PointerEvent<HTMLElement>) => void
   onLayoutChange: (layout: PanelLayout) => void
   onMobileExpandedChange: (value: boolean) => void
   onPanelMenuOpenChange: (open: boolean) => void
-  onRenameProject: () => void
   onToggleCollapsed: () => void
   onToggleTheme: () => void
   pageActions: ReactNode
@@ -131,28 +126,15 @@ export function PanelHeader({
         id="assistant-title"
         title={projectTitle}
       >
-        <Button
-          aria-label={
-            collapsed
-              ? `Show conversation for ${projectTitle}`
-              : `Rename ${projectTitle}`
-          }
+        <span
           className="assistant-project-title"
           data-panel-drag-handle=""
-          onClick={onRenameProject}
-          onKeyDown={onDragKeyDown}
-          size="xs"
-          title={
-            collapsed
-              ? 'Drag to move. Click to show conversation.'
-              : 'Drag to move. Click to rename.'
-          }
-          variant="ghost"
+          title="Drag to move"
         >
           <span className="truncate">
             {projectTitle === 'Untitled' ? 'New project' : projectTitle}
           </span>
-        </Button>
+        </span>
       </h1>
       <Tooltip>
         <TooltipTrigger asChild>
@@ -165,17 +147,13 @@ export function PanelHeader({
             role="status"
             tabIndex={0}
           >
-            {collapsed && busy && connection === 'live' ? (
-              <ProgressBlob />
-            ) : (
-              <StatusIcon
-                aria-hidden="true"
-                className={cn(
-                  'size-3.5',
-                  busy && connection !== 'offline' && 'animate-spin',
-                )}
-              />
-            )}
+            <StatusIcon
+              aria-hidden="true"
+              className={cn(
+                'size-3.5',
+                busy && connection !== 'offline' && 'animate-spin',
+              )}
+            />
           </span>
         </TooltipTrigger>
         <TooltipContent>{label}</TooltipContent>
