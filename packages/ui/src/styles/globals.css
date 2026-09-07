@@ -1955,57 +1955,10 @@
   }
 }
 
-/* Centered layers move independently while the collapsed assistant is working. */
-.progress-blob {
-  isolation: isolate;
-  display: grid;
-  place-items: center;
-  width: 48px;
-  height: 48px;
-  --blob-back: color-mix(
-    in oklab,
-    var(--primary) 18%,
-    var(--primary-foreground)
-  );
-  --blob-middle: color-mix(
-    in oklab,
-    var(--primary) 55%,
-    var(--primary-foreground)
-  );
-}
-.progress-blob-layer {
-  grid-area: 1 / 1;
-  overflow: visible;
-}
-.progress-blob-layer-back {
-  --blob-rotation: -12deg;
-  z-index: 0;
-  width: 48px;
-  height: 48px;
-  filter: drop-shadow(0 5px 6px oklch(0 0 0 / 0.3));
-}
-.progress-blob-layer-middle {
-  --blob-rotation: 5deg;
-  z-index: 1;
-  width: 40px;
-  height: 40px;
-}
-.progress-blob-layer-front {
-  --blob-rotation: 16deg;
-  z-index: 2;
-  width: 32px;
-  height: 32px;
-}
+/* The organic core moves only while the collapsed assistant is working. */
 .progress-blob-body {
-  rotate: var(--blob-rotation);
   transform-origin: 40px 40px;
   animation: blob-breathe 3.6s ease-in-out infinite;
-}
-.progress-blob-back {
-  animation-delay: -2.4s;
-}
-.progress-blob-middle {
-  animation-delay: -1.2s;
 }
 @keyframes blob-breathe {
   0%,
@@ -2214,12 +2167,25 @@
   width: 56px;
   height: 56px;
   padding: 0;
-  border: 0;
-  background: transparent;
-  box-shadow: none;
+  border: 1px solid var(--glass-highlight);
+  background: var(--widget-surface);
+  background-image: var(--glass-sheen);
+  box-shadow:
+    0 4px 12px -5px oklch(0 0 0 / 0.28),
+    inset 0 1px 0 var(--glass-highlight);
+  backdrop-filter: blur(20px) saturate(1.2);
+  -webkit-backdrop-filter: blur(20px) saturate(1.2);
   cursor: grab;
   touch-action: none;
   outline: none;
+  transition:
+    border-color 160ms,
+    box-shadow 160ms;
+}
+.assistant-launcher .progress-blob {
+  width: 34px;
+  height: 34px;
+  overflow: visible;
 }
 .assistant-launcher[data-active='false'] .progress-blob-body {
   animation: none;
@@ -2227,12 +2193,22 @@
 .assistant-launcher[data-attention='true'] {
   --primary: var(--destructive);
 }
+.assistant-launcher:hover {
+  border-color: color-mix(in srgb, var(--primary) 55%, var(--glass-highlight));
+}
 .assistant-launcher:focus-visible {
   outline: 2px solid var(--ring);
   outline-offset: 3px;
 }
 .assistant-launcher:active {
   cursor: grabbing;
+}
+@media (prefers-reduced-transparency: reduce) {
+  .assistant-launcher {
+    background: var(--popover);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
 }
 .assistant-height-handle {
   position: absolute;
