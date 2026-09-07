@@ -1,10 +1,5 @@
-import { config } from '../../config.ts'
-import {
-  calculateLlmCost,
-  firecrawlCost,
-  imageGenCost,
-  visionCost,
-} from './cost.ts'
+import type { ProviderUsageReport } from '../../providers/operation-scope.ts'
+import { calculateLlmCost, firecrawlCost } from './cost.ts'
 import type { ProjectMessageStatsPart } from './project-store.ts'
 
 /**
@@ -17,35 +12,22 @@ import type { ProjectMessageStatsPart } from './project-store.ts'
  * estimated from token/image counts.
  */
 
+export type RecordedStatsPayload = Omit<ProjectMessageStatsPart, 'type'>
+
 export interface RunStatsTracker {
   /** True when the cap tripped (fatal already escalated via `onFatal`). */
   checkCostCap(): boolean
   emitStats: (finishReason?: string) => void
-  /** Accumulate prompt-attachment vision OCR metadata + emit a snapshot. */
-  recordAttachmentVision(analysis: {
-    cost: number
-    ok: boolean
-    visionImages: number
-  }): void
-  /** Accumulate generate_image cost. Returns true when cost was added. */
-  recordGenerateImage(result: {
-    cost?: number
-    imagesGenerated?: number
-  }): boolean
+  /** Record one deduplicated provider usage report at response parse time. */
+  recordProviderUsage(report: ProviderUsageReport): void
   /** Sum a terminal provider-cost raw chunk + emit a snapshot (no-op ≤ 0). */
   recordRawProviderCost(cost: number): void
-  /** Accumulate Firecrawl credits + bundled scrape OCR cost. */
-  recordScrapeResult(result: {
-    creditsUsed?: number
-    imageOcr?: ResultImageOcr
-  }): void
-  /** Accumulate screenshot vision OCR metadata. Returns true when cost was added. */
-  recordScreenshotOcr(result: { imageOcr?: ResultImageOcr }): boolean
   /** Update the rolling usage snapshot from a step-finish payload + emit. */
   recordStepUsage(payload: {
     output: { usage: unknown }
     totalUsage?: unknown
   }): void
+  snapshot(finishReason?: string): RecordedStatsPayload
   usage: UsageSnapshot
 }
 
@@ -58,28 +40,17 @@ export interface UsageSnapshot {
   totalTokens?: number
 }
 
-interface ImageOcrUsage {
-  cachedTokens?: number
-  completionTokens?: number
-  promptTokens?: number
-}
-
-type RecordedStatsPayload = Omit<ProjectMessageStatsPart, 'type'>
-
-interface ResultImageOcr {
-  cost?: number
-  imagesAnalyzed?: number
-  ok?: boolean
-  usage?: ImageOcrUsage | null
-}
-
 export function createRunStatsTracker({
+  costCapUsd,
   emit,
+  firecrawlCreditUsd,
   onFatal,
   startedAt,
   textModel,
 }: {
+  costCapUsd?: number
   emit: (event: string, payload: unknown) => void
+  firecrawlCreditUsd: number
   onFatal: (message: string) => void
   startedAt: number
   textModel: string
@@ -104,8 +75,6 @@ export function createRunStatsTracker({
   let scrapeOcrImages = 0
   // Optional per-run USD cap (config.agentMaxCostUsd). 0/undefined disables it.
   // Checked after each LLM/image/vision cost accrual; aborts the run if exceeded.
-  const costCapUsd = config.agentMaxCostUsd
-
   let liveUsage: UsageSnapshot = {}
 
   const createStatsPayload = (
@@ -120,10 +89,7 @@ export function createRunStatsTracker({
       reasoningTokens: usage.reasoningTokens,
       totalTokens: usage.totalTokens,
     })
-    const firecrawlCostUsd = firecrawlCost(
-      scrapeCredits,
-      config.firecrawl.creditUsd,
-    )
+    const firecrawlCostUsd = firecrawlCost(scrapeCredits, firecrawlCreditUsd)
     const scrapeCostUsd = firecrawlCostUsd + scrapeOcrCostUsd
     const totalCost = llmCost + scrapeCostUsd + imageCostUsd + visionCostUsd
 
@@ -168,8 +134,13 @@ export function createRunStatsTracker({
   }
 
   const checkCostCap = (): boolean => {
-    if (costCapUsd <= 0) return false
-    const runCostUsd = llmProviderCostUsd + imageCostUsd + visionCostUsd
+    if (costCapUsd == null || costCapUsd <= 0) return false
+    const runCostUsd =
+      llmProviderCostUsd +
+      firecrawlCost(scrapeCredits, firecrawlCreditUsd) +
+      scrapeOcrCostUsd +
+      imageCostUsd +
+      visionCostUsd
     if (runCostUsd < costCapUsd) return false
     onFatal(`Run exceeded the $${costCapUsd.toFixed(2)} cost cap.`)
     return true
@@ -178,56 +149,31 @@ export function createRunStatsTracker({
   return {
     checkCostCap,
     emitStats,
-    recordAttachmentVision(analysis) {
-      visionImages += analysis.visionImages
-      visionCostUsd += analysis.cost
-      if (analysis.ok) visionCalls += 1
+    recordProviderUsage(report) {
+      if (report.category === 'firecrawl' && report.unit === 'credits') {
+        scrapeCredits += report.amount
+        scrapeCalls += report.count ?? 1
+      } else if (report.category === 'image' && report.unit === 'usd') {
+        imageCostUsd += report.amount
+        imageCount += report.count ?? 0
+      } else if (report.category === 'vision' && report.unit === 'usd') {
+        if (report.source === 'scrape') {
+          scrapeOcrCostUsd += report.amount
+          scrapeOcrCalls += 1
+          scrapeOcrImages += report.count ?? 0
+        } else {
+          visionCostUsd += report.amount
+          visionCalls += 1
+          visionImages += report.count ?? 0
+        }
+      }
       emitStats()
-    },
-    recordGenerateImage(result) {
-      if (typeof result.imagesGenerated !== 'number') return false
-      imageCount += result.imagesGenerated
-      imageCostUsd += imageGenCost(result.imagesGenerated, result.cost)
-      return true
+      checkCostCap()
     },
     recordRawProviderCost(cost) {
       if (cost <= 0) return
       llmProviderCostUsd += cost
       emitStats()
-    },
-    recordScrapeResult(result) {
-      scrapeCalls += 1
-      if (typeof result.creditsUsed === 'number') {
-        scrapeCredits += result.creditsUsed
-      }
-      const imageOcr = result.imageOcr
-      if (imageOcr?.ok && (imageOcr.imagesAnalyzed ?? 0) > 0) {
-        scrapeOcrCalls += 1
-        scrapeOcrImages += imageOcr.imagesAnalyzed ?? 0
-        scrapeOcrCostUsd += visionCost(
-          {
-            cachedTokens: imageOcr.usage?.cachedTokens,
-            completionTokens: imageOcr.usage?.completionTokens,
-            promptTokens: imageOcr.usage?.promptTokens,
-          },
-          imageOcr.cost,
-        )
-      }
-    },
-    recordScreenshotOcr(result) {
-      const imageOcr = result.imageOcr
-      if (!imageOcr?.ok || (imageOcr.imagesAnalyzed ?? 0) <= 0) return false
-      visionCalls += 1
-      visionImages += imageOcr.imagesAnalyzed ?? 0
-      visionCostUsd += visionCost(
-        {
-          cachedTokens: imageOcr.usage?.cachedTokens,
-          completionTokens: imageOcr.usage?.completionTokens,
-          promptTokens: imageOcr.usage?.promptTokens,
-        },
-        imageOcr.cost,
-      )
-      return true
     },
     recordStepUsage(payload) {
       liveUsage = payload.totalUsage
@@ -237,6 +183,9 @@ export function createRunStatsTracker({
             toUsageSnapshot(payload.output.usage as UsageSnapshot),
           )
       emitStats()
+    },
+    snapshot(finishReason = 'in-progress') {
+      return createStatsPayload(liveUsage, finishReason)
     },
     get usage() {
       return liveUsage

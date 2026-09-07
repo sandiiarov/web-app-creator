@@ -21,11 +21,13 @@ import type {
   ImageAttachmentInput,
   ImageAttachmentMediaType,
   LandingAgentSendInput,
+  LandingAgentSendResult,
   LandingModelPricing,
   LandingModels,
   LandingTurn,
   PromptAttachmentInput,
 } from './domain'
+import { shouldClearSubmittedDraft } from './domain'
 import { KEYBOARD_SHORTCUTS } from './keyboard-shortcuts'
 import { PanelBody } from './panel-body'
 import {
@@ -65,6 +67,7 @@ const MAX_ATTACHMENT_TOTAL_SIZE = 16 * 1024 * 1024
 
 export type PromptPanelProps = {
   canSelectElement: boolean
+  compactionPercent: number
   connection: 'connecting' | 'live' | 'offline' | 'reconnecting'
   draft: { attachments: PromptAttachmentInput[]; prompt: string }
   draftError?: null | string
@@ -75,6 +78,7 @@ export type PromptPanelProps = {
   modelPricing?: Record<string, LandingModelPricing>
   models: LandingModels
   onAllProjects: () => void
+  onCompactionPercentChange: (percent: number) => void
   onDraftChange: (
     update: (draft: {
       attachments: PromptAttachmentInput[]
@@ -88,7 +92,7 @@ export type PromptPanelProps = {
   onReconnect: () => void
   onRetryTurn: (turn: LandingTurn) => void
   onSelectedElementAttachmentConsumed: () => void
-  onSend: (input: LandingAgentSendInput) => Promise<boolean>
+  onSend: (input: LandingAgentSendInput) => Promise<LandingAgentSendResult>
   onStop: () => void
   onToggleTheme: () => void
   pageActions: ReactNode
@@ -122,6 +126,7 @@ type ResizeState = {
 
 export function PromptPanel({
   canSelectElement,
+  compactionPercent,
   connection,
   draft,
   draftError,
@@ -132,6 +137,7 @@ export function PromptPanel({
   modelPricing,
   models,
   onAllProjects,
+  onCompactionPercentChange,
   onDraftChange,
   onElementSelectionToggle,
   onLayoutChange,
@@ -155,9 +161,32 @@ export function PromptPanel({
   const [panelMenuOpen, setPanelMenuOpen] = useState(false)
   const [position, setPosition] = useState<PanelPosition>(initialPanelPosition)
   const { attachments, prompt } = draft
+  const draftRevision = useRef(0)
+  const previousDraft = useRef(draft)
+  const mounted = useRef(true)
+  const attachmentTask = useRef(0)
+  const attachmentRevision = useRef(0)
+  useEffect(() => {
+    mounted.current = true
+    return () => {
+      mounted.current = false
+      attachmentTask.current += 1
+    }
+  }, [])
+  useEffect(() => {
+    if (previousDraft.current === draft) return
+    if (previousDraft.current.attachments !== draft.attachments) {
+      attachmentRevision.current += 1
+      attachmentTask.current += 1
+    }
+    previousDraft.current = draft
+    draftRevision.current += 1
+  }, [draft])
   const setPrompt = useCallback(
-    (value: string) =>
-      onDraftChange((current) => ({ ...current, prompt: value })),
+    (value: string) => {
+      draftRevision.current += 1
+      onDraftChange((current) => ({ ...current, prompt: value }))
+    },
     [onDraftChange],
   )
   const setAttachments = useCallback(
@@ -165,12 +194,16 @@ export function PromptPanel({
       value:
         | ((current: PromptAttachmentInput[]) => PromptAttachmentInput[])
         | PromptAttachmentInput[],
-    ) =>
+    ) => {
+      draftRevision.current += 1
+      attachmentRevision.current += 1
+      attachmentTask.current += 1
       onDraftChange((current) => ({
         ...current,
         attachments:
           typeof value === 'function' ? value(current.attachments) : value,
-      })),
+      }))
+    },
     [onDraftChange],
   )
   const [mobileExpanded, setMobileExpanded] = useState(false)
@@ -681,13 +714,27 @@ export function PromptPanel({
     (files: FileList | null) => {
       const selected = Array.from(files ?? [])
       if (selected.length === 0) return
+      const task = ++attachmentTask.current
+      const revision = attachmentRevision.current
 
       void attachImageFiles(selected, attachments)
         .then((nextAttachments) => {
+          if (
+            !mounted.current ||
+            task !== attachmentTask.current ||
+            revision !== attachmentRevision.current
+          )
+            return
           setAttachments(nextAttachments)
           setAttachmentError(null)
         })
         .catch((error: unknown) => {
+          if (
+            !mounted.current ||
+            task !== attachmentTask.current ||
+            revision !== attachmentRevision.current
+          )
+            return
           setAttachmentError(
             error instanceof Error ? error.message : 'Failed to attach image',
           )
@@ -720,15 +767,20 @@ export function PromptPanel({
     submitLock.current = true
     setSubmitting(true)
     try {
-      const accepted = await onSend({
+      const submittedRevision = draftRevision.current
+      const result = await onSend({
         attachments,
         prompt: trimmed || 'Use the attached reference.',
       })
-      if (accepted) {
+      if (mounted.current && result.outcome === 'accepted') {
         setPanelCollapsed(false)
         setProjectsOpen(false)
         onDraftChange((current) =>
-          current.prompt === prompt && current.attachments === attachments
+          shouldClearSubmittedDraft(
+            draftRevision.current,
+            submittedRevision,
+            result.outcome,
+          )
             ? { attachments: [], prompt: '' }
             : current,
         )
@@ -918,6 +970,7 @@ export function PromptPanel({
         <div className="flex h-full min-h-0 flex-col" hidden={collapsed}>
           <PanelHeader
             collapsed={collapsed}
+            compactionPercent={compactionPercent}
             connection={connection}
             dragging={dragging}
             layout={layout}
@@ -926,6 +979,7 @@ export function PromptPanel({
               setProjectsOpen((open) => !open)
               setPanelCollapsed(false)
             }}
+            onCompactionPercentChange={onCompactionPercentChange}
             onDragEnd={handleDragEnd}
             onDragMove={handleDragMove}
             onDragStart={handleDragStart}

@@ -8,6 +8,7 @@ import {
   modelPricingFor,
   resolveLandingModels,
   selectLandingModel,
+  shouldClearSubmittedDraft,
   syncLandingModels,
   syncedVisionModel,
   VISION_MODEL_OPTIONS,
@@ -25,13 +26,13 @@ describe('model inventory', () => {
 
 describe('model pricing', () => {
   it('looks up pricing by base id and tolerates routing variants', () => {
-    expect(modelPricingFor('z-ai/glm-5.2')).toEqual({
-      cacheRead: 0.14,
-      input: 0.76,
-      output: 2.42,
+    expect(modelPricingFor('z-ai/glm-5.3')).toEqual({
+      cacheRead: 0.26,
+      input: 1.4,
+      output: 4.4,
     })
-    expect(modelPricingFor('z-ai/glm-5.2:nitro')).toEqual(
-      modelPricingFor('z-ai/glm-5.2'),
+    expect(modelPricingFor('z-ai/glm-5.3:nitro')).toEqual(
+      modelPricingFor('z-ai/glm-5.3'),
     )
     expect(modelPricingFor('unknown/model')).toBeUndefined()
   })
@@ -47,32 +48,38 @@ describe('model pricing', () => {
 
 describe('vision sync', () => {
   it('detects vision-capable text models, tolerating variants', () => {
-    expect(isVisionCapableTextModel('openai/gpt-5.6-luna:nitro')).toBe(true)
+    expect(isVisionCapableTextModel('openai/gpt-6-astra:nitro')).toBe(true)
+    expect(isVisionCapableTextModel('openai/gpt-6-astra-pro:nitro')).toBe(true)
+    expect(isVisionCapableTextModel('z-ai/glm-5.3-flash:nitro')).toBe(true)
+    expect(isVisionCapableTextModel('qwen/qwen3.8-flash:nitro')).toBe(true)
+    expect(isVisionCapableTextModel('anthropic/claude-fable-5.1:nitro')).toBe(
+      true,
+    )
     expect(isVisionCapableTextModel('anthropic/claude-opus-5:nitro')).toBe(true)
     expect(isVisionCapableTextModel('google/gemini-3.6-flash:nitro')).toBe(true)
-    expect(isVisionCapableTextModel('x-ai/grok-4.5:nitro')).toBe(true)
-    expect(isVisionCapableTextModel('z-ai/glm-5.2:nitro')).toBe(false)
+    expect(isVisionCapableTextModel('x-ai/grok-4.6:nitro')).toBe(true)
+    expect(isVisionCapableTextModel('z-ai/glm-5.3:nitro')).toBe(false)
     expect(isVisionCapableTextModel('tencent/hy3:nitro')).toBe(false)
-    expect(syncedVisionModel('openai/gpt-5.6-luna:nitro')).toBe(
-      'openai/gpt-5.6-luna',
+    expect(syncedVisionModel('openai/gpt-6-astra:nitro')).toBe(
+      'openai/gpt-6-astra',
     )
-    expect(syncedVisionModel('z-ai/glm-5.2:nitro')).toBeNull()
+    expect(syncedVisionModel('z-ai/glm-5.3:nitro')).toBeNull()
   })
 
   it('forces vision to the text model when it accepts images', () => {
     expect(
       syncLandingModels({
         image: 'bytedance-seed/seedream-4.5',
-        text: 'openai/gpt-5.6-luna:nitro',
+        text: 'openai/gpt-6-astra:nitro',
         vision: 'bytedance-seed/seed-2.0-mini',
       }).vision,
-    ).toBe('openai/gpt-5.6-luna')
+    ).toBe('openai/gpt-6-astra')
   })
 
   it('leaves vision free for text-only models', () => {
     const models = {
       image: 'bytedance-seed/seedream-4.5',
-      text: 'z-ai/glm-5.2:nitro',
+      text: 'z-ai/glm-5.3:nitro',
       vision: 'bytedance-seed/seed-2.0-mini',
     }
     expect(syncLandingModels(models)).toEqual(models)
@@ -82,7 +89,7 @@ describe('vision sync', () => {
     const next = selectLandingModel(
       {
         image: 'bytedance-seed/seedream-4.5',
-        text: 'z-ai/glm-5.2:nitro',
+        text: 'z-ai/glm-5.3:nitro',
         vision: 'bytedance-seed/seed-2.0-mini',
       },
       'text',
@@ -96,40 +103,40 @@ describe('vision sync', () => {
     const next = selectLandingModel(
       {
         image: 'bytedance-seed/seedream-4.5',
-        text: 'z-ai/glm-5.2:nitro',
+        text: 'z-ai/glm-5.3:nitro',
         vision: 'bytedance-seed/seed-2.0-mini',
       },
       'vision',
-      'openai/gpt-5.6-terra',
+      'openai/gpt-6-astra-pro',
     )
-    expect(next.text).toBe('openai/gpt-5.6-terra:nitro')
-    expect(next.vision).toBe('openai/gpt-5.6-terra')
+    expect(next.text).toBe('openai/gpt-6-astra-pro:nitro')
+    expect(next.vision).toBe('openai/gpt-6-astra-pro')
   })
 
   it('keeps the text brain when picking a vision-only model', () => {
     const next = selectLandingModel(
       {
         image: 'bytedance-seed/seedream-4.5',
-        text: 'z-ai/glm-5.2:nitro',
+        text: 'z-ai/glm-5.3:nitro',
         vision: 'bytedance-seed/seed-2.0-mini',
       },
       'vision',
       'google/gemini-3.5-flash-lite',
     )
-    expect(next.text).toBe('z-ai/glm-5.2:nitro')
+    expect(next.text).toBe('z-ai/glm-5.3:nitro')
     expect(next.vision).toBe('google/gemini-3.5-flash-lite')
   })
 
   it('enforces the invariant when restoring persisted selections', () => {
     expect(
       resolveLandingModels({
-        text: 'anthropic/claude-haiku-4.5',
+        text: 'anthropic/claude-sonnet-5',
         vision: 'bytedance-seed/seed-2.0-mini',
       }),
     ).toEqual({
       image: DEFAULT_LANDING_MODELS.image,
-      text: 'anthropic/claude-haiku-4.5:nitro',
-      vision: 'anthropic/claude-haiku-4.5',
+      text: 'anthropic/claude-sonnet-5:nitro',
+      vision: 'anthropic/claude-sonnet-5',
     })
   })
 })
@@ -160,7 +167,7 @@ describe('liveCapableIds', () => {
     const next = selectLandingModel(
       {
         image: 'bytedance-seed/seedream-4.5',
-        text: 'z-ai/glm-5.2:nitro',
+        text: 'z-ai/glm-5.3:nitro',
         vision: 'bytedance-seed/seed-2.0-mini',
       },
       'text',
@@ -173,7 +180,7 @@ describe('liveCapableIds', () => {
       selectLandingModel(
         {
           image: 'bytedance-seed/seedream-4.5',
-          text: 'z-ai/glm-5.2:nitro',
+          text: 'z-ai/glm-5.3:nitro',
           vision: 'bytedance-seed/seed-2.0-mini',
         },
         'text',
@@ -198,5 +205,14 @@ describe('resolveLandingModels', () => {
     expect(
       resolveLandingModels({ text: DEFAULT_LANDING_MODELS.text }).text,
     ).toBe(DEFAULT_LANDING_MODELS.text)
+  })
+})
+
+describe('submission acknowledgment', () => {
+  it('clears only the exact accepted draft revision', () => {
+    expect(shouldClearSubmittedDraft(4, 4, 'accepted')).toBe(true)
+    expect(shouldClearSubmittedDraft(5, 4, 'accepted')).toBe(false)
+    expect(shouldClearSubmittedDraft(4, 4, 'rejected')).toBe(false)
+    expect(shouldClearSubmittedDraft(4, 4, 'unknown')).toBe(false)
   })
 })

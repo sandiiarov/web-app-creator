@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import {
   calculateLlmCost,
@@ -7,6 +7,7 @@ import {
   providerReportedCost,
   visionCost,
 } from './cost'
+import { createRunStatsTracker } from './run-stats.ts'
 
 describe('calculateLlmCost', () => {
   it('returns zero when OpenRouter cost metadata is absent', () => {
@@ -100,5 +101,41 @@ describe('tool costs', () => {
     expect(
       visionCost({ completionTokens: 50, promptTokens: 1000 }, 0.006),
     ).toBe(0.006)
+  })
+})
+
+describe('run cost cap', () => {
+  it('includes Firecrawl credits and bundled scrape OCR immediately', () => {
+    const onFatal = vi.fn<(message: string) => void>()
+    const tracker = createRunStatsTracker({
+      costCapUsd: 0.01,
+      emit() {},
+      firecrawlCreditUsd: 0.002,
+      onFatal,
+      startedAt: Date.now(),
+      textModel: 'test/model',
+    })
+
+    tracker.recordProviderUsage({
+      amount: 3,
+      category: 'firecrawl',
+      count: 1,
+      operationId: 'scrape:1',
+      reportId: 'response',
+      source: 'scrape',
+      unit: 'credits',
+    })
+    expect(onFatal).not.toHaveBeenCalled()
+    tracker.recordProviderUsage({
+      amount: 0.005,
+      category: 'vision',
+      count: 2,
+      operationId: 'vision:2',
+      reportId: 'response',
+      source: 'scrape',
+      unit: 'usd',
+    })
+
+    expect(onFatal).toHaveBeenCalledWith('Run exceeded the $0.01 cost cap.')
   })
 })

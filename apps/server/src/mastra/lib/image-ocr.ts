@@ -1,5 +1,13 @@
 import { config } from '../../config.ts'
-import { boundedFetch } from './bounded-fetch.ts'
+import {
+  type OperationContext,
+  type OperationScope,
+  runProviderOperation,
+} from '../../providers/operation-scope.ts'
+import {
+  createProviderTransport,
+  type ProviderTransport,
+} from '../../providers/transport.ts'
 import { providerReportedCost } from './cost.ts'
 
 /**
@@ -56,7 +64,11 @@ export interface ImageOcrDataUrlInput {
 export type ImageOcrInput = ImageOcrDataUrlInput | ImageOcrUrlInput
 
 export interface ImageOcrOptions {
+  operation?: OperationContext
+  operations?: OperationScope
   signal?: AbortSignal
+  source?: 'attachment' | 'scrape' | 'screenshot'
+  transport?: ProviderTransport
 }
 
 export interface ImageOcrResult {
@@ -118,138 +130,30 @@ export async function ocrImageInputs(
   systemPrompt: string = UI_TO_ARTIFACT_SYSTEM_PROMPT,
   options: ImageOcrOptions = {},
 ): Promise<ImageOcrResult> {
-  const imageInputs = normalizeImageInputs(inputs)
-
-  if (!imageInputs.length) {
-    return {
-      imagesAnalyzed: 0,
-      ok: true,
-      text: '',
-      usage: null,
-    }
+  if (options.operation) {
+    return ocrImageInputsOwned(
+      inputs,
+      userPrompt,
+      model,
+      systemPrompt,
+      options,
+      options.operation,
+    )
   }
-
-  const loadedImages = await Promise.all(
-    imageInputs.map(async (input) => {
-      try {
-        return await loadImageInput(input, options.signal)
-      } catch (error) {
-        options.signal?.throwIfAborted()
-        return {
-          error:
-            error instanceof Error ? error.message : 'Failed to load image',
-          sourceLabel: sourceLabelForInput(input),
-        }
-      }
-    }),
-  )
-  const imageRefs = loadedImages.filter(
-    (image): image is LoadedImageRef => 'dataUrl' in image,
-  )
-  const failedCount = loadedImages.length - imageRefs.length
-
-  if (!imageRefs.length) {
-    const failureDetail = summarizeFailedImages(loadedImages)
-    return {
-      imagesAnalyzed: 0,
-      ok: false,
-      reason: `No image inputs could be loaded for OCR (${failedCount} failed${failureDetail ? `: ${failureDetail}` : ''}).`,
-      text: '',
-      usage: null,
-    }
-  }
-
-  const url = `${trimTrailingSlash(config.openrouter.chatApiUrl)}/chat/completions`
-  const fetched = await boundedFetch(
-    url,
-    {
-      body: JSON.stringify({
-        max_tokens: 4096,
-        messages: [
-          {
-            content: systemPrompt,
-            role: 'system',
-          },
-          {
-            content: [
-              {
-                text: buildUserMessage(
-                  userPrompt,
-                  imageRefs.map((image) => image.sourceLabel),
-                ),
-                type: 'text',
-              },
-              ...imageRefs.map((image) => ({
-                image_url: { url: image.dataUrl },
-                type: 'image_url',
-              })),
-            ],
-            role: 'user',
-          },
-        ],
+  return runProviderOperation(
+    options.operations,
+    'vision-ocr',
+    (operation) =>
+      ocrImageInputsOwned(
+        inputs,
+        userPrompt,
         model,
-        temperature: 0,
-      }),
-      headers: {
-        Authorization: `Bearer ${config.openrouter.apiKey}`,
-        'Content-Type': 'application/json',
-        'X-OpenRouter-Metadata': 'enabled',
-      },
-      method: 'POST',
-    },
-    { label: 'OpenRouter vision', signal: options.signal },
+        systemPrompt,
+        options,
+        operation,
+      ),
+    { signal: options.signal },
   )
-  if (!fetched.ok) {
-    return {
-      imagesAnalyzed: imageRefs.length,
-      ok: false,
-      reason: fetched.reason,
-      text: '',
-      usage: null,
-    }
-  }
-  const response = fetched.response
-
-  if (!response.ok) {
-    const text = await response.text().catch(() => '')
-    return {
-      imagesAnalyzed: imageRefs.length,
-      ok: false,
-      reason: `OpenRouter vision error (${response.status}): ${text.slice(0, 200)}`,
-      text: '',
-      usage: null,
-    }
-  }
-
-  const json = (await response.json()) as ChatCompletionResponse
-  if (json.error) {
-    return {
-      imagesAnalyzed: imageRefs.length,
-      ok: false,
-      reason: `OpenRouter vision error (${json.error.code ?? 'unknown'}): ${json.error.message ?? 'Unknown error'}`,
-      text: '',
-      usage: null,
-    }
-  }
-
-  const message = json.choices?.[0]?.message
-  const content = extractMessageText(message)
-  const usage = json.usage
-
-  const providerCost = providerReportedCost(json)
-
-  return {
-    cost: providerCost > 0 ? providerCost : undefined,
-    imagesAnalyzed: imageRefs.length,
-    ok: true,
-    text: content,
-    usage: {
-      cachedTokens: usage?.prompt_tokens_details?.cached_tokens,
-      completionTokens: usage?.completion_tokens,
-      promptTokens: usage?.prompt_tokens,
-      totalTokens: usage?.total_tokens,
-    },
-  }
 }
 
 export async function ocrImages(
@@ -314,29 +218,22 @@ function extractMessageText(message: ChatCompletionChoice['message']): string {
 /** Fetch an image and return a base64 data URL suitable for OpenRouter vision. */
 async function fetchAsDataUrl(
   url: string,
-  signal?: AbortSignal,
+  operation: OperationContext,
+  transport: ProviderTransport,
 ): Promise<string> {
-  // External CDN images: shorter timeout + fewer retries than the paid
-  // OpenRouter API, so one slow host doesn't stall the OCR batch for 90s.
-  const fetched = await boundedFetch(
+  const fetched = await transport.bytes({
+    init: { method: 'GET' },
+    label: 'image download',
+    maxAttempts: 2,
+    operation,
+    retry: 'safe',
     url,
-    { method: 'GET' },
-    {
-      label: 'image download',
-      maxAttempts: 2,
-      signal,
-      timeoutMs: 15_000,
-    },
-  )
+  })
   if (!fetched.ok) {
-    throw new Error(`${fetched.reason}: ${url}`)
+    throw new Error(`${fetched.error.message}: ${url}`)
   }
-  const response = fetched.response
-  if (!response.ok) {
-    throw new Error(`Failed to fetch image (${response.status}): ${url}`)
-  }
-  const buffer = Buffer.from(await response.arrayBuffer())
-  const headerMediaType = response.headers
+  const buffer = Buffer.from(fetched.value)
+  const headerMediaType = fetched.headers
     .get('content-type')
     ?.split(';')[0]
     ?.trim()
@@ -383,14 +280,15 @@ function loadDataUrlInput(input: ImageOcrDataUrlInput): LoadedImageRef {
 
 async function loadImageInput(
   input: ImageOcrInput,
-  signal?: AbortSignal,
+  operation: OperationContext,
+  transport: ProviderTransport,
 ): Promise<LoadedImageRef> {
-  signal?.throwIfAborted()
+  operation.assertActive()
   if ('dataUrl' in input && typeof input.dataUrl === 'string') {
     return loadDataUrlInput(input)
   }
 
-  const dataUrl = await fetchAsDataUrl(input.url, signal)
+  const dataUrl = await fetchAsDataUrl(input.url, operation, transport)
   return {
     dataUrl,
     sourceLabel: input.sourceLabel?.trim() || input.url,
@@ -409,6 +307,156 @@ function normalizeImageInputs(inputs: ImageOcrInput[]): ImageOcrInput[] {
   }
 
   return normalized
+}
+
+async function ocrImageInputsOwned(
+  inputs: ImageOcrInput[],
+  userPrompt: string,
+  model: string,
+  systemPrompt: string,
+  options: ImageOcrOptions,
+  operation: OperationContext,
+): Promise<ImageOcrResult> {
+  const transport = options.transport ?? createProviderTransport()
+  const imageInputs = normalizeImageInputs(inputs)
+
+  if (!imageInputs.length) {
+    return {
+      imagesAnalyzed: 0,
+      ok: true,
+      text: '',
+      usage: null,
+    }
+  }
+
+  const loadedImages = await Promise.all(
+    imageInputs.map(async (input, index) => {
+      try {
+        return await operation.runChild(`image-download:${index}`, (child) =>
+          loadImageInput(input, child, transport),
+        )
+      } catch (error) {
+        operation.assertActive()
+        return {
+          error:
+            error instanceof Error ? error.message : 'Failed to load image',
+          sourceLabel: sourceLabelForInput(input),
+        }
+      }
+    }),
+  )
+  const imageRefs = loadedImages.filter(
+    (image): image is LoadedImageRef => 'dataUrl' in image,
+  )
+  const failedCount = loadedImages.length - imageRefs.length
+
+  if (!imageRefs.length) {
+    const failureDetail = summarizeFailedImages(loadedImages)
+    return {
+      imagesAnalyzed: 0,
+      ok: false,
+      reason: `No image inputs could be loaded for OCR (${failedCount} failed${failureDetail ? `: ${failureDetail}` : ''}).`,
+      text: '',
+      usage: null,
+    }
+  }
+
+  const url = `${trimTrailingSlash(config.openrouter.chatApiUrl)}/chat/completions`
+  const fetched = await operation.runChild(
+    'openrouter-vision',
+    async (child) => {
+      const result = await transport.json<ChatCompletionResponse>({
+        init: {
+          body: JSON.stringify({
+            max_tokens: 4096,
+            messages: [
+              {
+                content: systemPrompt,
+                role: 'system',
+              },
+              {
+                content: [
+                  {
+                    text: buildUserMessage(
+                      userPrompt,
+                      imageRefs.map((image) => image.sourceLabel),
+                    ),
+                    type: 'text',
+                  },
+                  ...imageRefs.map((image) => ({
+                    image_url: { url: image.dataUrl },
+                    type: 'image_url',
+                  })),
+                ],
+                role: 'user',
+              },
+            ],
+            model,
+            temperature: 0,
+          }),
+          headers: {
+            Authorization: `Bearer ${config.openrouter.apiKey}`,
+            'Content-Type': 'application/json',
+            'X-OpenRouter-Metadata': 'enabled',
+          },
+          method: 'POST',
+        },
+        label: 'OpenRouter vision',
+        operation: child,
+        retry: 'paid',
+        url,
+      })
+      if (result.ok) {
+        child.reportUsage({
+          amount: providerReportedCost(result.value),
+          category: 'vision',
+          count: imageRefs.length,
+          reportId: 'openrouter-response',
+          source: options.source ?? 'attachment',
+          unit: 'usd',
+          usage: result.value.usage,
+        })
+      }
+      return result
+    },
+  )
+  if (!fetched.ok) {
+    return {
+      imagesAnalyzed: imageRefs.length,
+      ok: false,
+      reason: fetched.error.message,
+      text: '',
+      usage: null,
+    }
+  }
+  const json = fetched.value
+  const providerCost = providerReportedCost(json)
+  if (json.error) {
+    return {
+      imagesAnalyzed: imageRefs.length,
+      ok: false,
+      reason: `OpenRouter vision error (${json.error.code ?? 'unknown'}): ${json.error.message ?? 'Unknown error'}`,
+      text: '',
+      usage: null,
+    }
+  }
+
+  const message = json.choices?.[0]?.message
+  const content = extractMessageText(message)
+  const usage = json.usage
+
+  return {
+    cost: providerCost > 0 ? providerCost : undefined,
+    imagesAnalyzed: imageRefs.length,
+    ok: true,
+    text: content,
+    usage: {
+      cachedTokens: usage?.prompt_tokens_details?.cached_tokens,
+      completionTokens: usage?.completion_tokens,
+      promptTokens: usage?.prompt_tokens,
+      totalTokens: usage?.total_tokens,
+    },
+  }
 }
 
 function sourceLabelForInput(input: ImageOcrInput): string {

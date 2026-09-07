@@ -26,11 +26,13 @@ import { STATUS_LABELS } from './panel-constants'
 
 export function PanelHeader({
   collapsed,
+  compactionPercent,
   connection,
   dragging,
   layout,
   mobileExpanded,
   onAllProjects,
+  onCompactionPercentChange,
   onDragEnd,
   onDragMove,
   onDragStart,
@@ -48,11 +50,13 @@ export function PanelHeader({
   theme,
 }: {
   collapsed: boolean
+  compactionPercent: number
   connection: 'connecting' | 'live' | 'offline' | 'reconnecting'
   dragging: boolean
   layout: PanelLayout
   mobileExpanded: boolean
   onAllProjects: () => void
+  onCompactionPercentChange: (percent: number) => void
   onDragEnd: (event: PointerEvent<HTMLElement>) => void
   onDragMove: (event: PointerEvent<HTMLElement>) => void
   onDragStart: (event: PointerEvent<HTMLElement>) => void
@@ -171,6 +175,8 @@ export function PanelHeader({
           open={panelMenuOpen}
         />
         <PanelSettingsMenu
+          compactionPercent={compactionPercent}
+          onCompactionPercentChange={onCompactionPercentChange}
           onToggleTheme={onToggleTheme}
           pageActions={pageActions}
           theme={theme}

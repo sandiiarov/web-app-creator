@@ -13,18 +13,27 @@ import {
 import { Message, MessageContent } from '@workspace/ui/components/message'
 import { Separator } from '@workspace/ui/components/separator'
 import { cn } from '@workspace/ui/lib/utils'
-import { Brain, ChevronRight, LoaderCircle } from 'lucide-react'
+import {
+  Brain,
+  ChevronRight,
+  LoaderCircle,
+  Recycle,
+  TriangleAlert,
+} from 'lucide-react'
 import { useEffect, useState } from 'react'
 
 import {
   formatRetryDelay,
+  formatTokenCount,
   type LandingTurn,
+  type MemoryPart,
   type PromptAttachmentMeta,
   type RetryPart,
   type ThinkingPart,
   type TurnPart,
 } from './domain'
 import { RunElapsed } from './run-elapsed'
+import { StepElapsed } from './step-elapsed'
 import { StreamdownContent } from './streamdown-content'
 import { TurnToolBlock } from './turn-steps'
 
@@ -157,6 +166,45 @@ function formatAttachmentSize(size: number) {
   return `${(kib / 1024).toFixed(1)} MB`
 }
 
+function MemoryMarker({ part }: { part: MemoryPart }) {
+  const observed = formatTokenCount(part.tokensObserved)
+  const observations = formatTokenCount(part.observationTokens)
+  const label =
+    part.operation === 'reflection'
+      ? 'Memory consolidated'
+      : 'Context compacted'
+  const text =
+    part.state === 'running'
+      ? part.operation === 'reflection'
+        ? 'Consolidating memory…'
+        : 'Compacting context…'
+      : part.state === 'error'
+        ? `Context compaction failed${part.error ? `: ${part.error}` : ''}`
+        : observed && observations
+          ? `${label} · ${observed} → ${observations} tokens`
+          : label
+
+  return (
+    <Marker className="px-1 text-xs" variant="separator">
+      <MarkerIcon>
+        {part.state === 'running' ? (
+          <LoaderCircle className="animate-spin" />
+        ) : part.state === 'error' ? (
+          <TriangleAlert className="text-destructive-foreground" />
+        ) : (
+          <Recycle />
+        )}
+      </MarkerIcon>
+      <MarkerContent>{text}</MarkerContent>
+      <StepElapsed
+        active={part.state === 'running'}
+        durationMs={part.durationMs}
+        startedAt={part.startedAt}
+      />
+    </Marker>
+  )
+}
+
 function PartView({
   isStreaming,
   part,
@@ -165,6 +213,9 @@ function PartView({
   part: TurnPart
 }) {
   switch (part.type) {
+    case 'memory': {
+      return <MemoryMarker part={part} />
+    }
     case 'retry': {
       return <RetryNotice isStreaming={isStreaming} retry={part} />
     }
@@ -313,6 +364,14 @@ function ThinkingBlock({
                 {isStreaming ? 'Thinking in progress' : 'Thinking complete'}
               </span>
             </MarkerContent>
+            <StepElapsed
+              active={isStreaming && thinking.durationMs === undefined}
+              className={
+                isStreaming ? 'text-sky-700 dark:text-sky-300' : undefined
+              }
+              durationMs={thinking.durationMs}
+              startedAt={thinking.startedAt}
+            />
             <span
               aria-hidden="true"
               className={cn(

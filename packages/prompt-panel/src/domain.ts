@@ -19,6 +19,7 @@ export type LandingModelOption = {
 /** Per-1M-token USD prices from the OpenRouter catalog (snapshot). */
 export type LandingModelPricing = {
   cacheRead?: number
+  /** Total context window in tokens (live map only). */
   contextLength?: number
   /** USD per generated image (image models billed per image). */
   image?: number
@@ -34,11 +35,10 @@ export type LandingModelRole = 'image' | 'text' | 'vision'
 
 // All model ids are OpenRouter slugs, verified live against the OpenRouter API.
 export const TEXT_MODEL_OPTIONS: LandingModelOption[] = [
-  { id: 'z-ai/glm-5.2:nitro', label: 'GLM 5.2' },
-  { id: 'tencent/hy3:nitro', label: 'Tencent Hy3' },
+  { id: 'z-ai/glm-5.3:nitro', label: 'GLM 5.3' },
+  { id: 'z-ai/glm-5.3-flash:nitro', label: 'GLM 5.3 Flash' },
   { id: 'qwen/qwen3.8-max:nitro', label: 'Qwen 3.8 Max' },
-  { id: 'qwen/qwen3.8-27b:nitro', label: 'Qwen 3.8 27B' },
-  { id: 'moonshotai/kimi-k2.7-code:nitro', label: 'Kimi K2.7 Code' },
+  { id: 'qwen/qwen3.8-flash:nitro', label: 'Qwen 3.8 Flash' },
   { id: 'moonshotai/kimi-k3:nitro', label: 'Kimi K3' },
   {
     id: 'deepseek/deepseek-v4-flash-0731:nitro',
@@ -49,20 +49,21 @@ export const TEXT_MODEL_OPTIONS: LandingModelOption[] = [
     label: 'DeepSeek V4 Pro 0813',
   },
   {
+    id: 'deepseek/deepseek-v4-flash-vision-exp:nitro',
+    label: 'DeepSeek V4 Flash Vision Exp',
+  },
+  {
     id: 'nvidia/nemotron-3-ultra-550b-a55b:nitro',
     label: 'Nemotron Ultra',
   },
   { id: 'google/gemini-3.1-pro-preview:nitro', label: 'Gemini 3.1 Pro' },
   { id: 'google/gemini-3.6-flash:nitro', label: 'Gemini 3.6 Flash' },
-  { id: 'x-ai/grok-4.5:nitro', label: 'Grok 4.5' },
-  { id: 'poolside/laguna-s-2.1:nitro', label: 'Laguna S 2.1' },
-  { id: 'anthropic/claude-fable-5:nitro', label: 'Claude Fable 5' },
+  { id: 'x-ai/grok-4.6:nitro', label: 'Grok 4.6' },
+  { id: 'anthropic/claude-fable-5.1:nitro', label: 'Claude Fable 5.1' },
   { id: 'anthropic/claude-opus-5:nitro', label: 'Claude Opus 5' },
   { id: 'anthropic/claude-sonnet-5:nitro', label: 'Claude Sonnet 5' },
-  { id: 'anthropic/claude-haiku-4.5:nitro', label: 'Claude Haiku 4.5' },
-  { id: 'openai/gpt-5.6-luna:nitro', label: 'GPT-5.6 Luna' },
-  { id: 'openai/gpt-5.6-terra:nitro', label: 'GPT-5.6 Terra' },
-  { id: 'openai/gpt-5.6-sol:nitro', label: 'GPT-5.6 Sol' },
+  { id: 'openai/gpt-6-astra:nitro', label: 'GPT-6 Astra' },
+  { id: 'openai/gpt-6-astra-pro:nitro', label: 'GPT-6 Astra Pro' },
 ]
 
 export const IMAGE_MODEL_OPTIONS: LandingModelOption[] = [
@@ -78,24 +79,26 @@ export const IMAGE_MODEL_OPTIONS: LandingModelOption[] = [
 
 export const VISION_MODEL_OPTIONS: LandingModelOption[] = [
   { id: 'bytedance-seed/seed-2.0-mini', label: 'Seed 2.0 Mini' },
+  { id: 'z-ai/glm-5.3-flash', label: 'GLM 5.3 Flash' },
   { id: 'z-ai/glm-5v-turbo', label: 'GLM 5V Turbo' },
-  { id: 'moonshotai/kimi-k2.7-code', label: 'Kimi K2.7 Code' },
   { id: 'moonshotai/kimi-k3', label: 'Kimi K3' },
+  {
+    id: 'deepseek/deepseek-v4-flash-vision-exp',
+    label: 'DeepSeek V4 Flash Vision Exp',
+  },
   { id: 'minimax/minimax-m3', label: 'MiniMax M3' },
   { id: 'xiaomi/mimo-v2.5', label: 'MiMo V2.5' },
   { id: 'qwen/qwen3.8-max', label: 'Qwen 3.8 Max' },
-  { id: 'qwen/qwen3.8-27b', label: 'Qwen 3.8 27B' },
+  { id: 'qwen/qwen3.8-flash', label: 'Qwen 3.8 Flash' },
   { id: 'google/gemini-3.1-pro-preview', label: 'Gemini 3.1 Pro' },
   { id: 'google/gemini-3.6-flash', label: 'Gemini 3.6 Flash' },
   { id: 'google/gemini-3.5-flash-lite', label: 'Gemini 3.5 Flash Lite' },
-  { id: 'anthropic/claude-fable-5', label: 'Claude Fable 5' },
+  { id: 'anthropic/claude-fable-5.1', label: 'Claude Fable 5.1' },
   { id: 'anthropic/claude-opus-5', label: 'Claude Opus 5' },
   { id: 'anthropic/claude-sonnet-5', label: 'Claude Sonnet 5' },
-  { id: 'anthropic/claude-haiku-4.5', label: 'Claude Haiku 4.5' },
-  { id: 'openai/gpt-5.6-luna', label: 'GPT-5.6 Luna' },
-  { id: 'openai/gpt-5.6-terra', label: 'GPT-5.6 Terra' },
-  { id: 'openai/gpt-5.6-sol', label: 'GPT-5.6 Sol' },
-  { id: 'x-ai/grok-4.5', label: 'Grok 4.5' },
+  { id: 'openai/gpt-6-astra', label: 'GPT-6 Astra' },
+  { id: 'openai/gpt-6-astra-pro', label: 'GPT-6 Astra Pro' },
+  { id: 'x-ai/grok-4.6', label: 'Grok 4.6' },
 ]
 
 /**
@@ -106,7 +109,7 @@ export const VISION_MODEL_OPTIONS: LandingModelOption[] = [
  * live catalog prices override via `/api/models`.
  */
 export const MODEL_PRICING: Record<string, LandingModelPricing> = {
-  'anthropic/claude-fable-5': { cacheRead: 1, input: 10, output: 50 },
+  'anthropic/claude-fable-5.1': { cacheRead: 0.25, input: 10, output: 50 },
   'anthropic/claude-haiku-4.5': { cacheRead: 0.1, input: 1, output: 5 },
   'anthropic/claude-opus-5': { cacheRead: 0.5, input: 5, output: 25 },
   'anthropic/claude-sonnet-5': { cacheRead: 0.2, input: 2, output: 10 },
@@ -116,6 +119,11 @@ export const MODEL_PRICING: Record<string, LandingModelPricing> = {
     cacheRead: 0.028,
     input: 0.14,
     output: 0.28,
+  },
+  'deepseek/deepseek-v4-flash-vision-exp': {
+    cacheRead: 0.055,
+    input: 0.22,
+    output: 0.66,
   },
   'deepseek/deepseek-v4-pro-0813': {
     cacheRead: 0.044,
@@ -132,25 +140,22 @@ export const MODEL_PRICING: Record<string, LandingModelPricing> = {
   'google/gemini-3.5-flash-lite': { cacheRead: 0.03, input: 0.3, output: 2.5 },
   'google/gemini-3.6-flash': { cacheRead: 0.075, input: 0.75, output: 3.75 },
   'minimax/minimax-m3': { cacheRead: 0.06, input: 0.3, output: 1.2 },
-  'moonshotai/kimi-k2.7-code': { cacheRead: 0.15, input: 0.71, output: 3.5 },
   'moonshotai/kimi-k3': { cacheRead: 0.3, input: 3, output: 15 },
   'nvidia/nemotron-3-ultra-550b-a55b': {
     cacheRead: 0.2,
     input: 0.6,
     output: 3.6,
   },
-  'openai/gpt-5.6-luna': { cacheRead: 0.01, input: 0.1, output: 0.6 },
-  'openai/gpt-5.6-sol': { cacheRead: 0.5, input: 5, output: 30 },
-  'openai/gpt-5.6-terra': { cacheRead: 0.1, input: 1, output: 6 },
+  'openai/gpt-6-astra': { cacheRead: 1, input: 10, output: 50 },
+  'openai/gpt-6-astra-pro': { cacheRead: 1, input: 10, output: 50 },
   'openai/gpt-image-2': { imageOutput: 30, input: 0, output: 0 },
-  'poolside/laguna-s-2.1': { cacheRead: 0.009, input: 0.09, output: 0.18 },
-  'qwen/qwen3.8-27b': { cacheRead: 0.05, input: 0.45, output: 3.2 },
+  'qwen/qwen3.8-flash': { cacheRead: 0.016, input: 0.15, output: 0.47 },
   'qwen/qwen3.8-max': { cacheRead: 0.25, input: 2, output: 6 },
-  'tencent/hy3': { cacheRead: 0.033, input: 0.132, output: 0.528 },
-  'x-ai/grok-4.5': { cacheRead: 0.3, input: 2, output: 6 },
+  'x-ai/grok-4.6': { cacheRead: 0.5, input: 2, output: 6 },
   'x-ai/grok-imagine-image-quality': { image: 0.05, input: 0, output: 0 },
   'xiaomi/mimo-v2.5': { cacheRead: 0.0028, input: 0.14, output: 0.28 },
-  'z-ai/glm-5.2': { cacheRead: 0.14, input: 0.76, output: 2.42 },
+  'z-ai/glm-5.3': { cacheRead: 0.26, input: 1.4, output: 4.4 },
+  'z-ai/glm-5.3-flash': { cacheRead: 0.015, input: 0.075, output: 0.25 },
   'z-ai/glm-5v-turbo': { cacheRead: 0.24, input: 1.2, output: 4 },
 }
 
@@ -229,10 +234,18 @@ export type LandingAgentSendInput = {
   prompt: string
 }
 
+export type LandingAgentSendResult = {
+  outcome: 'accepted' | 'rejected' | 'unknown'
+  reason?: string
+  turnId: string
+}
+
 // ── Conversation model ────────────────────────────────────────────
 
 export type LandingTurn = {
   attachments?: PromptAttachmentMeta[]
+  /** Terminal turn duration in ms (done/error time − startedAt). */
+  durationMs?: number
   error?: string
   htmlSwaps: number
   id: string
@@ -240,7 +253,23 @@ export type LandingTurn = {
   model: string
   parts: TurnPart[]
   prompt: string
+  /** Epoch ms when the prompt was sent (logged event ts). */
+  startedAt?: number
   stopped?: boolean
+}
+
+export type MemoryPart = {
+  /** Terminal duration in ms (derived from startedAt at done/error). */
+  durationMs?: number
+  error?: string
+  id: string
+  observationTokens?: number
+  operation: 'observation' | 'reflection'
+  /** Epoch ms when the cycle started running. */
+  startedAt?: number
+  state: 'done' | 'error' | 'running'
+  tokensObserved?: number
+  type: 'memory'
 }
 
 export type PromptAttachmentInput =
@@ -281,13 +310,21 @@ export type StatsPart = {
 }
 
 export type TextPart = {
+  /** Set when the part stops being the streaming tail (next part or done). */
+  durationMs?: number
   id: string
+  /** Epoch ms of the first delta. */
+  startedAt?: number
   text: string
   type: 'text'
 }
 
 export type ThinkingPart = {
+  /** Set when the part stops being the streaming tail (next part or done). */
+  durationMs?: number
   id: string
+  /** Epoch ms of the first delta. */
+  startedAt?: number
   text: string
   type: 'thinking'
 }
@@ -308,10 +345,14 @@ export type ToolCallImage = {
 export type ToolCallPart = {
   action: null | string
   detail?: null | string
+  /** Terminal duration in ms (server-reported, or derived from startedAt). */
+  durationMs?: number
   id: string
   images?: ToolCallImage[]
   providerId?: string
   result?: null | string
+  /** Epoch ms when the tool started running. */
+  startedAt?: number
   state: ToolCallState
   tool: string
   type: 'tool_call'
@@ -320,6 +361,7 @@ export type ToolCallPart = {
 export type ToolCallState = 'done' | 'error' | 'running' | 'start'
 
 export type TurnPart =
+  | MemoryPart
   | RetryPart
   | StatsPart
   | TextPart
@@ -473,6 +515,14 @@ export function selectLandingModel(
     return { ...models, vision: optionId }
   }
   return { ...models, image: optionId }
+}
+
+export function shouldClearSubmittedDraft(
+  currentRevision: number,
+  submittedRevision: number,
+  outcome: LandingAgentSendResult['outcome'],
+): boolean {
+  return outcome === 'accepted' && currentRevision === submittedRevision
 }
 
 /**

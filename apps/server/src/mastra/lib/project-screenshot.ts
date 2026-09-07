@@ -1,27 +1,27 @@
 import { randomUUID } from 'node:crypto'
 
-import {
-  chromium,
-  type Browser,
-  type BrowserContext,
-  type CDPSession,
-  type Page,
-} from 'playwright-core'
-
 import { config } from '../../config.ts'
 import {
-  inlineProjectImagesForCapture,
-  writeProjectScreenshotSync,
-  type ProjectScreenshot,
-} from './project-store.ts'
+  OperationDrainError,
+  type OperationContext,
+  type OperationScope,
+  runProviderOperation,
+} from '../../providers/operation-scope.ts'
+import {
+  createProviderTransport,
+  type ProviderTransport,
+} from '../../providers/transport.ts'
+import type { ProjectRepository, ProjectScreenshot } from './project-store.ts'
 
-const CDP_KEEP_ALIVE_MS = 15_000
-const DEFAULT_CAPTURE_TIMEOUT_MS = 25_000
-const JPEG_QUALITY = 90
-const MAX_OUTPUT_DIMENSION = 4096
-const OUTPUT_PADDING_PX = 8
-const RETRY_DELAY_MS = 250
-const RATE_LIMIT_RETRY_DELAY_MS = 2_000
+const DEFAULT_CAPTURE_TIMEOUT_MS = 45_000
+const FIRECRAWL_API_URL = 'https://api.firecrawl.dev'
+const FIRECRAWL_SCRAPE_TIMEOUT_MS = 30_000
+const PUBLISH_API_URL =
+  'https://litterbox.catbox.moe/resources/internals/api.php'
+const PUBLISH_RETRY_DELAY_MS = 5_000
+const PUBLISH_ROUNDS = 3
+const PUBLISH_TTL = '72h'
+const SCRAPE_WAIT_FOR_MS = 1_000
 
 export const PROJECT_SCREENSHOT_VIEWPORTS = [
   { height: 844, name: 'mobile', width: 390 },
@@ -34,7 +34,7 @@ export interface CapturedProjectScreenshot {
   elementMap: string
   height: number
   imageUrl: string
-  mediaType: 'image/jpeg'
+  mediaType: 'image/png'
   viewport: ProjectScreenshotViewport
   width: number
 }
@@ -46,75 +46,56 @@ export interface CapturedProjectSelector {
 
 export interface CaptureProjectSelectorsInput {
   html: string
+  operations?: OperationScope
   projectId: string
   selectors: string[]
   signal?: AbortSignal
   timeoutMs?: number
+  transport?: ProviderTransport
 }
 
-export interface CloudflareBrowserRunConfig {
-  accountId?: string
-  apiToken?: string
+export interface FirecrawlConfig {
+  apiKey?: string
+  apiUrl?: string
 }
 
 export interface ProjectScreenshotDependencies {
-  cloudflare?: CloudflareBrowserRunConfig
-  connectOverCDP?: BrowserConnector
-  inlineProjectImages?: typeof inlineProjectImagesForCapture
-  now?: () => number
-  persistScreenshot?: (
+  firecrawl?: FirecrawlConfig
+  inlineProjectImages: ProjectRepository['inlineProjectImagesForCapture']
+  /** Provider-reported Firecrawl credits (sum of scrape `creditsUsed`). */
+  onFirecrawlCredits?: (credits: number) => void
+  persistScreenshot: (
     projectId: string,
     requestId: string,
     dataUrl: string,
     mediaType: string,
   ) => ProjectScreenshot
-  sleep?: (ms: number, signal?: AbortSignal) => Promise<void>
+  publishHtml?: (html: string, operation: OperationContext) => Promise<string>
+  scrapeScreenshot?: (
+    input: ScrapeScreenshotInput,
+  ) => Promise<ScrapedScreenshot>
 }
 
 export type ProjectScreenshotViewport =
   (typeof PROJECT_SCREENSHOT_VIEWPORTS)[number]['name']
 
-type BrowserConnector = (
-  endpoint: string,
-  options: BrowserConnectorOptions,
-) => Promise<Browser>
-
-interface BrowserConnectorOptions {
-  headers: Record<string, string>
-  timeout: number
-}
-
-interface CaptureClip {
-  height: number
-  scale: number
-  width: number
-  x: number
-  y: number
-}
-
-type CaptureDomCommand =
-  | { kind: 'cleanup'; token: string }
-  | { kind: 'inspect'; selector: string }
-  | {
-      kind: 'prepare'
-      paddingCss: number
-      scale: number
-      selector: string
-      token: string
-    }
-
-interface CaptureError {
-  error: string
-}
-
-interface InspectionResult {
+export interface ScrapedScreenshot {
+  creditsUsed?: number
+  dataUrl: string
   height: number
   width: number
 }
 
-interface PreparationResult {
-  clip: CaptureClip
-  elementMap: string
+export interface ScrapeScreenshotInput {
+  apiKey: string
+  apiUrl?: string | undefined
+  operation?: OperationContext
+  operations?: OperationScope
+  signal?: AbortSignal
+  timeoutMs: number
+  transport?: ProviderTransport
+  url: string
+  viewport: { height: number; width: number }
 }
 
 export class ProjectScreenshotCaptureError extends Error {
@@ -125,20 +106,153 @@ export class ProjectScreenshotCaptureError extends Error {
 }
 
 /**
- * Capture one or more project selectors in a single isolated Cloudflare Browser
- * Run browser session. Captures are ordered mobile, tablet, desktop for each
- * selector and are persisted before their safe project URLs are returned.
+ * Statically list interactive elements in document order — the same order the
+ * injected badge script numbers them — as `index role "name" state=...` rows.
+ * No geometry: there is no post-resize readback channel in Firecrawl scrape,
+ * so positions come from the badges in the screenshots themselves.
+ */
+export function buildStaticElementMap(html: string): string {
+  const rows: string[] = []
+  let index = 0
+  for (const match of html.matchAll(/<([a-zA-Z][a-zA-Z0-9]*)\b([^>]*)>/g)) {
+    const tag = (match[1] ?? '').toLowerCase()
+    const rawAttrs = match[2] ?? ''
+    const attrs = parseAttrs(rawAttrs)
+    if (!isInteractiveTag(tag, attrs)) continue
+    const name = captureName(
+      tag,
+      attrs,
+      html,
+      (match.index ?? 0) + match[0].length,
+    )
+    rows.push(
+      `${index} ${captureRole(tag, attrs)} "${name}" state=${captureState(attrs)}`,
+    )
+    index++
+  }
+  return rows.join('\n')
+}
+
+/**
+ * Capture the current project HTML as full-page screenshots at three fixed
+ * viewports (mobile, tablet, desktop). The document is published to a
+ * temporary public host (72h TTL), then scraped once per viewport via
+ * Firecrawl's `/v2/scrape` `{type:'screenshot', fullPage, viewport}` format —
+ * one publish, three parallel scrapes, each cache-busted by a query param.
+ * Before publishing, same-project images are inlined as data URLs, page
+ * scripts are stripped (no-JS parity with the old CDP pipeline), and the
+ * capture asset bundle is injected: CSS that freezes animations/transitions
+ * at their end state plus a badge script that numbers interactive elements
+ * and redraws on `resize` (Firecrawl loads at 1920px, then resizes to the
+ * target viewport before capturing, so the redraw lands at the right
+ * geometry). The textual `elementMap` is parsed statically from the HTML in
+ * the same document order the badge script numbers, minus geometry. A mobile
+ * capture shorter than the desktop one is re-scraped once (Firecrawl
+ * occasionally truncates full-page scroll-stitching at narrow viewports).
  */
 export async function captureProjectSelectors(
   input: CaptureProjectSelectorsInput,
-  dependencies: ProjectScreenshotDependencies = {},
+  dependencies: ProjectScreenshotDependencies,
 ): Promise<CapturedProjectSelector[]> {
-  const cloudflare = dependencies.cloudflare ?? config.cloudflare
-  const accountId = cloudflare.accountId?.trim()
-  const apiToken = cloudflare.apiToken?.trim()
-  if (!accountId || !apiToken) {
+  try {
+    return await runProviderOperation(
+      input.operations,
+      'project-screenshot',
+      (operation) =>
+        captureProjectSelectorsOwned(input, dependencies, operation),
+      { signal: input.signal },
+    )
+  } catch (error) {
+    throw normalizeCaptureError(error, input.signal)
+  }
+}
+
+export function injectCaptureAssets(html: string): string {
+  const withoutScripts = html.replace(
+    /<script\b[^>]*>[\s\S]*?<\/script\s*>/gi,
+    '',
+  )
+  const assets = `<style>${FREEZE_CSS}</style><script>${BADGE_SCRIPT}</script>`
+  if (/<\/head>/i.test(withoutScripts)) {
+    return withoutScripts.replace(/<\/head>/i, `${assets}</head>`)
+  }
+  if (/<\/body>/i.test(withoutScripts)) {
+    return withoutScripts.replace(/<\/body>/i, `${assets}</body>`)
+  }
+  return withoutScripts + assets
+}
+
+/**
+ * Default publisher: litterbox ephemeral file host (no key, 72h TTL). The
+ * host occasionally has short 500-blips (observed taking out two back-to-back
+ * capture attempts in a live run), so publishing retries up to three rounds
+ * spaced by `PUBLISH_RETRY_DELAY_MS`. Each round uses the shared transport's
+ * bounded safe-read retry policy before the capture surfaces the failure.
+ */
+export async function publishHtmlEphemeral(
+  html: string,
+  signal?: AbortSignal,
+  options: { retryDelayMs?: number; transport?: ProviderTransport } = {},
+): Promise<string> {
+  return runProviderOperation(
+    undefined,
+    'publish-html',
+    (operation) =>
+      publishHtmlEphemeralOwned(
+        html,
+        operation,
+        options.transport ?? createProviderTransport(),
+        options,
+      ),
+    { signal },
+  )
+}
+
+/** Default scraper: Firecrawl `/v2/scrape` full-page screenshot at one viewport. */
+export async function scrapeFullPageScreenshot(
+  input: ScrapeScreenshotInput,
+): Promise<ScrapedScreenshot> {
+  if (input.operation) {
+    return scrapeFullPageScreenshotOwned(input, input.operation)
+  }
+  return runProviderOperation(
+    input.operations,
+    'firecrawl-screenshot',
+    (operation) => scrapeFullPageScreenshotOwned(input, operation),
+    { signal: input.signal },
+  )
+}
+
+function captureName(
+  tag: string,
+  attrs: Map<string, string>,
+  html: string,
+  contentStart: number,
+): string {
+  const labelled =
+    attrs.get('aria-label') ??
+    attrs.get('alt') ??
+    attrs.get('value') ??
+    attrs.get('placeholder') ??
+    attrs.get('title')
+  const source =
+    labelled ??
+    (tag === 'input'
+      ? ''
+      : html.slice(contentStart, contentStart + 400).split('<')[0])
+  return (source ?? '').replace(/\s+/g, ' ').trim().slice(0, 160)
+}
+
+async function captureProjectSelectorsOwned(
+  input: CaptureProjectSelectorsInput,
+  dependencies: ProjectScreenshotDependencies,
+  operation: OperationContext,
+): Promise<CapturedProjectSelector[]> {
+  const firecrawl: FirecrawlConfig = dependencies.firecrawl ?? config.firecrawl
+  const apiKey = firecrawl.apiKey?.trim()
+  if (!apiKey) {
     throw new ProjectScreenshotCaptureError(
-      'Cloudflare Browser Run is not configured. Set CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN.',
+      'Firecrawl is not configured. Set FIRECRAWL_API_KEY.',
     )
   }
 
@@ -149,705 +263,398 @@ export async function captureProjectSelectors(
       'Screenshot capture timeout is invalid.',
     )
   }
-  throwIfAborted(input.signal)
+  operation.assertActive()
 
-  const inlineImages =
-    dependencies.inlineProjectImages ?? inlineProjectImagesForCapture
-  const preparedHtml = await inlineImages(input.projectId, input.html)
-  const now = dependencies.now ?? Date.now
-  const deadline = now() + timeoutMs
-  const connector = dependencies.connectOverCDP ?? defaultConnectOverCDP
-  const persist = dependencies.persistScreenshot ?? writeProjectScreenshotSync
-  const sleep = dependencies.sleep ?? sleepWithAbort
-
-  let browser: Browser | undefined
-  let context: BrowserContext | undefined
+  const transport = input.transport ?? createProviderTransport()
+  const inlineImages = dependencies.inlineProjectImages
+  const publish =
+    dependencies.publishHtml ??
+    ((html: string, parent: OperationContext) =>
+      publishHtmlEphemeralOwned(html, parent, transport))
+  const scrape = dependencies.scrapeScreenshot
+  const persist = dependencies.persistScreenshot
 
   try {
-    browser = await connectBrowser({
-      accountId,
-      apiToken,
-      connector,
-      deadline,
-      now,
-      signal: input.signal,
-      sleep,
-    })
-    context = await awaitWithinDeadline(
-      browser.newContext({
-        javaScriptEnabled: true,
-      }),
-      deadline,
-      now,
-      input.signal,
-    )
-    const page = await awaitWithinDeadline(
-      context.newPage(),
-      deadline,
-      now,
-      input.signal,
-    )
-    const cdp = await awaitWithinDeadline(
-      context.newCDPSession(page),
-      deadline,
-      now,
-      input.signal,
+    const preparedHtml = await inlineImages(input.projectId, input.html)
+    operation.assertActive()
+    const elementMap = buildStaticElementMap(preparedHtml)
+    const publishedUrl = await operation.runChild('publish-html', (child) =>
+      publish(injectCaptureAssets(preparedHtml), child),
     )
 
-    const capturesBySelector = selectors.map((selector) => ({
-      captures: [] as CapturedProjectScreenshot[],
-      selector,
-    }))
-    for (const viewport of PROJECT_SCREENSHOT_VIEWPORTS) {
-      await awaitWithinDeadline(
-        page.setViewportSize({
-          height: viewport.height,
-          width: viewport.width,
-        }),
-        deadline,
-        now,
-        input.signal,
-      )
-      await awaitWithinDeadline(
-        page.setContent(preparedHtml, { waitUntil: 'domcontentloaded' }),
-        deadline,
-        now,
-        input.signal,
-      )
-      await waitForRenderedDocument(page, deadline, now, input.signal)
-
-      for (const entry of capturesBySelector) {
-        const screenshot = await captureSelector({
-          cdp,
-          deadline,
-          now,
-          page,
-          persist,
-          projectId: input.projectId,
-          selector: entry.selector,
-          signal: input.signal,
-          viewport: viewport.name,
-        })
-        entry.captures.push(screenshot)
-      }
-    }
-
-    return capturesBySelector
-  } catch (error) {
-    throw normalizeCaptureError(error, input.signal)
-  } finally {
-    await closeQuietly(context)
-    await closeQuietly(browser)
-  }
-}
-
-/** Build the authenticated remote CDP endpoint without placing the token in it. */
-export function cloudflareBrowserRunEndpoint(accountId: string): string {
-  return `wss://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(accountId)}/browser-rendering/devtools/browser?keep_alive=${CDP_KEEP_ALIVE_MS}`
-}
-
-/** Output dimensions after a fractional CDP clip capture. */
-export function screenshotOutputDimensions(
-  width: number,
-  height: number,
-  scale: number,
-): { height: number; width: number } {
-  const paddingCss = OUTPUT_PADDING_PX / scale
-  return {
-    height: Math.max(1, Math.round((height + paddingCss * 2) * scale)),
-    width: Math.max(1, Math.round((width + paddingCss * 2) * scale)),
-  }
-}
-
-/** Keep the final JPEG under 4096px while preserving an 8px output border. */
-export function screenshotScale(width: number, height: number): number {
-  if (
-    !Number.isFinite(width) ||
-    !Number.isFinite(height) ||
-    width <= 0 ||
-    height <= 0
-  ) {
-    throw new ProjectScreenshotCaptureError(
-      'Screenshot target has invalid dimensions.',
-    )
-  }
-  return Math.min(
-    0.5,
-    (MAX_OUTPUT_DIMENSION - OUTPUT_PADDING_PX * 2) / width,
-    (MAX_OUTPUT_DIMENSION - OUTPUT_PADDING_PX * 2) / height,
-  )
-}
-
-/**
- * Serialize the browser-side DOM command as a self-contained script string.
- * The command (controlled values only) is JSON-interpolated as the argument;
- * `JSON.stringify` cannot break out of the string literal, so the selector
- * cannot inject script. This avoids needing DOM types in the server tsconfig.
- */
-function buildCaptureDomScript(command: CaptureDomCommand): string {
-  return `(${CAPTURE_DOM_SOURCE})(${JSON.stringify(command)})`
-}
-
-async function captureSelector({
-  cdp,
-  deadline,
-  now,
-  page,
-  persist,
-  projectId,
-  selector,
-  signal,
-  viewport,
-}: {
-  cdp: CDPSession
-  deadline: number
-  now: () => number
-  page: Page
-  persist: ProjectScreenshotDependencies['persistScreenshot']
-  projectId: string
-  selector: string
-  signal?: AbortSignal
-  viewport: ProjectScreenshotViewport
-}): Promise<CapturedProjectScreenshot> {
-  const inspection = await evaluateCaptureCommand<
-    CaptureError | InspectionResult
-  >(page, { kind: 'inspect', selector }, deadline, now, signal)
-  assertNoCaptureError(inspection, selector)
-  if (!inspection.width || !inspection.height) {
-    throw new ProjectScreenshotCaptureError(
-      `Screenshot target "${selector}" has invalid dimensions.`,
-    )
-  }
-
-  const scale = screenshotScale(inspection.width, inspection.height)
-  const token = `agent-capture-${randomUUID()}`
-  const preparation = await evaluateCaptureCommand<
-    CaptureError | PreparationResult
-  >(
-    page,
-    {
-      kind: 'prepare',
-      paddingCss: OUTPUT_PADDING_PX / scale,
-      scale,
-      selector,
-      token,
-    },
-    deadline,
-    now,
-    signal,
-  )
-  assertNoCaptureError(preparation, selector)
-  if (!preparation.clip) {
-    throw new ProjectScreenshotCaptureError(
-      `Unable to prepare screenshot target "${selector}".`,
-    )
-  }
-
-  try {
-    const result = await awaitWithinDeadline(
-      cdp.send('Page.captureScreenshot', {
-        captureBeyondViewport: true,
-        clip: preparation.clip,
-        format: 'jpeg',
-        fromSurface: true,
-        quality: JPEG_QUALITY,
-      }),
-      deadline,
-      now,
-      signal,
-    )
-    const data = screenshotData(result)
-    const dimensions = screenshotOutputDimensions(
-      inspection.width,
-      inspection.height,
-      scale,
-    )
-    const dataUrl = `data:image/jpeg;base64,${data}`
-    const persisted = persist?.(projectId, randomUUID(), dataUrl, 'image/jpeg')
-    if (!persisted) {
-      throw new ProjectScreenshotCaptureError(
-        'Screenshot persistence is unavailable in this runtime.',
-      )
-    }
-
-    return {
-      dataUrl,
-      elementMap: preparation.elementMap,
-      height: dimensions.height,
-      imageUrl: persisted.path,
-      mediaType: 'image/jpeg',
-      viewport,
-      width: dimensions.width,
-    }
-  } finally {
-    await evaluateCaptureCommand(
-      page,
-      { kind: 'cleanup', token },
-      deadline,
-      now,
-    ).catch(() => undefined)
-  }
-}
-
-async function connectBrowser({
-  accountId,
-  apiToken,
-  connector,
-  deadline,
-  now,
-  signal,
-  sleep,
-}: {
-  accountId: string
-  apiToken: string
-  connector: BrowserConnector
-  deadline: number
-  now: () => number
-  signal?: AbortSignal
-  sleep: (ms: number, signal?: AbortSignal) => Promise<void>
-}): Promise<Browser> {
-  const endpoint = cloudflareBrowserRunEndpoint(accountId)
-  for (let attempt = 0; attempt < 2; attempt += 1) {
-    throwIfAborted(signal)
-    const connectPromise = connector(endpoint, {
-      headers: { Authorization: `Bearer ${apiToken}` },
-      timeout: remainingMs(deadline, now),
-    })
-    try {
-      return await awaitWithinDeadline(connectPromise, deadline, now, signal)
-    } catch (error) {
-      void connectPromise.then(closeQuietly, () => undefined)
-      // Daily browser-time limit is a hard stop — never retry.
-      if (isDailyLimitError(error)) throw error
-      if (
-        attempt === 0 &&
-        isRetryableConnectionError(error) &&
-        remainingMs(deadline, now) > RETRY_DELAY_MS
-      ) {
-        const delay = isRateLimitError(error)
-          ? Math.min(
-              RATE_LIMIT_RETRY_DELAY_MS,
-              remainingMs(deadline, now) - RETRY_DELAY_MS,
+    let creditsTotal = 0
+    const captureViewport = (
+      viewport: (typeof PROJECT_SCREENSHOT_VIEWPORTS)[number],
+      attempt: number,
+      batchSignal?: AbortSignal,
+    ): Promise<CapturedProjectScreenshot> =>
+      operation.runChild(
+        `capture-${viewport.name}:${attempt}`,
+        async (child) => {
+          const scraped = scrape
+            ? await scrape({
+                apiKey,
+                apiUrl: firecrawl.apiUrl,
+                operation: child,
+                signal: batchSignal,
+                timeoutMs,
+                transport,
+                url: `${publishedUrl}?agent-viewport=${viewport.name}&retry=${attempt}`,
+                viewport: { height: viewport.height, width: viewport.width },
+              })
+            : await scrapeFullPageScreenshotOwned(
+                {
+                  apiKey,
+                  apiUrl: firecrawl.apiUrl,
+                  signal: batchSignal,
+                  timeoutMs,
+                  transport,
+                  url: `${publishedUrl}?agent-viewport=${viewport.name}&retry=${attempt}`,
+                  viewport: { height: viewport.height, width: viewport.width },
+                },
+                child,
+              )
+          if (
+            typeof scraped.creditsUsed === 'number' &&
+            scraped.creditsUsed > 0
+          )
+            creditsTotal += scraped.creditsUsed
+          const lease = child.createWriteLease()
+          batchSignal?.throwIfAborted()
+          lease.assertWriteAllowed()
+          const persisted = persist?.(
+            input.projectId,
+            randomUUID(),
+            scraped.dataUrl,
+            'image/png',
+          )
+          if (!persisted) {
+            throw new ProjectScreenshotCaptureError(
+              'Screenshot persistence is unavailable in this runtime.',
             )
-          : RETRY_DELAY_MS
-        await sleep(delay, signal)
-        continue
-      }
+          }
+          return {
+            dataUrl: scraped.dataUrl,
+            elementMap,
+            height: scraped.height,
+            imageUrl: persisted.path,
+            mediaType: 'image/png' as const,
+            viewport: viewport.name,
+            width: scraped.width,
+          }
+        },
+      )
+
+    const batchController = new AbortController()
+    const batch = PROJECT_SCREENSHOT_VIEWPORTS.map((viewport) =>
+      captureViewport(viewport, 0, batchController.signal),
+    )
+    for (const pending of batch) {
+      void pending.catch(() => batchController.abort())
+    }
+    let captures: CapturedProjectScreenshot[]
+    try {
+      captures = await Promise.all(batch)
+    } catch (error) {
+      batchController.abort(error)
+      const cleaned = await operation.drainChildren(batch)
+      if (!cleaned.ok) throw new OperationDrainError(cleaned)
       throw error
     }
+
+    const mobileIndex = captures.findIndex(
+      (capture) => capture.viewport === 'mobile',
+    )
+    const desktop = captures.find((capture) => capture.viewport === 'desktop')
+    const mobile = captures[mobileIndex]
+    if (mobile && desktop && mobile.height < desktop.height) {
+      captures[mobileIndex] = await captureViewport(
+        PROJECT_SCREENSHOT_VIEWPORTS[0],
+        1,
+      )
+    }
+
+    if (creditsTotal > 0) dependencies.onFirecrawlCredits?.(creditsTotal)
+    return selectors.map((selector) => ({ captures, selector }))
+  } catch (error) {
+    throw normalizeCaptureError(error, operation.signal)
   }
-  throw new ProjectScreenshotCaptureError(
-    'Cloudflare Browser Run capture failed.',
+}
+
+function captureRole(tag: string, attrs: Map<string, string>): string {
+  const explicit = attrs.get('role')?.trim()
+  if (explicit) return explicit
+  if (tag === 'a') return 'link'
+  if (tag === 'button' || tag === 'summary') return 'button'
+  if (tag === 'select') return 'combobox'
+  if (tag === 'textarea') return 'textbox'
+  if (tag === 'input') {
+    const type = (attrs.get('type') ?? '').toLowerCase()
+    if (type === 'checkbox' || type === 'radio') return type
+    if (type === 'submit' || type === 'button' || type === 'reset')
+      return 'button'
+    return 'textbox'
+  }
+  return tag
+}
+
+function captureState(attrs: Map<string, string>): string {
+  const states: string[] = []
+  if (attrs.has('disabled') || attrs.get('aria-disabled') === 'true')
+    states.push('disabled')
+  for (const name of ['checked', 'expanded', 'pressed', 'selected']) {
+    const value = attrs.get(`aria-${name}`)
+    if (value) states.push(`${name}:${value}`)
+  }
+  if (attrs.has('required')) states.push('required')
+  if (attrs.get('aria-invalid') === 'true') states.push('invalid')
+  return states.length > 0 ? states.join(',') : 'enabled'
+}
+
+function isInteractiveTag(tag: string, attrs: Map<string, string>): boolean {
+  if (tag === 'a') return attrs.has('href')
+  if (
+    tag === 'button' ||
+    tag === 'select' ||
+    tag === 'textarea' ||
+    tag === 'summary'
   )
+    return true
+  if (tag === 'input')
+    return (attrs.get('type') ?? '').toLowerCase() !== 'hidden'
+  if (attrs.has('role')) return true
+  const tabindex = attrs.get('tabindex')
+  if (tabindex != null && tabindex !== '-1') return true
+  return attrs.get('contenteditable') === 'true'
 }
 
-async function evaluateCaptureCommand<T>(
-  page: Page,
-  command: CaptureDomCommand,
-  deadline: number,
-  now: () => number,
-  signal?: AbortSignal,
-): Promise<T> {
-  return awaitWithinDeadline(
-    page.evaluate(buildCaptureDomScript(command)) as Promise<T>,
-    deadline,
-    now,
-    signal,
-  )
+function parseAttrs(raw: string): Map<string, string> {
+  const attrs = new Map<string, string>()
+  for (const match of raw.matchAll(
+    /([a-zA-Z-]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|(\S+)))?/g,
+  )) {
+    const name = (match[1] ?? '').toLowerCase()
+    if (name) attrs.set(name, match[2] ?? match[3] ?? match[4] ?? '')
+  }
+  return attrs
 }
 
-async function waitForRenderedDocument(
-  page: Page,
-  deadline: number,
-  now: () => number,
-  signal?: AbortSignal,
-): Promise<void> {
-  await awaitWithinDeadline(
-    page.evaluate(CAPTURE_READY_SCRIPT),
-    deadline,
-    now,
-    signal,
-  )
-  // Let CSS/JS init animations (fade-in, slide-up, etc.) settle.
-  await awaitWithinDeadline(page.waitForTimeout(500), deadline, now, signal)
-}
-
-/**
- * Runs inside the isolated browser document through trusted CDP evaluation.
- * JavaScript is disabled on the page context; Playwright's `evaluate` is the
- * trusted channel that runs this regardless of the page script setting.
- */
-const CAPTURE_DOM_SOURCE = String.raw`
-function captureDomCommand(command) {
-  function selectCaptureTarget(selector) {
-    try {
-      const target = document.querySelector(selector);
-      return target || { error: 'No element matches selector "' + selector + '".' };
-    } catch (e) {
-      return { error: 'Invalid CSS selector "' + selector + '".' };
-    }
-  }
-  function captureName(element) {
-    var ariaLabel = (element.getAttribute('aria-label') || '').trim();
-    if (ariaLabel) return ariaLabel.replace(/\s+/g, ' ');
-    var labelledBy = (element.getAttribute('aria-labelledby') || '').trim();
-    if (labelledBy) {
-      var text = labelledBy.split(/\s+/).map(function (id) {
-        var el = document.getElementById(id);
-        return el ? (el.textContent || '').trim() : '';
-      }).filter(Boolean).join(' ');
-      if (text) return text.replace(/\s+/g, ' ');
-    }
-    var raw = element.getAttribute('alt') ||
-      element.getAttribute('value') ||
-      element.getAttribute('placeholder') ||
-      element.getAttribute('title') ||
-      element.textContent || '';
-    return raw.replace(/\s+/g, ' ').trim().slice(0, 160);
-  }
-  function captureRole(element) {
-    var explicit = (element.getAttribute('role') || '').trim();
-    if (explicit) return explicit;
-    var tag = element.tagName.toLowerCase();
-    if (tag === 'a') return 'link';
-    if (tag === 'button' || tag === 'summary') return 'button';
-    if (tag === 'select') return 'combobox';
-    if (tag === 'textarea') return 'textbox';
-    if (tag === 'input') {
-      var type = (element.getAttribute('type') || '').toLowerCase();
-      if (type === 'checkbox') return 'checkbox';
-      if (type === 'radio') return 'radio';
-      if (type === 'submit' || type === 'button' || type === 'reset') return 'button';
-      return 'textbox';
-    }
-    return tag;
-  }
-  function captureState(element) {
-    var states = [];
-    if (element.hasAttribute('disabled') || element.getAttribute('aria-disabled') === 'true') states.push('disabled');
-    ['checked', 'expanded', 'pressed', 'selected'].forEach(function (name) {
-      var value = element.getAttribute('aria-' + name);
-      if (value) states.push(name + ':' + value);
-    });
-    if (element.hasAttribute('required')) states.push('required');
-    if (element.getAttribute('aria-invalid') === 'true') states.push('invalid');
-    return states.length > 0 ? states.join(',') : 'enabled';
-  }
-  function captureXPath(element) {
-    var parts = [];
-    var current = element;
-    while (current) {
-      var tag = current.tagName.toLowerCase();
-      if (current.id) {
-        parts.unshift(tag + '[@id="' + current.id + '"]');
-        break;
-      }
-      var siblings = current.parentElement
-        ? Array.from(current.parentElement.children).filter(function (c) { return c.tagName === current.tagName; })
-        : [];
-      parts.unshift(tag + '[' + (siblings.indexOf(current) + 1) + ']');
-      current = current.parentElement;
-    }
-    return '/' + parts.join('/');
-  }
-  function isVisible(element) {
-    var style = window.getComputedStyle(element);
-    var rect = element.getBoundingClientRect();
-    return style.display !== 'none' &&
-      style.visibility !== 'hidden' &&
-      Number(style.opacity) !== 0 &&
-      rect.width > 0 &&
-      rect.height > 0;
-  }
-  var INTERACTIVE = 'a[href],button,input:not([type="hidden"]),select,textarea,summary,[role],[tabindex]:not([tabindex="-1"]),[contenteditable="true"]';
-
-  if (command.kind === 'cleanup') {
-    var nodes = document.querySelectorAll('[data-agent-capture-token="' + command.token + '"]');
-    for (var i = 0; i < nodes.length; i++) nodes[i].remove();
-    var root = document.documentElement;
-    var original = root.getAttribute('data-agent-capture-original-styles');
-    if (original !== null) {
-      var styles = JSON.parse(original);
-      root.style.transform = styles.transform;
-      root.style.transformOrigin = styles.transformOrigin;
-      root.style.translate = styles.translate;
-      root.removeAttribute('data-agent-capture-original-styles');
-    }
-    return null;
-  }
-
-  var target = selectCaptureTarget(command.selector);
-  if (target.error) return { error: target.error };
-
-  var targetRect = target.getBoundingClientRect();
-  if (!isFinite(targetRect.width) || !isFinite(targetRect.height)) {
-    return { error: 'Screenshot target "' + command.selector + '" has invalid dimensions.' };
-  }
-  if (targetRect.width <= 0 || targetRect.height <= 0) {
-    return { error: 'Screenshot target "' + command.selector + '" has zero size.' };
-  }
-
-  if (command.kind === 'inspect') {
-    return { height: targetRect.height, width: targetRect.width };
-  }
-
-  var root = document.documentElement;
-  var shiftX = Math.max(0, command.paddingCss - targetRect.left);
-  var shiftY = Math.max(0, command.paddingCss - targetRect.top);
-  if (shiftX > 0 || shiftY > 0) {
-    root.setAttribute(
-      'data-agent-capture-original-styles',
-      JSON.stringify({
-        transform: root.style.transform,
-        transformOrigin: root.style.transformOrigin,
-        translate: root.style.translate,
-      }),
-    );
-    root.style.transformOrigin = '0 0';
-    root.style.translate = shiftX + 'px ' + shiftY + 'px';
-  }
-
-  var shiftedRect = target.getBoundingClientRect();
-  var scrollX = window.scrollX;
-  var scrollY = window.scrollY;
-
-  var markerHost = document.createElement('div');
-  markerHost.setAttribute('data-agent-capture-token', command.token);
-  markerHost.setAttribute('aria-hidden', 'true');
-  markerHost.style.cssText = 'all:initial;display:block;pointer-events:none;position:absolute;z-index:2147483646;';
-
-  var outline = document.createElement('div');
-  outline.style.cssText = [
-    'background:transparent',
-    'box-shadow:0 0 0 ' + command.paddingCss + 'px #fff',
-    'height:' + shiftedRect.height + 'px',
-    'left:' + (shiftedRect.left + scrollX) + 'px',
-    'pointer-events:none',
-    'position:absolute',
-    'top:' + (shiftedRect.top + scrollY) + 'px',
-    'width:' + shiftedRect.width + 'px',
-    'z-index:2147483646',
-  ].join(';');
-  markerHost.appendChild(outline);
-
-  var interactive = Array.from(target.querySelectorAll(INTERACTIVE));
-  if (target.matches(INTERACTIVE)) interactive.unshift(target);
-
-  var map = [];
-  var index = 0;
-  for (var j = 0; j < interactive.length; j++) {
-    var el = interactive[j];
-    if (!isVisible(el)) continue;
-    var rect = el.getBoundingClientRect();
-    var badge = document.createElement('span');
-    badge.textContent = String(index);
-    badge.style.cssText = [
-      'align-items:center',
-      'background:#dc2626',
-      'border:1px solid #fff',
-      'border-radius:999px',
-      'box-sizing:border-box',
-      'color:#fff',
-      'display:flex',
-      'font:700 10px/1 Arial,sans-serif',
-      'height:16px',
-      'justify-content:center',
-      'left:' + (rect.left + scrollX - 6) + 'px',
-      'min-width:16px',
-      'padding:0 3px',
-      'pointer-events:none',
-      'position:absolute',
-      'top:' + (rect.top + scrollY - 6) + 'px',
-      'z-index:2147483647',
-    ].join(';');
-    markerHost.appendChild(badge);
-
-    var outputX = Math.round((rect.left - shiftedRect.left + command.paddingCss) * command.scale);
-    var outputY = Math.round((rect.top - shiftedRect.top + command.paddingCss) * command.scale);
-    var outputWidth = Math.round(rect.width * command.scale);
-    var outputHeight = Math.round(rect.height * command.scale);
-    map.push(
-      index + ' ' + captureRole(el) + ' "' + captureName(el) + '" state=' + captureState(el) +
-      ' xpath=' + captureXPath(el) +
-      ' target=' + Math.round(rect.left - shiftedRect.left) + ',' + Math.round(rect.top - shiftedRect.top) +
-      ' ' + Math.round(rect.width) + 'x' + Math.round(rect.height) +
-      ' output=' + outputX + ',' + outputY + ' ' + outputWidth + 'x' + outputHeight,
-    );
-    index++;
-  }
-
-  if (document.body) document.body.appendChild(markerHost);
-
-  return {
-    clip: {
-      height: shiftedRect.height + command.paddingCss * 2,
-      scale: command.scale,
-      width: shiftedRect.width + command.paddingCss * 2,
-      x: shiftedRect.left + scrollX - command.paddingCss,
-      y: shiftedRect.top + scrollY - command.paddingCss,
-    },
-    elementMap: map.join('\n'),
-  };
-}
-`
-
-const CAPTURE_READY_SCRIPT = String.raw`
-(function () {
-  function ready() {
-    var fonts = document.fonts;
-    var fontReady = fonts && fonts.ready ? fonts.ready : Promise.resolve();
-    var imagesReady = fontReady.then(function () {
-      return Promise.all(
-        Array.from(document.images).map(function (image) {
-          if (image.complete) return Promise.resolve();
-          return new Promise(function (resolve) {
-            image.addEventListener('error', resolve, { once: true });
-            image.addEventListener('load', resolve, { once: true });
-          });
-        }),
-      );
-    });
-    var deadline = new Promise(function (resolve) { setTimeout(resolve, 1500); });
-    return Promise.race([imagesReady, deadline]);
-  }
-  return ready();
-})()
-`
-
-function assertNoCaptureError<T>(
-  result: CaptureError | T,
-  selector: string,
-): asserts result is T {
-  if (result && typeof result === 'object' && 'error' in result) {
+/** Read width/height from a PNG IHDR. */
+function pngDimensions(buffer: Buffer): { height: number; width: number } {
+  if (buffer.length < 24 || buffer.subarray(1, 4).toString() !== 'PNG') {
     throw new ProjectScreenshotCaptureError(
-      (result as CaptureError).error ||
-        `Screenshot target "${selector}" failed.`,
+      'Firecrawl returned a non-PNG screenshot.',
     )
+  }
+  return { height: buffer.readUInt32BE(20), width: buffer.readUInt32BE(16) }
+}
+
+async function publishHtmlEphemeralOwned(
+  html: string,
+  operation: OperationContext,
+  transport: ProviderTransport,
+  options: { retryDelayMs?: number } = {},
+): Promise<string> {
+  const retryDelayMs = options.retryDelayMs ?? PUBLISH_RETRY_DELAY_MS
+  const form = new FormData()
+  form.append('reqtype', 'fileupload')
+  form.append('time', PUBLISH_TTL)
+  form.append(
+    'fileToUpload',
+    new Blob([html], { type: 'text/html' }),
+    'capture.html',
+  )
+  let lastReason = 'HTML publish failed.'
+  for (let round = 0; round < PUBLISH_ROUNDS; round += 1) {
+    if (round > 0) await sleepAbortable(retryDelayMs, operation.signal)
+    const fetched = await transport.text({
+      baseDelayMs: 1_000,
+      init: { body: form, method: 'POST' },
+      label: 'HTML publish',
+      maxAttempts: 3,
+      operation,
+      retry: 'safe',
+      url: PUBLISH_API_URL,
+    })
+    if (fetched.ok) {
+      const url = fetched.value.trim()
+      if (/^https:\/\/\S+$/.test(url)) return url
+      lastReason = `HTML publish returned an unexpected response: ${url.slice(0, 120)}`
+      continue
+    }
+    lastReason = `HTML publish failed: ${fetched.error.message}`
+  }
+  throw new ProjectScreenshotCaptureError(lastReason)
+}
+
+async function scrapeFullPageScreenshotOwned(
+  input: ScrapeScreenshotInput,
+  operation: OperationContext,
+): Promise<ScrapedScreenshot> {
+  const base = (input.apiUrl ?? FIRECRAWL_API_URL).replace(/\/+$/, '')
+  const transport = input.transport ?? createProviderTransport()
+  const fetched = await transport.json<{
+    data?: { metadata?: { creditsUsed?: unknown }; screenshot?: unknown }
+    success?: unknown
+  }>({
+    init: {
+      body: JSON.stringify({
+        formats: [
+          {
+            fullPage: true,
+            type: 'screenshot',
+            viewport: input.viewport,
+          },
+        ],
+        maxAge: 0,
+        timeout: FIRECRAWL_SCRAPE_TIMEOUT_MS,
+        url: input.url,
+        waitFor: SCRAPE_WAIT_FOR_MS,
+      }),
+      headers: {
+        Authorization: `Bearer ${input.apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      method: 'POST',
+      signal: input.signal,
+    },
+    label: 'Firecrawl screenshot scrape',
+    operation,
+    retry: 'paid',
+    url: `${base}/v2/scrape`,
+  })
+  if (!fetched.ok) {
+    if (fetched.error.status === 402) {
+      throw new ProjectScreenshotCaptureError(
+        'Firecrawl screenshot scrape failed: payment required (credits exhausted).',
+      )
+    }
+    throw new ProjectScreenshotCaptureError(fetched.error.message)
+  }
+  const json = fetched.value
+  const creditsUsed = json.data?.metadata?.creditsUsed
+  const credits =
+    typeof creditsUsed === 'number' && Number.isFinite(creditsUsed)
+      ? creditsUsed
+      : undefined
+  operation.reportUsage({
+    amount: credits ?? 0,
+    category: 'firecrawl',
+    count: 1,
+    reportId: 'firecrawl-response',
+    source: 'screenshot',
+    unit: 'credits',
+  })
+  const screenshotUrl = json.data?.screenshot
+  if (
+    json.success !== true ||
+    typeof screenshotUrl !== 'string' ||
+    !screenshotUrl
+  ) {
+    throw new ProjectScreenshotCaptureError(
+      'Firecrawl screenshot scrape returned no screenshot.',
+    )
+  }
+
+  const downloaded = await operation.runChild('screenshot-download', (child) =>
+    transport.bytes({
+      init: { method: 'GET', signal: input.signal },
+      label: 'screenshot download',
+      maxAttempts: 2,
+      operation: child,
+      retry: 'safe',
+      url: screenshotUrl,
+    }),
+  )
+  if (!downloaded.ok) {
+    throw new ProjectScreenshotCaptureError(
+      'Firecrawl screenshot download failed.',
+    )
+  }
+  const buffer = Buffer.from(downloaded.value)
+  const dimensions = pngDimensions(buffer)
+  return {
+    creditsUsed: credits,
+    dataUrl: `data:image/png;base64,${buffer.toString('base64')}`,
+    height: dimensions.height,
+    width: dimensions.width,
   }
 }
 
-async function awaitWithinDeadline<T>(
-  promise: Promise<T>,
-  deadline: number,
-  now: () => number,
-  signal?: AbortSignal,
-): Promise<T> {
-  throwIfAborted(signal)
-  return new Promise<T>((resolve, reject) => {
-    const timer = setTimeout(
-      () => {
-        cleanup()
-        reject(
-          new ProjectScreenshotCaptureError(
-            'Cloudflare Browser Run capture timed out.',
-          ),
-        )
-      },
-      remainingMs(deadline, now),
-    )
-    const onAbort = () => {
-      cleanup()
+async function sleepAbortable(ms: number, signal?: AbortSignal) {
+  await new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(finish, ms)
+    function finish() {
+      clearTimeout(timer)
+      signal?.removeEventListener('abort', abort)
+      resolve()
+    }
+    function abort() {
+      clearTimeout(timer)
       reject(
         new ProjectScreenshotCaptureError('Screenshot capture was stopped.'),
       )
     }
-    const cleanup = () => {
-      clearTimeout(timer)
-      signal?.removeEventListener('abort', onAbort)
-    }
-    signal?.addEventListener('abort', onAbort, { once: true })
-    promise.then(
-      (value) => {
-        cleanup()
-        resolve(value)
-      },
-      (error: unknown) => {
-        cleanup()
-        reject(error)
-      },
-    )
+    signal?.addEventListener('abort', abort, { once: true })
   })
 }
 
-async function closeQuietly(
-  resource: undefined | { close: () => Promise<void> },
-): Promise<void> {
-  try {
-    await resource?.close()
-  } catch {
-    // Provider cleanup cannot obscure the capture result/error.
+/** Kill animations/transitions so captures always show the end state. */
+const FREEZE_CSS =
+  '*,*::before,*::after{animation-duration:0s!important;animation-delay:0s!important;transition-duration:0s!important;transition-delay:0s!important}'
+
+/**
+ * Numbered red badges on interactive elements. Firecrawl loads the page at a
+ * 1920px viewport and resizes to the requested capture viewport before
+ * screenshotting, so badges redraw on `resize` to land at the right geometry.
+ * The index increments for EVERY matching element in document order (even
+ * hidden ones, whose badge is skipped) so badge numbers line up with the
+ * statically-parsed elementMap rows.
+ */
+const BADGE_SCRIPT = `(function(){
+  var INTERACTIVE = 'a[href],button,input:not([type="hidden"]),select,textarea,summary,[role],[tabindex]:not([tabindex="-1"]),[contenteditable="true"]';
+  function draw(){
+    document.querySelectorAll('[data-agent-badge]').forEach(function(n){n.remove()});
+    var els = document.querySelectorAll(INTERACTIVE);
+    for (var i = 0; i < els.length; i++) {
+      var r = els[i].getBoundingClientRect();
+      if (r.width <= 0 || r.height <= 0) continue;
+      var b = document.createElement('span');
+      b.setAttribute('data-agent-badge','1');
+      b.textContent = String(i);
+      b.style.cssText = 'position:absolute;left:'+(r.left+window.scrollX-6)+'px;top:'+(r.top+window.scrollY-6)+'px;background:#dc2626;color:#fff;border:1px solid #fff;border-radius:999px;box-sizing:border-box;min-width:16px;height:16px;padding:0 3px;font:700 10px/14px Arial,sans-serif;text-align:center;pointer-events:none;z-index:2147483647;';
+      document.body.appendChild(b);
+    }
   }
-}
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', draw);
+  else draw();
+  window.addEventListener('resize', draw);
+})();`
 
-/** Extract the Cloudflare-provided detail from a raw connect/CDP error for
- *  diagnostics. Returns '' when no useful substring is found. Never includes
- *  credentials or authorization headers (those are not in error messages). */
-function cloudflareErrorDetail(error: unknown): string {
-  const message = error instanceof Error ? error.message : ''
-  const match = message.match(/(?:code|message)[:\s]+([^.\n]+)/i)
-  return match?.[1]?.trim() ?? ''
-}
-
-function defaultConnectOverCDP(
-  endpoint: string,
-  options: BrowserConnectorOptions,
-): Promise<Browser> {
-  return chromium.connectOverCDP(endpoint, options)
-}
-
-function isDailyLimitError(error: unknown): boolean {
-  const message = error instanceof Error ? error.message.toLowerCase() : ''
-  return /time limit exceeded|daily limit/.test(message)
-}
-
-function isRateLimitError(error: unknown): boolean {
-  const message = error instanceof Error ? error.message.toLowerCase() : ''
-  return /429|rate limit|too many/.test(message)
-}
-
-function isRetryableConnectionError(error: unknown): boolean {
-  return (
-    isRateLimitError(error) ||
-    (() => {
-      const message = error instanceof Error ? error.message.toLowerCase() : ''
-      return /econn|socket|network|timed out|timeout|closed/.test(message)
-    })()
-  )
-}
-
-function normalizeCaptureError(
-  error: unknown,
-  signal?: AbortSignal,
-): ProjectScreenshotCaptureError {
+function normalizeCaptureError(error: unknown, signal?: AbortSignal): Error {
+  if (error instanceof OperationDrainError) return error
   if (error instanceof ProjectScreenshotCaptureError) return error
   if (signal?.aborted) {
     return new ProjectScreenshotCaptureError('Screenshot capture was stopped.')
   }
-  const detail = cloudflareErrorDetail(error)
-  if (isDailyLimitError(error)) {
-    return new ProjectScreenshotCaptureError(
-      'Cloudflare Browser Run daily browser-time limit reached (Free plan: 10 min/day). If you recently upgraded to Workers Paid, verify the plan is active for this account and token.',
-    )
-  }
-  if (isRateLimitError(error)) {
-    const suffix = detail ? ` (${detail})` : ''
-    return new ProjectScreenshotCaptureError(
-      `Cloudflare Browser Run is rate limited. Try again shortly${suffix}.`,
-    )
-  }
   const message = error instanceof Error ? error.message.toLowerCase() : ''
+  if (/429|rate limit|too many/.test(message)) {
+    return new ProjectScreenshotCaptureError(
+      'Firecrawl is rate limited. Try again shortly.',
+    )
+  }
   if (/401|403|unauthori[sz]ed|forbidden/.test(message)) {
     return new ProjectScreenshotCaptureError(
-      'Cloudflare Browser Run authentication failed. Check Browser Rendering - Edit credentials.',
+      'Firecrawl authentication failed. Check FIRECRAWL_API_KEY.',
     )
   }
   if (/timeout|timed out/.test(message)) {
     return new ProjectScreenshotCaptureError(
-      'Cloudflare Browser Run capture timed out.',
+      'Firecrawl screenshot capture timed out.',
     )
   }
   return new ProjectScreenshotCaptureError(
-    'Cloudflare Browser Run capture failed.',
+    'Firecrawl screenshot capture failed.',
   )
 }
 
@@ -870,55 +677,4 @@ function normalizeSelectors(selectors: string[]): string[] {
     }
     return selector
   })
-}
-
-function remainingMs(deadline: number, now: () => number): number {
-  const remaining = Math.floor(deadline - now())
-  if (remaining <= 0) {
-    throw new ProjectScreenshotCaptureError(
-      'Cloudflare Browser Run capture timed out.',
-    )
-  }
-  return remaining
-}
-
-function screenshotData(value: unknown): string {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    throw new ProjectScreenshotCaptureError(
-      'Cloudflare Browser Run returned an invalid screenshot response.',
-    )
-  }
-  const data = (value as Record<string, unknown>).data
-  if (typeof data !== 'string' || data.length === 0) {
-    throw new ProjectScreenshotCaptureError(
-      'Cloudflare Browser Run returned an empty screenshot.',
-    )
-  }
-  return data
-}
-
-async function sleepWithAbort(ms: number, signal?: AbortSignal): Promise<void> {
-  await new Promise<void>((resolve, reject) => {
-    const timer = setTimeout(() => {
-      cleanup()
-      resolve()
-    }, ms)
-    const onAbort = () => {
-      cleanup()
-      reject(
-        new ProjectScreenshotCaptureError('Screenshot capture was stopped.'),
-      )
-    }
-    const cleanup = () => {
-      clearTimeout(timer)
-      signal?.removeEventListener('abort', onAbort)
-    }
-    signal?.addEventListener('abort', onAbort, { once: true })
-  })
-}
-
-function throwIfAborted(signal?: AbortSignal): void {
-  if (signal?.aborted) {
-    throw new ProjectScreenshotCaptureError('Screenshot capture was stopped.')
-  }
 }

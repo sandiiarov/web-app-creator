@@ -15,10 +15,37 @@ const DEFAULT_FIRECRAWL_CREDIT_USD = 0.002
 
 export function createConfigFromEnv(source: ConfigEnvironment) {
   return {
+    // Input token budget enforced per agent step by the TokenLimiter input
+    // processor (estimated via tokenx, oldest non-system messages trimmed
+    // first). Sized below GLM-5.2's context window minus the 16_384 output
+    // cap and tokenizer estimate error; 0 disables trimming entirely.
+    agentContextTokenLimit: parseNonNegativeInteger(
+      optionalEnv(source, 'AGENT_CONTEXT_TOKEN_LIMIT') ?? '180000',
+      'AGENT_CONTEXT_TOKEN_LIMIT',
+    ),
     agentGeneration: {
       // GLM-5.2 sampling — Z.ai recommends tuning EITHER temperature OR
       // top_p (never both). Default temperature 1.0; set AGENT_TOP_P to
       // switch to nucleus sampling instead (route.ts emits only one).
+      // Optional OpenRouter reasoning control forwarded verbatim as
+      // `reasoning: { effort }` in the request body (providerOptions.openrouter
+      // spreads into the wire args). Unset = provider default (GLM-5.2 keeps
+      // its recommended deep reasoning). Set 'low' for over-thinking models
+      // (e.g. qwen 27b) whose reasoning otherwise eats the maxOutputTokens
+      // budget and truncates the response before any tool call.
+      reasoningEffort: parseOptionalEnum(
+        optionalEnv(source, 'AGENT_REASONING_EFFORT'),
+        ['low', 'medium', 'high', 'none'],
+        'AGENT_REASONING_EFFORT',
+      ),
+      // Hard cap on reasoning tokens (`reasoning: { max_tokens }`). More
+      // reliable than effort for models whose providers ignore effort in
+      // tool-heavy agentic contexts (qwen 27b reasons unbounded until the
+      // maxOutputTokens budget is gone and the step truncates).
+      reasoningMaxTokens: parseOptionalNonNegativeNumber(
+        optionalEnv(source, 'AGENT_REASONING_MAX_TOKENS'),
+        'AGENT_REASONING_MAX_TOKENS',
+      ),
       temperature: parseNonNegativeNumber(
         optionalEnv(source, 'AGENT_TEMPERATURE') ?? '1',
         'AGENT_TEMPERATURE',
@@ -53,12 +80,9 @@ export function createConfigFromEnv(source: ConfigEnvironment) {
     clientOrigin: parseClientOrigin(
       optionalEnv(source, 'CLIENT_ORIGIN') ?? DEFAULT_CLIENT_ORIGIN,
     ),
-    cloudflare: {
-      accountId: optionalEnv(source, 'CLOUDFLARE_ACCOUNT_ID'),
-      apiToken: optionalEnv(source, 'CLOUDFLARE_API_TOKEN'),
-    },
     firecrawl: {
       apiKey: optionalEnv(source, 'FIRECRAWL_API_KEY'),
+      apiUrl: optionalEnv(source, 'FIRECRAWL_API_URL'),
       creditUsd: parseNonNegativeNumber(
         optionalEnv(source, 'FIRECRAWL_CREDIT_USD') ??
           String(DEFAULT_FIRECRAWL_CREDIT_USD),
@@ -86,6 +110,20 @@ export function createConfigFromEnv(source: ConfigEnvironment) {
       imageApiUrl: 'https://openrouter.ai/api/v1/images',
     },
     port: parsePort(optionalEnv(source, 'PORT') ?? '3001'),
+    providerExecution: {
+      drainGraceMs: parseNonNegativeInteger(
+        optionalEnv(source, 'PROVIDER_DRAIN_GRACE_MS') ?? '5000',
+        'PROVIDER_DRAIN_GRACE_MS',
+      ),
+      metadataTimeoutMs: parsePositiveInteger(
+        optionalEnv(source, 'PROVIDER_METADATA_TIMEOUT_MS') ?? '10000',
+        'PROVIDER_METADATA_TIMEOUT_MS',
+      ),
+      operationTimeoutMs: parsePositiveInteger(
+        optionalEnv(source, 'PROVIDER_OPERATION_TIMEOUT_MS') ?? '120000',
+        'PROVIDER_OPERATION_TIMEOUT_MS',
+      ),
+    },
     serverBaseUrl: parseServerBaseUrl(
       optionalEnv(source, 'SERVER_BASE_URL') ??
         `http://${optionalEnv(source, 'HOST') ?? DEFAULT_HOST}:${parsePort(optionalEnv(source, 'PORT') ?? '3001')}`,
@@ -146,6 +184,22 @@ function parseNonNegativeNumber(value: string, name: string) {
   return parsed
 }
 
+function parseOptionalEnum<T extends string>(
+  value: string | undefined,
+  allowed: readonly T[],
+  name: string,
+): T | undefined {
+  if (!value) {
+    return undefined
+  }
+  if (!(allowed as readonly string[]).includes(value)) {
+    throw new Error(
+      `Invalid ${name} value: ${value} (allowed: ${allowed.join(', ')})`,
+    )
+  }
+  return value as T
+}
+
 function parseOptionalNonNegativeNumber(
   value: string | undefined,
   name: string,
@@ -165,6 +219,16 @@ function parsePort(value: string) {
   }
 
   return port
+}
+
+function parsePositiveInteger(value: string, name: string) {
+  const parsed = Number(value)
+
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    throw new Error(`Invalid ${name} value: ${value}`)
+  }
+
+  return parsed
 }
 
 function parseServerBaseUrl(value: string) {

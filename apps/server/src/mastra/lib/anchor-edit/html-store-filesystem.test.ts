@@ -39,4 +39,23 @@ describe('HtmlStoreFilesystem', () => {
     expect(store.get()).toContain('<h1>set</h1>')
     expect(fs.getDocument().lines[1]![0]).toBe('a2') // anchors preserved round-trip
   })
+
+  it('checks the operation write boundary at document replacement', () => {
+    const store = createHtmlStore('<main>old</main>')
+    const guarded = new HtmlStoreFilesystem(store).withWriteBoundary(() => {
+      throw new Error('lease revoked')
+    })
+
+    expect(() =>
+      guarded.setDocument({
+        checksum: 'sha256:',
+        finalNewline: false,
+        lineEnding: '\n',
+        lines: [['a1', '<main>new</main>']],
+        nextAnchor: 2,
+        version: 1,
+      }),
+    ).toThrow('lease revoked')
+    expect(store.get()).toBe('<main>old</main>')
+  })
 })

@@ -1,8 +1,13 @@
-import { randomUUID } from 'node:crypto'
 import { request as httpRequest, type Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
+
+import { createApiServer } from './index.ts'
+import { createModelCatalog } from './model-catalog.ts'
+import type { ServerRuntime } from './runtime.ts'
+import { allowNetworkOrigin } from './testing/deny-network.ts'
+import { createRuntimeFixture } from './testing/runtime-fixture.ts'
 
 const MEBIBYTE = 1024 * 1024
 const MEDIA_JSON_BODY_LIMIT = 24 * MEBIBYTE
@@ -31,11 +36,56 @@ afterEach(async () => {
   vi.resetModules()
   vi.restoreAllMocks()
 
-  const { deleteProject } = await import('./mastra/lib/project-store.ts')
-  await Promise.all(createdProjectIds.splice(0).map((id) => deleteProject(id)))
+  createdProjectIds.splice(0)
 })
 
 describe('server HTTP routes', () => {
+  it('creates idempotently and renames without requiring a model change', async () => {
+    await withServer(async ({ baseUrl }) => {
+      const headers = {
+        'content-type': 'application/json',
+        origin: 'https://client.test',
+      }
+      const creationKey = 'bcad1940-a9bc-4242-a989-411c11ee31a7'
+      const create = () =>
+        fetch(`${baseUrl}/api/projects`, {
+          body: JSON.stringify({ creationKey }),
+          headers,
+          method: 'POST',
+        }).then(
+          (response) =>
+            response.json() as Promise<{
+              project: { id: string; model: string }
+            }>,
+        )
+      const [first, second] = await Promise.all([create(), create()])
+      expect(first.project.id).toBe(second.project.id)
+      const renamed = await fetch(
+        `${baseUrl}/api/projects/${first.project.id}`,
+        {
+          body: JSON.stringify({ title: 'Garden studio' }),
+          headers,
+          method: 'PATCH',
+        },
+      )
+      expect(renamed.status).toBe(200)
+      expect(
+        ((await renamed.json()) as { project: unknown }).project,
+      ).toMatchObject({
+        model: first.project.model,
+        title: 'Garden studio',
+        titleSource: 'user',
+      })
+      for (const title of ['', 'x'.repeat(121)]) {
+        const invalid = await fetch(
+          `${baseUrl}/api/projects/${first.project.id}`,
+          { body: JSON.stringify({ title }), headers, method: 'PATCH' },
+        )
+        expect(invalid.status).toBe(400)
+      }
+    })
+  })
+
   it('bounds /api/models ids to stop upstream fetch amplification', async () => {
     await withServer(async ({ baseUrl }) => {
       const tooMany = Array.from({ length: 65 }, (_, i) => `m/${i}`).join(',')
@@ -80,8 +130,6 @@ describe('server HTTP routes', () => {
       })
       vi.stubGlobal('fetch', fetchStub)
 
-      const { resetModelPricingCache } = await import('./model-catalog.ts')
-      resetModelPricingCache()
       const fine = await fetch(
         `${baseUrl}/api/models?ids=z-ai/glm-5.2,bytedance-seed/seedream-4.5`,
         { headers: { origin: 'https://client.test' } },
@@ -98,31 +146,24 @@ describe('server HTTP routes', () => {
   })
 
   it('returns a generic 500 body and logs the real error server-side', async () => {
-    vi.resetModules()
     vi.stubEnv('OPENROUTER_API_KEY', 'test-openrouter-key')
     vi.stubEnv('CLIENT_ORIGIN', 'https://client.test')
     const boom = new Error('SENSITIVE internal filesystem detail')
-    vi.doMock('./mastra/route.ts', () => ({
-      resolveModelId: (model?: string) => model ?? 'default-model',
-      startLandingAgent: vi.fn<() => Promise<unknown>>(),
-      stopLandingAgent: vi.fn<() => boolean>(),
-    }))
-    vi.doMock('./mastra/lib/project-store.ts', async (importOriginal) => {
-      const actual =
-        await importOriginal<typeof import('./mastra/lib/project-store.ts')>()
-      return {
-        ...actual,
-        listProjects: vi.fn<() => Promise<never[]>>(async () => {
-          throw boom
-        }),
-      }
-    })
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
-
-    const { server } = await import('./index.ts')
-    await listen(server)
-    const { port } = server.address() as AddressInfo
+    const fixture = await createRuntimeFixture()
+    fixture.runtime.repository.listProjects = vi.fn<() => Promise<never[]>>(
+      async () => {
+        throw boom
+      },
+    )
+    const server = createApiServer(fixture.runtime)
+    let disallow: (() => void) | undefined
+    let listening = false
     try {
+      await listen(server)
+      listening = true
+      const { port } = server.address() as AddressInfo
+      disallow = allowNetworkOrigin(`http://127.0.0.1:${port}`)
       const response = await fetch(`http://127.0.0.1:${port}/api/projects`, {
         headers: { origin: 'https://client.test' },
       })
@@ -132,7 +173,12 @@ describe('server HTTP routes', () => {
       expect(JSON.stringify(body)).not.toContain('SENSITIVE')
       expect(errorSpy).toHaveBeenCalledWith('[server] unhandled error:', boom)
     } finally {
-      await close(server)
+      disallow?.()
+      try {
+        if (listening) await close(server)
+      } finally {
+        await fixture.dispose()
+      }
     }
   })
 
@@ -190,6 +236,7 @@ describe('server HTTP routes', () => {
           await expect(response.json()).resolves.toEqual({
             error: 'Origin is not allowed.',
             ok: false,
+            reason: 'forbidden',
           })
         }
 
@@ -241,6 +288,7 @@ describe('server HTTP routes', () => {
       expect(chunkedOverflow.body).toEqual({
         error: 'Request body exceeds the allowed size.',
         ok: false,
+        reason: 'validation',
       })
       expect(startLandingAgent).not.toHaveBeenCalled()
     })
@@ -325,7 +373,11 @@ describe('server HTTP routes', () => {
       for (const [body, error] of cases) {
         const response = await postJson(`${baseUrl}/agent`, body)
         expect(response.status).toBe(400)
-        await expect(response.json()).resolves.toEqual({ error, ok: false })
+        await expect(response.json()).resolves.toEqual({
+          error,
+          ok: false,
+          reason: 'validation',
+        })
       }
       expect(startLandingAgent).not.toHaveBeenCalled()
     })
@@ -343,6 +395,7 @@ describe('server HTTP routes', () => {
         error:
           'Invalid attachment 1: declared size must match decoded dataUrl bytes.',
         ok: false,
+        reason: 'validation',
       })
 
       const oversizedBytes = Buffer.alloc(8 * MEBIBYTE + 1)
@@ -362,6 +415,7 @@ describe('server HTTP routes', () => {
         error:
           'Invalid attachment 1: decoded image must be between 1 byte and 8 MiB.',
         ok: false,
+        reason: 'validation',
       })
 
       const aggregateBytes = Buffer.alloc(4 * MEBIBYTE + 1)
@@ -380,6 +434,7 @@ describe('server HTTP routes', () => {
       await expect(aggregate.json()).resolves.toEqual({
         error: 'Attached items must be 16 MiB or smaller in total.',
         ok: false,
+        reason: 'validation',
       })
       expect(startLandingAgent).not.toHaveBeenCalled()
     })
@@ -451,7 +506,7 @@ describe('server HTTP routes', () => {
   })
 
   it('creates, lists, reads, patches, and deletes projects', async () => {
-    await withServer(async ({ baseUrl }) => {
+    await withServer(async ({ baseUrl, runtime }) => {
       const createResponse = await postJson(`${baseUrl}/api/projects`, {
         model: 'zai-org/GLM-5.2',
         title: ' Launch Plan ',
@@ -472,8 +527,7 @@ describe('server HTTP routes', () => {
         ]),
       )
 
-      const { createProjectHtmlStore } =
-        await import('./mastra/lib/project-store.ts')
+      const { createProjectHtmlStore } = runtime.repository
       createProjectHtmlStore(created.project.id).set('<main>Ready</main>')
 
       await expect(
@@ -520,7 +574,9 @@ describe('server HTTP routes', () => {
 
       const deleteResponse = await fetch(
         `${baseUrl}/api/projects/${created.project.id}`,
-        { method: 'DELETE' },
+        {
+          method: 'DELETE',
+        },
       )
       expect(deleteResponse.status).toBe(200)
       createdProjectIds.pop()
@@ -532,47 +588,101 @@ describe('server HTTP routes', () => {
     })
   })
 
-  it('retries project creation and supports title-only PATCH without changing models', async () => {
-    await withServer(async ({ baseUrl }) => {
-      const creationKey = randomUUID()
-      const response = await postJson(`${baseUrl}/api/projects`, {
-        creationKey,
-        textModel: 'saved/model',
+  it('rejects deletion while a run retains provider-work ownership', async () => {
+    await withServer(async ({ baseUrl, runtime, stopLandingAgent }) => {
+      const project = await runtime.repository.createProject()
+      stopLandingAgent.mockResolvedValueOnce({
+        ok: true,
+        outcome: 'blocked',
+        stopped: false,
       })
-      const { project } = (await response.json()) as { project: { id: string } }
-      createdProjectIds.push(project.id)
-      const retry = await postJson(`${baseUrl}/api/projects`, { creationKey })
-      await expect(retry.json()).resolves.toMatchObject({
-        project: { id: project.id },
+
+      const response = await fetch(`${baseUrl}/api/projects/${project.id}`, {
+        method: 'DELETE',
       })
-      const patch = (title: unknown) =>
-        fetch(`${baseUrl}/api/projects/${project.id}`, {
-          body: JSON.stringify({ title }),
-          headers: { 'content-type': 'application/json' },
-          method: 'PATCH',
-        })
-      const renamed = await patch('  Studio & Field  ')
-      expect(renamed.status).toBe(200)
+
+      expect(response.status).toBe(409)
+      await expect(response.json()).resolves.toEqual({
+        error: 'Project deletion is blocked by unsettled run work.',
+        ok: false,
+        reason: 'run_unsettled',
+      })
       await expect(
-        fetchJson(`${baseUrl}/api/projects/${project.id}`),
-      ).resolves.toMatchObject({
-        project: {
-          model: 'saved/model',
-          title: 'Studio & Field',
-          titleSource: 'user',
-        },
-      })
-      for (const title of ['', ' ', 123, 'x'.repeat(121)]) {
-        expect((await patch(title)).status).toBe(400)
-      }
-      expect(
-        (
-          await postJson(`${baseUrl}/api/projects`, {
-            creationKey: '../escape',
-          })
-        ).status,
-      ).toBe(400)
+        runtime.repository.getProject(project.id),
+      ).resolves.toMatchObject({ id: project.id })
     })
+  })
+
+  it('returns additive run identity and stable conflict reasons', async () => {
+    await withServer(async ({ baseUrl, startLandingAgent }) => {
+      startLandingAgent.mockResolvedValueOnce({
+        existing: true,
+        ok: true,
+        outcome: 'completed',
+        status: 'running',
+        turnId: 'turn-existing',
+      } as never)
+      const existing = await postJson(`${baseUrl}/agent`, {
+        projectId: 'project-1',
+        prompt: 'Retry accepted work',
+        turnId: 'turn-existing',
+      })
+      expect(existing.status).toBe(200)
+      await expect(existing.json()).resolves.toEqual({
+        existing: true,
+        ok: true,
+        outcome: 'completed',
+        status: 'running',
+        turnId: 'turn-existing',
+      })
+
+      startLandingAgent.mockResolvedValueOnce({
+        ok: false,
+        reason: 'conflict',
+      } as never)
+      const conflict = await postJson(`${baseUrl}/agent`, {
+        projectId: 'project-1',
+        prompt: 'Changed retry',
+        turnId: 'turn-existing',
+      })
+      expect(conflict.status).toBe(409)
+      await expect(conflict.json()).resolves.toEqual({
+        error: 'The turn ID conflicts with a different accepted request.',
+        ok: false,
+        reason: 'conflict',
+      })
+    })
+  })
+
+  it('keeps operational create and delete failures behind the generic 500 boundary', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    await withServer(async ({ baseUrl, runtime }) => {
+      vi.spyOn(runtime.projectService, 'create').mockRejectedValueOnce(
+        new Error('SENSITIVE create storage path'),
+      )
+      const create = await postJson(`${baseUrl}/api/projects`, {
+        creationKey: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      })
+      expect(create.status).toBe(500)
+      await expect(create.json()).resolves.toEqual({
+        error: 'Internal server error.',
+        ok: false,
+      })
+
+      vi.spyOn(runtime.projectService, 'delete').mockRejectedValueOnce(
+        new Error('SENSITIVE memory failure'),
+      )
+      const remove = await fetch(
+        `${baseUrl}/api/projects/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa`,
+        { method: 'DELETE' },
+      )
+      expect(remove.status).toBe(500)
+      await expect(remove.json()).resolves.toEqual({
+        error: 'Internal server error.',
+        ok: false,
+      })
+    })
+    expect(errorSpy).toHaveBeenCalledTimes(2)
   })
 
   it('PATCH persists vision and image models and they survive a GET (reload)', async () => {
@@ -633,7 +743,9 @@ describe('server HTTP routes', () => {
 
       const response = await fetch(
         `${baseUrl}/api/projects/${created.project.id}/stop`,
-        { method: 'POST' },
+        {
+          method: 'POST',
+        },
       )
       expect(response.status).toBe(200)
       // The handler delegates to stopLandingAgent (graceful: aborts the Mastra
@@ -646,18 +758,20 @@ describe('server HTTP routes', () => {
       })
 
       // When no run is active the endpoint still succeeds but reports stopped=false.
-      stopLandingAgent.mockReturnValueOnce(false)
+      stopLandingAgent.mockResolvedValueOnce({ ok: true, stopped: false })
       const idle = await fetch(
         `${baseUrl}/api/projects/${created.project.id}/stop`,
-        { method: 'POST' },
+        {
+          method: 'POST',
+        },
       )
       await expect(idle.json()).resolves.toEqual({ ok: true, stopped: false })
     })
   })
 
   it('serves in-memory and persisted project images', async () => {
-    await withServer(async ({ baseUrl }) => {
-      const { saveImage } = await import('./mastra/lib/image-store.ts')
+    await withServer(async ({ baseUrl, runtime }) => {
+      const { saveImage } = runtime.imageStore
       const pngId = saveImage(
         Buffer.from([0x89, 0x50, 0x4e, 0x47]),
         'image/png',
@@ -678,8 +792,7 @@ describe('server HTTP routes', () => {
         project: { id: string }
       }
       createdProjectIds.push(project.id)
-      const { createProjectHtmlStore } =
-        await import('./mastra/lib/project-store.ts')
+      const { createProjectHtmlStore } = runtime.repository
       createProjectHtmlStore(project.id).set(
         `<main><img src="${baseUrl}/images/${pngId}.png" /></main>`,
       )
@@ -712,71 +825,99 @@ describe('server HTTP routes', () => {
 })
 
 describe('project events SSE', () => {
-  it('GET /api/projects/:id/events emits a state snapshot for an idle project', async () => {
+  it('rejects explicit unsupported protocol versions without entering legacy mode', async () => {
     await withServer(async ({ baseUrl }) => {
-      const { createProject } = await import('./mastra/lib/project-store.ts')
+      for (const path of [
+        '/api/projects/events?v=3',
+        '/api/projects/00000000-0000-4000-8000-000000000000/events?v=3',
+      ]) {
+        const response = await fetch(`${baseUrl}${path}`)
+        expect(response.status).toBe(200)
+        const frame = await readSseFrameUntil(
+          response,
+          (entry) => entry.event === 'protocol_error',
+        )
+        expect(frame.data).toMatchObject({
+          code: 'UNSUPPORTED_VERSION',
+          version: 2,
+        })
+      }
+    })
+  })
+
+  it('GET /api/projects/:id/events emits a state snapshot for an idle project', async () => {
+    await withServer(async ({ baseUrl, runtime }) => {
+      const { createProject } = runtime.repository
       const project = await createProject({ title: 'Events idle' })
       createdProjectIds.push(project.id)
 
       const controller = new AbortController()
-      const response = await fetch(
-        `${baseUrl}/api/projects/${project.id}/events`,
-        { signal: controller.signal },
-      )
-      expect(response.status).toBe(200)
-      const frame = await readSseFrameUntil(
-        response,
-        (entry) => entry.event === 'state',
-      )
-      controller.abort()
+      try {
+        const response = await fetch(
+          `${baseUrl}/api/projects/${project.id}/events`,
+          {
+            signal: controller.signal,
+          },
+        )
+        expect(response.status).toBe(200)
+        const frame = await readSseFrameUntil(
+          response,
+          (entry) => entry.event === 'state',
+        )
 
-      const state = frame.data as {
-        html: string
-        models: { image: string; text: string; vision: string }
-        status: string
-        turns: unknown[]
+        const state = frame.data as {
+          html: string
+          models: { image: string; text: string; vision: string }
+          status: string
+          turns: unknown[]
+        }
+        expect(state.status).toBe('idle')
+        expect(state.turns).toEqual([])
+        expect(state.models).toEqual({ image: '', text: '', vision: '' })
+      } finally {
+        controller.abort()
       }
-      expect(state.status).toBe('idle')
-      expect(state.turns).toEqual([])
-      expect(state.models).toEqual({ image: '', text: '', vision: '' })
     })
   })
 
   it('GET /api/projects/events snapshots statuses then tails a live setRunStatusSync change', async () => {
-    await withServer(async ({ baseUrl }) => {
+    await withServer(async ({ baseUrl, runtime }) => {
       const { createProject, createProjectHtmlStore, setRunStatusSync } =
-        await import('./mastra/lib/project-store.ts')
+        runtime.repository
       const project = await createProject({ title: 'Events live' })
       createdProjectIds.push(project.id)
       // Give it HTML so it survives listProjects' hasHtml filter.
       createProjectHtmlStore(project.id).set('<!doctype html><p>live</p>')
 
       const controller = new AbortController()
-      const response = await fetch(`${baseUrl}/api/projects/events`, {
-        signal: controller.signal,
-      })
+      try {
+        const response = await fetch(`${baseUrl}/api/projects/events`, {
+          signal: controller.signal,
+        })
 
-      const initial = await readSseFrameUntil(
-        response,
-        (entry) =>
-          entry.event === 'project_status' &&
-          isStatusFor(entry.data, project.id),
-      )
-      expect(statusOf(initial.data)).toBe('idle')
+        const initial = await readSseFrameUntil(
+          response,
+          (entry) =>
+            entry.event === 'project_status' &&
+            isStatusFor(entry.data, project.id),
+        )
+        expect(statusOf(initial.data)).toBe('idle')
 
-      // setRunStatusSync fans out to the open list subscriber via broadcastStatus.
-      setRunStatusSync(project.id, { status: 'running', turnId: 'turn-1' })
+        // setRunStatusSync fans out to the open list subscriber via broadcastStatus.
+        setRunStatusSync(project.id, { status: 'running', turnId: 'turn-1' })
 
-      const updated = await readSseFrameUntil(
-        response,
-        (entry) =>
-          entry.event === 'project_status' &&
-          isStatusFor(entry.data, project.id) &&
-          statusOf(entry.data) === 'running',
-      )
-      expect(statusOf(updated.data)).toBe('running')
-      expect((updated.data as { runTurnId: string }).runTurnId).toBe('turn-1')
-      controller.abort()
+        const updated = await readSseFrameUntil(
+          response,
+          (entry) =>
+            entry.event === 'project_status' &&
+            isStatusFor(entry.data, project.id) &&
+            statusOf(entry.data) === 'running',
+        )
+        expect(statusOf(updated.data)).toBe('running')
+        expect((updated.data as { runTurnId: string }).runTurnId).toBe('turn-1')
+      } finally {
+        controller.abort()
+      }
     })
   })
 })
@@ -804,8 +945,13 @@ function isStatusFor(data: unknown, projectId: string): boolean {
 }
 
 async function listen(server: Server) {
-  await new Promise<void>((resolve) => {
-    server.listen(0, '127.0.0.1', () => resolve())
+  await new Promise<void>((resolve, reject) => {
+    const onError = (error: Error) => reject(error)
+    server.once('error', onError)
+    server.listen(0, '127.0.0.1', () => {
+      server.off('error', onError)
+      resolve()
+    })
   })
 }
 
@@ -877,7 +1023,7 @@ async function readSseFrameUntil(
   let buffer = ''
   try {
     while (maxFrames-- > 0) {
-      const { done, value } = await reader.read()
+      const { done, value } = await readStreamChunk(reader)
       if (done) break
       buffer += decoder.decode(value, { stream: true })
       let index: number
@@ -893,6 +1039,29 @@ async function readSseFrameUntil(
   throw new Error('matching SSE frame not found before stream end')
 }
 
+async function readStreamChunk(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+  timeoutMs = 5_000,
+) {
+  let timeout: ReturnType<typeof setTimeout> | undefined
+  try {
+    return await Promise.race([
+      reader.read(),
+      new Promise<never>((_resolve, reject) => {
+        timeout = setTimeout(
+          () => reject(new Error('timed out waiting for an SSE frame')),
+          timeoutMs,
+        )
+      }),
+    ])
+  } catch (error) {
+    await reader.cancel(error).catch(() => {})
+    throw error
+  } finally {
+    if (timeout) clearTimeout(timeout)
+  }
+}
+
 function statusOf(data: unknown): string {
   return (data as { status?: string }).status ?? ''
 }
@@ -900,40 +1069,46 @@ function statusOf(data: unknown): string {
 async function withServer(
   fn: (context: {
     baseUrl: string
+    runtime: ServerRuntime
     startLandingAgent: ReturnType<typeof vi.fn>
     stopLandingAgent: ReturnType<typeof vi.fn>
   }) => Promise<void>,
 ) {
-  vi.resetModules()
   vi.stubEnv('OPENROUTER_API_KEY', 'test-openrouter-key')
   vi.stubEnv('CLIENT_ORIGIN', 'https://client.test')
 
-  const stopLandingAgent = vi.fn<() => boolean>(() => true)
+  const stopLandingAgent = vi.fn<() => Promise<{ ok: true; stopped: true }>>(
+    async () => ({ ok: true, stopped: true }),
+  )
   const startLandingAgent = vi.fn<
     () => Promise<{ ok: true; status: 'running'; turnId: string }>
   >(async () => ({ ok: true, status: 'running', turnId: 'turn-x' }))
-  vi.doMock('./mastra/route.ts', () => ({
-    resolveModelId: (model?: string) => {
-      const requested = model ?? 'default-model'
-      return requested.startsWith('openrouter/')
-        ? requested.slice('openrouter/'.length)
-        : requested
-    },
-    startLandingAgent,
-    stopLandingAgent,
-  }))
-
-  const { server } = await import('./index.ts')
-  await listen(server)
-  const { port } = server.address() as AddressInfo
+  const fixture = await createRuntimeFixture({
+    modelCatalog: createModelCatalog(),
+  })
+  fixture.runtime.agentRunner.start = startLandingAgent as never
+  fixture.runtime.agentRunner.stop = stopLandingAgent
+  const server = createApiServer(fixture.runtime)
+  let disallow: (() => void) | undefined
+  let listening = false
 
   try {
+    await listen(server)
+    listening = true
+    const { port } = server.address() as AddressInfo
+    disallow = allowNetworkOrigin(`http://127.0.0.1:${port}`)
     await fn({
       baseUrl: `http://127.0.0.1:${port}`,
+      runtime: fixture.runtime,
       startLandingAgent,
       stopLandingAgent,
     })
   } finally {
-    await close(server)
+    disallow?.()
+    try {
+      if (listening) await close(server)
+    } finally {
+      await fixture.dispose()
+    }
   }
 }

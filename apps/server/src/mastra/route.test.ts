@@ -5,22 +5,101 @@ import type {
   ServerResponse,
 } from 'node:http'
 
+import type { Mastra } from '@mastra/core/mastra'
+import type { Memory } from '@mastra/memory'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
+import type { OperationScope } from '../providers/operation-scope.ts'
+import { createProviderTransport } from '../providers/transport.ts'
+import {
+  createRuntimeFixture,
+  type RuntimeFixture,
+} from '../testing/runtime-fixture.ts'
+import {
+  createModelCapabilities,
+  type ModelCapabilities,
+} from './lib/model-capabilities.ts'
+import { createLandingAgentRunner, type LandingAgentRunner } from './route.ts'
 import type { AgentAttachmentInput } from './route.ts'
 
 const PNG_DATA_URL = 'data:image/png;base64,iVBORw0KGgo='
 
 const createdProjectIds: string[] = []
+let runtimeFixture: RuntimeFixture | undefined
+let testRunner: LandingAgentRunner | undefined
+let testCapabilities: ModelCapabilities | undefined
+let expectedBlockedRunner = false
+
+async function getRuntimeFixture() {
+  runtimeFixture ??= await createRuntimeFixture()
+  return runtimeFixture
+}
+
+async function getTestRunner() {
+  if (testRunner) return testRunner
+  const fixture = await getRuntimeFixture()
+  const agentModule = await import('./agents/landing-page-agent.ts')
+  const ocrModule = await import('./lib/image-ocr.ts')
+  const screenshotModule = await import('./lib/project-screenshot.ts')
+  testRunner = createLandingAgentRunner({
+    bus: fixture.runtime.runBus,
+    capabilities: testCapabilities ?? {
+      async contextWindowTokens() {
+        return undefined
+      },
+      async supportsImageInput(modelId) {
+        return modelId.startsWith('acme/vision-chat')
+      },
+    },
+    captureProjectSelectors: screenshotModule.captureProjectSelectors,
+    createAgent: (store, baseUrl, textModel, capture, options) =>
+      agentModule.createLandingPageAgent(
+        store,
+        {} as Mastra,
+        {} as Memory,
+        baseUrl,
+        {
+          ...options,
+          imageStore: fixture.runtime.imageStore,
+          repository: fixture.runtime.repository,
+        },
+        textModel,
+        capture,
+      ),
+    ocrImageInputs: ocrModule.ocrImageInputs,
+    repository: fixture.runtime.repository,
+    runtimeConfig: fixture.runtime.config,
+    transport: createProviderTransport(),
+  })
+  return testRunner
+}
 
 afterEach(async () => {
-  vi.unstubAllEnvs()
-  vi.unstubAllGlobals()
-  vi.resetModules()
-  vi.restoreAllMocks()
-
-  const { deleteProject } = await import('./lib/project-store.ts')
-  await Promise.all(createdProjectIds.splice(0).map((id) => deleteProject(id)))
+  const runner = testRunner
+  const fixture = runtimeFixture
+  testRunner = undefined
+  runtimeFixture = undefined
+  testCapabilities = undefined
+  createdProjectIds.splice(0)
+  const failures: unknown[] = []
+  try {
+    runner?.close()
+    await runner?.waitForIdle()
+  } catch (error) {
+    if (!expectedBlockedRunner) failures.push(error)
+  }
+  try {
+    await fixture?.dispose()
+  } catch (error) {
+    failures.push(error)
+  } finally {
+    expectedBlockedRunner = false
+    vi.unstubAllEnvs()
+    vi.unstubAllGlobals()
+    vi.resetModules()
+    vi.restoreAllMocks()
+  }
+  if (failures.length > 0) throw new AggregateError(failures)
 })
 
 /**
@@ -53,12 +132,11 @@ async function streamLandingAgent({
   turnId?: string
   visionModel?: string
 }) {
-  const { startLandingAgent } = await import('./route.ts')
+  const runner = await getTestRunner()
   const { endSse } = await import('./lib/sse.ts')
-  const { getRun } = await import('./lib/run-bus.ts')
   const baseUrl = `http://${request.headers.host ?? `localhost:3001`}`
 
-  const result = await startLandingAgent({
+  const result = await runner.start({
     attachments,
     baseUrl,
     imageModel,
@@ -88,9 +166,7 @@ async function streamLandingAgent({
   }
 
   // Await the detached run's release so log/project assertions see terminal state.
-  for (let i = 0; i < 500 && getRun(projectId); i++) {
-    await new Promise((resolve) => setTimeout(resolve, 5))
-  }
+  await runner.waitForIdle()
   endSse(response)
 }
 
@@ -130,8 +206,9 @@ describe('streamLandingAgent turnId', () => {
       }),
     }))
 
-    const { createProject, getProject, readClientMessages } =
-      await import('./lib/project-store.ts')
+    const { createProject, getProject, readClientMessages } = (
+      await getRuntimeFixture()
+    ).runtime.repository
     const project = await createProject()
     createdProjectIds.push(project.id)
 
@@ -157,16 +234,134 @@ describe('streamLandingAgent turnId', () => {
   })
 })
 
+describe('streamLandingAgent durable event publication', () => {
+  it('does not broadcast an event whose authoritative append fails', async () => {
+    vi.stubEnv('OPENROUTER_API_KEY', 'test-openrouter-key')
+    vi.doMock('./index.ts', () => ({ mastra: {} }))
+    vi.doMock('./agents/landing-page-agent.ts', () => ({
+      createLandingPageAgent: () => ({
+        stream: async () => fakeAgentStream(),
+      }),
+    }))
+
+    const fixture = await getRuntimeFixture()
+    const { repository } = fixture.runtime
+    const project = await repository.createProject()
+    createdProjectIds.push(project.id)
+    const append = repository.appendClientMessage.bind(repository)
+    vi.spyOn(repository, 'appendClientMessage').mockImplementation(
+      async (id, entry) => {
+        if (entry.dir === 'out') throw new Error('journal unavailable')
+        return append(id, entry)
+      },
+    )
+    const response = new FakeResponse()
+
+    await expect(
+      streamLandingAgent({
+        projectId: project.id,
+        prompt: 'Do not publish before commit.',
+        request: fakeRequest(),
+        response: response as unknown as ServerResponse,
+        textModel: 'z-ai/glm-5.2',
+      }),
+    ).rejects.toThrow('Landing agent runner operations failed')
+    expect(parseSseEvents(response.body)).toEqual([])
+    const records = await repository.readClientMessages(project.id)
+    expect(records).toContainEqual(
+      expect.objectContaining({ dir: 'in', type: 'prompt' }),
+    )
+    expect(records).not.toContainEqual(
+      expect.objectContaining({ dir: 'out', event: 'text' }),
+    )
+  })
+
+  it('drains queued events before release when finalization throws', async () => {
+    vi.stubEnv('OPENROUTER_API_KEY', 'test-openrouter-key')
+    async function* textStream() {
+      yield { payload: { text: 'queued' }, type: 'text-delta' }
+    }
+    vi.doMock('./index.ts', () => ({ mastra: {} }))
+    vi.doMock('./agents/landing-page-agent.ts', () => ({
+      createLandingPageAgent: () => ({
+        stream: async () => fakeAgentStream(textStream()),
+      }),
+    }))
+
+    const fixture = await getRuntimeFixture()
+    const { repository } = fixture.runtime
+    const project = await repository.createProject()
+    createdProjectIds.push(project.id)
+    const append = repository.appendClientMessage.bind(repository)
+    const appendEntered = deferred<void>()
+    const releaseAppend = deferred<void>()
+    const terminalProjectionEntered = deferred<void>()
+    let pauseFirstOutput = true
+    vi.spyOn(repository, 'appendClientMessage').mockImplementation(
+      async (id, entry) => {
+        if (entry.dir === 'out' && pauseFirstOutput) {
+          pauseFirstOutput = false
+          appendEntered.resolve()
+          await releaseAppend.promise
+        }
+        return append(id, entry)
+      },
+    )
+    const setRunStatus = repository.setRunStatusSync.bind(repository)
+    vi.spyOn(repository, 'setRunStatusSync').mockImplementation((id, state) => {
+      if (state.finishedAt) {
+        terminalProjectionEntered.resolve()
+        throw new Error('terminal projection failed')
+      }
+      return setRunStatus(id, state)
+    })
+    const response = new FakeResponse()
+    const runner = await getTestRunner()
+
+    await expect(
+      runner.start({
+        baseUrl: 'http://localhost:3001',
+        projectId: project.id,
+        prompt: 'Drain the queue.',
+        subscriber: response as unknown as ServerResponse,
+        textModel: 'z-ai/glm-5.2',
+      }),
+    ).resolves.toMatchObject({ ok: true })
+    await appendEntered.promise
+
+    let idleSettled = false
+    const idle = runner.waitForIdle().finally(() => {
+      idleSettled = true
+    })
+    await Promise.resolve()
+    expect(fixture.runtime.runBus.getRun(project.id)).toBeDefined()
+    expect(idleSettled).toBe(false)
+    releaseAppend.resolve()
+    await terminalProjectionEntered.promise
+    await expect(idle).resolves.toBeUndefined()
+    expect(fixture.runtime.runBus.getRun(project.id)).toBeUndefined()
+    expect(parseSseEvents(response.body).at(-1)).toEqual({
+      data: {},
+      event: 'done',
+    })
+    await expect(repository.readClientMessages(project.id)).resolves.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ event: 'run_terminal' }),
+      ]),
+    )
+  })
+})
+
 describe('streamLandingAgent attachments', () => {
   it('analyzes attachments before the agent run and persists tool metadata', async () => {
     vi.stubEnv('OPENROUTER_API_KEY', 'test-openrouter-key')
 
-    let capturedMessages: Array<{ content: string; role: string }> = []
+    let capturedInput: unknown
     vi.doMock('./index.ts', () => ({ mastra: {} }))
     vi.doMock('./agents/landing-page-agent.ts', () => ({
       createLandingPageAgent: () => ({
-        stream: async (messages: Array<{ content: string; role: string }>) => {
-          capturedMessages = messages
+        stream: async (messages: unknown) => {
+          capturedInput = messages
           return fakeAgentStream()
         },
       }),
@@ -195,7 +390,8 @@ describe('streamLandingAgent attachments', () => {
     })
     vi.stubGlobal('fetch', fetch)
 
-    const { createProject, getProject } = await import('./lib/project-store.ts')
+    const { createProject, getProject } = (await getRuntimeFixture()).runtime
+      .repository
     const project = await createProject()
     createdProjectIds.push(project.id)
     const response = new FakeResponse()
@@ -217,17 +413,15 @@ describe('streamLandingAgent attachments', () => {
       textModel: 'z-ai/glm-5.2',
     })
 
-    expect(capturedMessages.at(-1)).toMatchObject({
-      content: expect.stringContaining('Use this reference image.'),
-      role: 'user',
-    })
-    expect(capturedMessages.at(-1)?.content).toContain(
+    // Fallback mode: the single new message is a plain string carrying the
+    // prompt + OCR transcript (memory thread owns prior history).
+    expect(typeof capturedInput).toBe('string')
+    expect(capturedInput as string).toContain('Use this reference image.')
+    expect(capturedInput as string).toContain(
       'Attached image OCR/visual transcript',
     )
-    expect(capturedMessages.at(-1)?.content).toContain(
-      'Headline: Ship a sharper page',
-    )
-    expect(capturedMessages.at(-1)?.content).toContain(
+    expect(capturedInput as string).toContain('Headline: Ship a sharper page')
+    expect(capturedInput as string).toContain(
       'wireframe.png (image/png, 68 bytes)',
     )
 
@@ -288,15 +482,12 @@ describe('streamLandingAgent attachments', () => {
   it('attaches images directly to the user message when the model supports image input', async () => {
     vi.stubEnv('OPENROUTER_API_KEY', 'test-openrouter-key')
 
-    let capturedMessages: Array<{
-      content: unknown
-      role: string
-    }> = []
+    let capturedInput: unknown
     vi.doMock('./index.ts', () => ({ mastra: {} }))
     vi.doMock('./agents/landing-page-agent.ts', () => ({
       createLandingPageAgent: () => ({
-        stream: async (messages: Array<{ content: unknown; role: string }>) => {
-          capturedMessages = messages
+        stream: async (messages: unknown) => {
+          capturedInput = messages
           return fakeAgentStream()
         },
       }),
@@ -319,7 +510,8 @@ describe('streamLandingAgent attachments', () => {
     })
     vi.stubGlobal('fetch', fetch)
 
-    const { createProject, getProject } = await import('./lib/project-store.ts')
+    const { createProject, getProject } = (await getRuntimeFixture()).runtime
+      .repository
     const project = await createProject()
     createdProjectIds.push(project.id)
     const response = new FakeResponse()
@@ -341,11 +533,12 @@ describe('streamLandingAgent attachments', () => {
       textModel: 'acme/vision-chat:nitro',
     })
 
-    // Current prompt rides as a multimodal user message: text + image part.
-    const current = capturedMessages.at(-1)
-    expect(current?.role).toBe('user')
-    expect(Array.isArray(current?.content)).toBe(true)
-    const parts = current?.content as Array<{
+    // Current prompt rides as the single new message: a multimodal user
+    // message with text + image part.
+    const current = capturedInput as { content: unknown; role: string }
+    expect(current.role).toBe('user')
+    expect(Array.isArray(current.content)).toBe(true)
+    const parts = current.content as Array<{
       image?: string
       text?: string
       type: string
@@ -413,7 +606,8 @@ describe('streamLandingAgent attachments', () => {
       }),
     }))
 
-    const { createProject, getProject } = await import('./lib/project-store.ts')
+    const { createProject, getProject } = (await getRuntimeFixture()).runtime
+      .repository
     const project = await createProject()
     createdProjectIds.push(project.id)
     const response = new FakeResponse()
@@ -475,16 +669,18 @@ describe('streamLandingAgent attachments', () => {
           init?.signal?.addEventListener(
             'abort',
             () => reject(init.signal?.reason),
-            { once: true },
+            {
+              once: true,
+            },
           )
         }),
     )
     vi.stubGlobal('fetch', fetch)
 
-    const { createProject } = await import('./lib/project-store.ts')
+    const { createProject } = (await getRuntimeFixture()).runtime.repository
     const project = await createProject()
     createdProjectIds.push(project.id)
-    const { stopLandingAgent } = await import('./route.ts')
+    const stopLandingAgent = (await getTestRunner()).stop
     const request = fakeRequest()
     const response = new FakeResponse()
 
@@ -506,7 +702,9 @@ describe('streamLandingAgent attachments', () => {
     })
     await vi.waitFor(() => expect(fetch).toHaveBeenCalledOnce())
 
-    expect(stopLandingAgent(project.id)).toBe(true)
+    await expect(stopLandingAgent(project.id)).resolves.toMatchObject({
+      stopped: true,
+    })
     await running
 
     expect(stream).not.toHaveBeenCalled()
@@ -533,7 +731,8 @@ describe('streamLandingAgent error handling', () => {
       }),
     }))
 
-    const { createProject, getProject } = await import('./lib/project-store.ts')
+    const { createProject, getProject } = (await getRuntimeFixture()).runtime
+      .repository
     const project = await createProject()
     createdProjectIds.push(project.id)
     const response = new FakeResponse()
@@ -580,8 +779,9 @@ describe('streamLandingAgent error handling', () => {
       }),
     }))
 
-    const { createProject, getProject, readAgentMessages } =
-      await import('./lib/project-store.ts')
+    const { createProject, getProject, readAgentMessages } = (
+      await getRuntimeFixture()
+    ).runtime.repository
     const project = await createProject()
     createdProjectIds.push(project.id)
     const response = new FakeResponse()
@@ -646,7 +846,7 @@ describe('streamLandingAgent cost accounting', () => {
       }),
     }))
 
-    const { createProject } = await import('./lib/project-store.ts')
+    const { createProject } = (await getRuntimeFixture()).runtime.repository
     const project = await createProject()
     createdProjectIds.push(project.id)
     const response = new FakeResponse()
@@ -711,7 +911,7 @@ describe('streamLandingAgent cost accounting', () => {
       }),
     }))
 
-    const { createProject } = await import('./lib/project-store.ts')
+    const { createProject } = (await getRuntimeFixture()).runtime.repository
     const project = await createProject()
     createdProjectIds.push(project.id)
     const response = new FakeResponse()
@@ -756,7 +956,7 @@ describe('streamLandingAgent cost accounting', () => {
       }),
     }))
 
-    const { createProject } = await import('./lib/project-store.ts')
+    const { createProject } = (await getRuntimeFixture()).runtime.repository
     const project = await createProject()
     createdProjectIds.push(project.id)
     const response = new FakeResponse()
@@ -799,7 +999,7 @@ describe('streamLandingAgent cost accounting', () => {
       }),
     }))
 
-    const { createProject } = await import('./lib/project-store.ts')
+    const { createProject } = (await getRuntimeFixture()).runtime.repository
     const project = await createProject()
     createdProjectIds.push(project.id)
     const response = new FakeResponse()
@@ -840,7 +1040,7 @@ describe('streamLandingAgent cost accounting', () => {
       }),
     }))
 
-    const { createProject } = await import('./lib/project-store.ts')
+    const { createProject } = (await getRuntimeFixture()).runtime.repository
     const project = await createProject()
     createdProjectIds.push(project.id)
     const response = new FakeResponse()
@@ -870,7 +1070,7 @@ describe('streamLandingAgent cost accounting', () => {
 })
 
 describe('streamLandingAgent stream mapping', () => {
-  it('maps text, tool summaries, tool errors, and aggregate costs', async () => {
+  it('maps text and tool summaries without recounting result payload costs', async () => {
     vi.stubEnv('OPENROUTER_API_KEY', 'test-openrouter-key')
 
     vi.doMock('./index.ts', () => ({ mastra: {} }))
@@ -886,7 +1086,8 @@ describe('streamLandingAgent stream mapping', () => {
       }),
     }))
 
-    const { createProject, getProject } = await import('./lib/project-store.ts')
+    const { createProject, getProject } = (await getRuntimeFixture()).runtime
+      .repository
     const project = await createProject()
     createdProjectIds.push(project.id)
     const response = new FakeResponse()
@@ -947,17 +1148,17 @@ describe('streamLandingAgent stream mapping', () => {
         }),
         expect.objectContaining({
           data: expect.objectContaining({
-            cost: expect.closeTo(0.026, 8),
+            cost: 0,
             costBreakdown: expect.objectContaining({
-              image: expect.objectContaining({ cost: 0.02, count: 2 }),
+              image: expect.objectContaining({ cost: 0, count: 0 }),
               llm: 0,
               scrape: expect.objectContaining({
-                calls: 1,
-                cost: 0.006,
-                credits: 1,
-                firecrawlCost: 0.002,
-                ocrCost: 0.004,
-                ocrImages: 2,
+                calls: 0,
+                cost: 0,
+                credits: 0,
+                firecrawlCost: 0,
+                ocrCost: 0,
+                ocrImages: 0,
               }),
             }),
             finishReason: 'stop',
@@ -1002,10 +1203,10 @@ describe('streamLandingAgent stream mapping', () => {
 })
 
 describe('streamLandingAgent generated image persistence', () => {
-  it('persists generated image bytes to the project folder on the tool result', async () => {
+  it('does not late-persist generated image bytes from a tool result', async () => {
     vi.stubEnv('OPENROUTER_API_KEY', 'test-openrouter-key')
 
-    const { saveImage } = await import('./lib/image-store.ts')
+    const { saveImage } = (await getRuntimeFixture()).runtime.imageStore
     const imageId = saveImage(
       Buffer.from([0xff, 0xd8, 0xff, 0x00]),
       'image/jpeg',
@@ -1045,8 +1246,8 @@ describe('streamLandingAgent generated image persistence', () => {
       }),
     }))
 
-    const { createProject, readProjectImage } =
-      await import('./lib/project-store.ts')
+    const { createProject, readProjectImage } = (await getRuntimeFixture())
+      .runtime.repository
     const project = await createProject()
     createdProjectIds.push(project.id)
 
@@ -1058,13 +1259,324 @@ describe('streamLandingAgent generated image persistence', () => {
       textModel: 'z-ai/glm-5.2',
     })
 
-    // Image bytes are durable on disk even though no edit followed.
+    // Provider tools persist before returning success. Replaying a result must
+    // not perform a late write after provider operation ownership has ended.
     await expect(
       readProjectImage(project.id, `${imageId}.jpg`),
-    ).resolves.toEqual({
-      buffer: Buffer.from([0xff, 0xd8, 0xff, 0x00]),
-      mediaType: 'image/jpeg',
+    ).resolves.toBeNull()
+  })
+})
+
+describe('provider operation and metadata fences', () => {
+  it.each(['metadata-first', 'provider-first'] as const)(
+    'retains late provider and LLM usage when %s settles first',
+    async (order) => {
+      vi.stubEnv('OPENROUTER_API_KEY', 'test-openrouter-key')
+      vi.stubEnv('PROVIDER_DRAIN_GRACE_MS', '5')
+      vi.stubEnv('PROVIDER_METADATA_TIMEOUT_MS', '5')
+      vi.stubEnv('PROVIDER_OPERATION_TIMEOUT_MS', '1000')
+      const providerEntered = deferred<void>()
+      const releaseProvider = deferred<void>()
+      const delayedUsage = deferred<{
+        inputTokens: number
+        outputTokens: number
+        totalTokens: number
+      }>()
+      vi.doMock('./index.ts', () => ({ mastra: {} }))
+      vi.doMock('./agents/landing-page-agent.ts', () => ({
+        createLandingPageAgent: (
+          _store: unknown,
+          _mastra: unknown,
+          _memory: unknown,
+          _baseUrl: string,
+          options: { operations?: OperationScope },
+        ) => ({
+          stream: async () => {
+            void options.operations
+              ?.run('late-image-charge', async (operation) => {
+                providerEntered.resolve()
+                await releaseProvider.promise
+                operation.reportUsage({
+                  amount: 0.4,
+                  category: 'image',
+                  count: 1,
+                  reportId: 'late-response',
+                  source: 'generation',
+                  unit: 'usd',
+                })
+              })
+              .catch(() => {})
+            return fakeAgentStream(rawCostStream(), undefined, {
+              usage:
+                order === 'metadata-first'
+                  ? Promise.resolve({
+                      inputTokens: 9,
+                      outputTokens: 4,
+                      totalTokens: 13,
+                    })
+                  : delayedUsage.promise,
+            })
+          },
+        }),
+      }))
+
+      const fixture = await getRuntimeFixture()
+      const project = await fixture.runtime.repository.createProject()
+      createdProjectIds.push(project.id)
+      const runner = await getTestRunner()
+      const response = new FakeResponse()
+      await runner.start({
+        baseUrl: 'http://localhost:3001',
+        projectId: project.id,
+        prompt: 'Settle all known usage.',
+        subscriber: response as unknown as ServerResponse,
+        textModel: 'z-ai/glm-5.2',
+        turnId: `turn-${order}`,
+      })
+      await providerEntered.promise
+      await vi.waitFor(() => {
+        expect(parseSseEvents(response.body)).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({ event: 'run_blocked' }),
+          ]),
+        )
+      })
+
+      releaseProvider.resolve()
+      if (order === 'provider-first') {
+        await Promise.resolve()
+        delayedUsage.resolve({
+          inputTokens: 9,
+          outputTokens: 4,
+          totalTokens: 13,
+        })
+      }
+      await vi.waitFor(() => {
+        expect(fixture.runtime.runBus.getRun(project.id)).toBeUndefined()
+      })
+      const journal = await fixture.runtime.repository.readClientJournal(
+        project.id,
+      )
+      expect(
+        journal.records.find((record) => record.event === 'run_terminal')
+          ?.payload,
+      ).toMatchObject({
+        outcome: 'error',
+        stats: {
+          cost: 0.4123,
+          costBreakdown: {
+            image: { cost: 0.4, count: 1 },
+            llm: 0.0123,
+          },
+          usage: { totalTokens: 13 },
+        },
+      })
+    },
+  )
+
+  it('drains and fences an abort-ignoring capability lookup before agent creation', async () => {
+    vi.stubEnv('OPENROUTER_API_KEY', 'test-openrouter-key')
+    vi.stubEnv('PROVIDER_DRAIN_GRACE_MS', '5')
+    vi.stubEnv('PROVIDER_OPERATION_TIMEOUT_MS', '20')
+    const fetch = vi.fn<typeof globalThis.fetch>(
+      () => new Promise<Response>(() => {}),
+    )
+    testCapabilities = createModelCapabilities({
+      apiKey: 'test-openrouter-key',
+      chatApiUrl: 'https://openrouter.example.test/api/v1',
+      transport: createProviderTransport({ fetch }),
     })
+    const stream = vi.fn<() => Promise<ReturnType<typeof fakeAgentStream>>>(
+      async () => fakeAgentStream(),
+    )
+    const createLandingPageAgent = vi.fn<() => { stream: typeof stream }>(
+      () => ({ stream }),
+    )
+    vi.doMock('./index.ts', () => ({ mastra: {} }))
+    vi.doMock('./agents/landing-page-agent.ts', () => ({
+      createLandingPageAgent,
+    }))
+
+    const fixture = await getRuntimeFixture()
+    const project = await fixture.runtime.repository.createProject()
+    createdProjectIds.push(project.id)
+    const runner = await getTestRunner()
+    await runner.start({
+      baseUrl: 'http://localhost:3001',
+      projectId: project.id,
+      prompt: 'Resolve capability.',
+      textModel: 'z-ai/glm-5.2',
+    })
+
+    await expect(runner.waitForIdle()).rejects.toThrow(
+      'Landing agent runner operations failed',
+    )
+    expectedBlockedRunner = true
+    expect(fetch).toHaveBeenCalledOnce()
+    expect(createLandingPageAgent).not.toHaveBeenCalled()
+    expect(fixture.runtime.runBus.getRun(project.id)).toBeDefined()
+  })
+
+  it('keeps run ownership when an abort-ignoring provider operation cannot drain', async () => {
+    vi.stubEnv('OPENROUTER_API_KEY', 'test-openrouter-key')
+    vi.stubEnv('PROVIDER_DRAIN_GRACE_MS', '5')
+    vi.stubEnv('PROVIDER_OPERATION_TIMEOUT_MS', '20')
+    vi.doMock('./index.ts', () => ({ mastra: {} }))
+    vi.doMock('./agents/landing-page-agent.ts', () => ({
+      createLandingPageAgent: (
+        _store: unknown,
+        _mastra: unknown,
+        _memory: unknown,
+        _baseUrl: string,
+        options: { operations?: OperationScope },
+      ) => ({
+        stream: async () => {
+          void options.operations?.run(
+            'abort-ignoring-provider',
+            () => new Promise<never>(() => {}),
+          )
+          return fakeAgentStream()
+        },
+      }),
+    }))
+
+    const fixture = await getRuntimeFixture()
+    const project = await fixture.runtime.repository.createProject()
+    createdProjectIds.push(project.id)
+    const runner = await getTestRunner()
+    const response = new FakeResponse()
+
+    await expect(
+      runner.start({
+        baseUrl: 'http://localhost:3001',
+        projectId: project.id,
+        prompt: 'Start bounded work.',
+        subscriber: response as unknown as ServerResponse,
+        textModel: 'z-ai/glm-5.2',
+      }),
+    ).resolves.toMatchObject({ ok: true })
+    await expect(runner.waitForIdle()).rejects.toThrow(
+      'Landing agent runner operations failed',
+    )
+    expectedBlockedRunner = true
+
+    expect(fixture.runtime.runBus.getRun(project.id)).toBeDefined()
+    await expect(
+      runner.start({
+        baseUrl: 'http://localhost:3001',
+        projectId: project.id,
+        prompt: 'Do not overlap.',
+        textModel: 'z-ai/glm-5.2',
+      }),
+    ).resolves.toEqual({ ok: false, reason: 'overlap' })
+    await expect(
+      fixture.runtime.repository.getProject(project.id),
+    ).resolves.toMatchObject({ runBlocked: true, status: 'error' })
+    const events = parseSseEvents(response.body)
+    expect(events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          data: expect.objectContaining({
+            knownUsage: expect.objectContaining({
+              finishReason: 'incomplete',
+            }),
+            reason: expect.stringContaining('drain grace period'),
+          }),
+          event: 'run_blocked',
+        }),
+      ]),
+    )
+    expect(events).not.toContainEqual(
+      expect.objectContaining({ event: 'done' }),
+    )
+  })
+
+  it('retains fulfilled usage and fences the run when finish metadata hangs', async () => {
+    vi.stubEnv('OPENROUTER_API_KEY', 'test-openrouter-key')
+    vi.stubEnv('PROVIDER_METADATA_TIMEOUT_MS', '5')
+    vi.doMock('./index.ts', () => ({ mastra: {} }))
+    vi.doMock('./agents/landing-page-agent.ts', () => ({
+      createLandingPageAgent: () => ({
+        stream: async () =>
+          fakeAgentStream(emptyFullStream(), undefined, {
+            finishReason: new Promise<never>(() => {}),
+            usage: Promise.resolve({
+              inputTokens: 9,
+              outputTokens: 4,
+              totalTokens: 13,
+            }),
+          }),
+      }),
+    }))
+
+    const fixture = await getRuntimeFixture()
+    const project = await fixture.runtime.repository.createProject()
+    createdProjectIds.push(project.id)
+    const runner = await getTestRunner()
+    const response = new FakeResponse()
+    await runner.start({
+      baseUrl: 'http://localhost:3001',
+      projectId: project.id,
+      prompt: 'Bound metadata.',
+      subscriber: response as unknown as ServerResponse,
+      textModel: 'z-ai/glm-5.2',
+    })
+
+    await expect(runner.waitForIdle()).rejects.toThrow(
+      'Landing agent runner operations failed',
+    )
+    expectedBlockedRunner = true
+    const events = parseSseEvents(response.body)
+    expect(events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          data: expect.objectContaining({
+            knownUsage: expect.objectContaining({
+              usage: expect.objectContaining({ totalTokens: 13 }),
+            }),
+            reason:
+              'Final provider usage metadata did not settle before its deadline.',
+          }),
+          event: 'run_blocked',
+        }),
+      ]),
+    )
+    expect(events).not.toContainEqual(
+      expect.objectContaining({ event: 'done' }),
+    )
+    expect(fixture.runtime.runBus.getRun(project.id)).toBeDefined()
+  })
+
+  it('waits through the metadata deadline when usage rejects and finish never settles', async () => {
+    vi.stubEnv('OPENROUTER_API_KEY', 'test-openrouter-key')
+    vi.stubEnv('PROVIDER_METADATA_TIMEOUT_MS', '5')
+    vi.doMock('./index.ts', () => ({ mastra: {} }))
+    vi.doMock('./agents/landing-page-agent.ts', () => ({
+      createLandingPageAgent: () => ({
+        stream: async () =>
+          fakeAgentStream(emptyFullStream(), undefined, {
+            finishReason: new Promise<never>(() => {}),
+            usage: Promise.reject(new Error('usage unavailable')),
+          }),
+      }),
+    }))
+
+    const fixture = await getRuntimeFixture()
+    const project = await fixture.runtime.repository.createProject()
+    createdProjectIds.push(project.id)
+    const runner = await getTestRunner()
+    await runner.start({
+      baseUrl: 'http://localhost:3001',
+      projectId: project.id,
+      prompt: 'Reject one metadata field.',
+      textModel: 'z-ai/glm-5.2',
+    })
+
+    await expect(runner.waitForIdle()).rejects.toThrow(
+      'Landing agent runner operations failed',
+    )
+    expectedBlockedRunner = true
+    expect(fixture.runtime.runBus.getRun(project.id)).toBeDefined()
   })
 })
 
@@ -1115,7 +1627,8 @@ describe('streamLandingAgent edit stream', () => {
       }),
     }))
 
-    const { createProject, getProject } = await import('./lib/project-store.ts')
+    const { createProject, getProject } = (await getRuntimeFixture()).runtime
+      .repository
     const project = await createProject()
     createdProjectIds.push(project.id)
     const response = new FakeResponse()
@@ -1210,7 +1723,7 @@ describe('streamLandingAgent default tool intents', () => {
       }),
     }))
 
-    const { createProject } = await import('./lib/project-store.ts')
+    const { createProject } = (await getRuntimeFixture()).runtime.repository
     const project = await createProject()
     createdProjectIds.push(project.id)
     const response = new FakeResponse()
@@ -1276,7 +1789,7 @@ describe('streamLandingAgent retries', () => {
       }),
     }))
 
-    const { createProject } = await import('./lib/project-store.ts')
+    const { createProject } = (await getRuntimeFixture()).runtime.repository
     const project = await createProject()
     createdProjectIds.push(project.id)
     const response = new FakeResponse()
@@ -1322,8 +1835,9 @@ describe('streamLandingAgent html updates', () => {
       }),
     }))
 
-    const { createProject, getProject, readClientMessages } =
-      await import('./lib/project-store.ts')
+    const { createProject, getProject, readClientMessages } = (
+      await getRuntimeFixture()
+    ).runtime.repository
     const project = await createProject()
     createdProjectIds.push(project.id)
     const response = new FakeResponse()
@@ -1395,7 +1909,7 @@ describe('streamLandingAgent html updates', () => {
       }),
     }))
 
-    const { createProject } = await import('./lib/project-store.ts')
+    const { createProject } = (await getRuntimeFixture()).runtime.repository
     const project = await createProject()
     createdProjectIds.push(project.id)
     const response = new FakeResponse()
@@ -1424,7 +1938,8 @@ describe('streamLandingAgent html updates', () => {
       }),
     }))
 
-    const { createProject, getProject } = await import('./lib/project-store.ts')
+    const { createProject, getProject } = (await getRuntimeFixture()).runtime
+      .repository
     const project = await createProject()
     createdProjectIds.push(project.id)
     const response = new FakeResponse()
@@ -1505,7 +2020,7 @@ describe('streamLandingAgent html updates', () => {
       }),
     }))
 
-    const { createProject } = await import('./lib/project-store.ts')
+    const { createProject } = (await getRuntimeFixture()).runtime.repository
     const project = await createProject()
     createdProjectIds.push(project.id)
     const response = new FakeResponse()
@@ -1562,7 +2077,7 @@ describe('streamLandingAgent html updates', () => {
       }),
     }))
 
-    const { createProject } = await import('./lib/project-store.ts')
+    const { createProject } = (await getRuntimeFixture()).runtime.repository
     const project = await createProject()
     createdProjectIds.push(project.id)
     const response = new FakeResponse()
@@ -1580,22 +2095,29 @@ describe('streamLandingAgent html updates', () => {
 })
 
 describe('streamLandingAgent history', () => {
-  it('sends persisted project messages before the current prompt', async () => {
+  it('sends only the current prompt and addresses the project memory thread', async () => {
     vi.stubEnv('OPENROUTER_API_KEY', 'test-openrouter-key')
 
-    let capturedMessages: Array<{ content: string; role: string }> = []
+    let capturedInput: unknown
+    let capturedOptions: { memory?: { resource?: string; thread?: string } } =
+      {}
     vi.doMock('./index.ts', () => ({ mastra: {} }))
     vi.doMock('./agents/landing-page-agent.ts', () => ({
       createLandingPageAgent: () => ({
-        stream: async (messages: Array<{ content: string; role: string }>) => {
-          capturedMessages = messages
+        stream: async (
+          messages: unknown,
+          options: { memory?: { resource?: string; thread?: string } },
+        ) => {
+          capturedInput = messages
+          capturedOptions = options
           return fakeAgentStream()
         },
       }),
     }))
 
-    const { appendProjectMessageTurn, createProject } =
-      await import('./lib/project-store.ts')
+    const { appendProjectMessageTurn, createProject } = (
+      await getRuntimeFixture()
+    ).runtime.repository
     const project = await createProject()
     createdProjectIds.push(project.id)
     await appendProjectMessageTurn(project.id, {
@@ -1631,27 +2153,18 @@ describe('streamLandingAgent history', () => {
       textModel: 'z-ai/glm-5.2',
     })
 
-    expect(capturedMessages).toEqual([
-      {
-        content: 'Create a nice landing page for AI coding agent',
-        role: 'user',
-      },
-      {
-        content: expect.stringContaining(
-          'I created the initial Forge landing page.',
-        ),
-        role: 'assistant',
-      },
-      { content: 'what i asked you todo', role: 'user' },
-    ])
-    expect(capturedMessages[1]?.content).not.toContain('Tool read done')
-    expect(capturedMessages[1]?.content).not.toContain('Action:')
-    expect(capturedMessages[1]?.content).not.toContain('Result:')
+    // Observational Memory owns prior-turn history via the project thread —
+    // only the new prompt is sent, never a replayed transcript.
+    expect(capturedInput).toBe('what i asked you todo')
+    expect(capturedOptions.memory).toEqual({
+      resource: project.id,
+      thread: project.id,
+    })
   })
 })
 
 describe('streamLandingAgent screenshots', () => {
-  it('captures screenshots through the Cloudflare capture callback', async () => {
+  it('captures screenshots through the Firecrawl Browser capture callback', async () => {
     vi.stubEnv('OPENROUTER_API_KEY', 'test-openrouter-key')
 
     let capturedSelector = ''
@@ -1697,7 +2210,9 @@ describe('streamLandingAgent screenshots', () => {
       createLandingPageAgent: (
         _store: unknown,
         _mastra: unknown,
+        _memory: unknown,
         _baseUrl: string,
+        _options: unknown,
         _textModel: string,
         captureProjectSelector: (selector: string) => Promise<unknown>,
       ) => ({
@@ -1709,7 +2224,7 @@ describe('streamLandingAgent screenshots', () => {
       }),
     }))
 
-    const { createProject } = await import('./lib/project-store.ts')
+    const { createProject } = (await getRuntimeFixture()).runtime.repository
     const project = await createProject()
     createdProjectIds.push(project.id)
     const response = new FakeResponse()
@@ -1740,7 +2255,7 @@ describe('streamLandingAgent screenshots', () => {
     )
   })
 
-  it('summarizes screenshot tool results and adds vision cost', async () => {
+  it('summarizes screenshot tool results without recounting vision cost', async () => {
     vi.stubEnv('OPENROUTER_API_KEY', 'test-openrouter-key')
 
     vi.doMock('./index.ts', () => ({ mastra: {} }))
@@ -1750,7 +2265,8 @@ describe('streamLandingAgent screenshots', () => {
       }),
     }))
 
-    const { createProject, getProject } = await import('./lib/project-store.ts')
+    const { createProject, getProject } = (await getRuntimeFixture()).runtime
+      .repository
     const project = await createProject()
     createdProjectIds.push(project.id)
     const response = new FakeResponse()
@@ -1787,9 +2303,9 @@ describe('streamLandingAgent screenshots', () => {
         }),
         expect.objectContaining({
           data: expect.objectContaining({
-            cost: 0.006,
+            cost: 0,
             costBreakdown: expect.objectContaining({
-              vision: { calls: 1, cost: 0.006, images: 3 },
+              vision: { calls: 0, cost: 0, images: 0 },
             }),
           }),
           event: 'stats',
@@ -1827,7 +2343,7 @@ describe('streamLandingAgent screenshots', () => {
       }),
     }))
 
-    const { createProject } = await import('./lib/project-store.ts')
+    const { createProject } = (await getRuntimeFixture()).runtime.repository
     const project = await createProject()
     createdProjectIds.push(project.id)
     const response = new FakeResponse()
@@ -1870,7 +2386,7 @@ describe('streamLandingAgent message persistence', () => {
     vi.doMock('./agents/landing-page-agent.ts', () => ({
       createLandingPageAgent: () => ({
         stream: async () => {
-          const { getProject } = await import('./lib/project-store.ts')
+          const { getProject } = (await getRuntimeFixture()).runtime.repository
           const project = await getProject(capturedProjectId)
           midRunMessages = (project?.messages ?? []).map((turn) => ({
             isStreaming: turn.isStreaming,
@@ -1881,7 +2397,7 @@ describe('streamLandingAgent message persistence', () => {
       }),
     }))
 
-    const { createProject } = await import('./lib/project-store.ts')
+    const { createProject } = (await getRuntimeFixture()).runtime.repository
     const project = await createProject()
     createdProjectIds.push(project.id)
     capturedProjectId = project.id
@@ -1899,7 +2415,7 @@ describe('streamLandingAgent message persistence', () => {
       { isStreaming: true, prompt: 'Build something.' },
     ])
 
-    const { getProject } = await import('./lib/project-store.ts')
+    const { getProject } = (await getRuntimeFixture()).runtime.repository
     const saved = await getProject(project.id)
     // The finalized turn replaces the streaming checkpoint (upsert by id), so
     // the project ends with exactly one turn, no longer streaming.
@@ -1912,11 +2428,10 @@ describe('streamLandingAgent message persistence', () => {
 })
 
 describe('streamLandingAgent screenshot capture errors', () => {
-  it('propagates a Cloudflare capture failure to the tool result', async () => {
+  it('propagates a Firecrawl Browser capture failure to the tool result', async () => {
     vi.stubEnv('OPENROUTER_API_KEY', 'test-openrouter-key')
 
-    const captureError =
-      'Cloudflare Browser Run is rate limited. Try again shortly.'
+    const captureError = 'Firecrawl Browser is rate limited. Try again shortly.'
     let propagatedError = ''
     vi.doMock('./index.ts', () => ({ mastra: {} }))
     vi.doMock('./lib/project-screenshot.ts', () => ({
@@ -1928,7 +2443,9 @@ describe('streamLandingAgent screenshot capture errors', () => {
       createLandingPageAgent: (
         _store: unknown,
         _mastra: unknown,
+        _memory: unknown,
         _baseUrl: string,
+        _options: unknown,
         _textModel: string,
         captureProjectSelector: (selector: string) => Promise<unknown>,
       ) => ({
@@ -1944,7 +2461,7 @@ describe('streamLandingAgent screenshot capture errors', () => {
       }),
     }))
 
-    const { createProject } = await import('./lib/project-store.ts')
+    const { createProject } = (await getRuntimeFixture()).runtime.repository
     const project = await createProject()
     createdProjectIds.push(project.id)
     const response = new FakeResponse()
@@ -1998,17 +2515,23 @@ describe('streamLandingAgent raw mastra message persistence', () => {
     role: 'assistant',
   }
 
-  it('captures response messages after the run and replays them on the next turn', async () => {
+  it('captures response messages after the run; later turns send only the new prompt', async () => {
     vi.stubEnv('OPENROUTER_API_KEY', 'test-openrouter-key')
 
-    let capturedReplay: unknown[] = []
+    let capturedReplay: unknown
+    let capturedOptions: { memory?: { resource?: string; thread?: string } } =
+      {}
     let runCount = 0
     vi.doMock('./index.ts', () => ({ mastra: {} }))
     vi.doMock('./agents/landing-page-agent.ts', () => ({
       createLandingPageAgent: () => ({
-        stream: async (messages: unknown[]) => {
+        stream: async (
+          messages: unknown,
+          options: { memory?: { resource?: string; thread?: string } },
+        ) => {
           runCount += 1
           capturedReplay = messages
+          capturedOptions = options
           return fakeAgentStream(undefined, undefined, {
             messageList: {
               get: {
@@ -2022,7 +2545,7 @@ describe('streamLandingAgent raw mastra message persistence', () => {
       }),
     }))
 
-    const { createProject } = await import('./lib/project-store.ts')
+    const { createProject } = (await getRuntimeFixture()).runtime.repository
     const project = await createProject()
     createdProjectIds.push(project.id)
 
@@ -2035,15 +2558,16 @@ describe('streamLandingAgent raw mastra message persistence', () => {
       textModel: 'z-ai/glm-5.2',
     })
 
-    const { readAgentMessages } = await import('./lib/project-store.ts')
+    const { readAgentMessages } = (await getRuntimeFixture()).runtime.repository
     const agentEntries = await readAgentMessages(project.id)
     expect(agentEntries.at(-1)).toMatchObject({
       messages: [ASSISTANT_RAW, TOOL_RAW],
       turnId: expect.stringMatching(/^turn-/),
     })
 
-    // Second turn: the prior raw assistant + tool messages must be fed back
-    // verbatim so the model sees what it actually called and got back.
+    // Second turn: raw messages stay persisted for inspection, but history
+    // replay is owned by the Observational Memory thread — the agent receives
+    // only the new prompt, addressed to the same project thread.
     await streamLandingAgent({
       projectId: project.id,
       prompt: 'Tighten the hero.',
@@ -2052,25 +2576,10 @@ describe('streamLandingAgent raw mastra message persistence', () => {
       textModel: 'z-ai/glm-5.2',
     })
 
-    expect(capturedReplay).toEqual(
-      expect.arrayContaining([ASSISTANT_RAW, TOOL_RAW]),
-    )
-    // The lossy prose reconstruction must NOT appear once raw messages exist.
-    const replayStrings = capturedReplay.filter(
-      (message): message is { content: string; role: string } =>
-        !!message &&
-        typeof message === 'object' &&
-        typeof (message as { content?: unknown }).content === 'string',
-    )
-    expect(
-      replayStrings.some((message) =>
-        /Tool read done|Result:/.test(message.content),
-      ),
-    ).toBe(false)
-    // The current prompt is still the final user message.
-    expect(capturedReplay.at(-1)).toMatchObject({
-      content: 'Tighten the hero.',
-      role: 'user',
+    expect(capturedReplay).toBe('Tighten the hero.')
+    expect(capturedOptions.memory).toEqual({
+      resource: project.id,
+      thread: project.id,
     })
   })
 
@@ -2117,8 +2626,8 @@ describe('streamLandingAgent raw mastra message persistence', () => {
       }),
     }))
 
-    const { createProject, readAgentMessages } =
-      await import('./lib/project-store.ts')
+    const { createProject, readAgentMessages } = (await getRuntimeFixture())
+      .runtime.repository
     const project = await createProject()
     createdProjectIds.push(project.id)
 
@@ -2155,7 +2664,7 @@ describe('streamLandingAgent stream errors + cleanup', () => {
         stream: async () => fakeAgentStream(throwingStream()),
       }),
     }))
-    const { createProject } = await import('./lib/project-store.ts')
+    const { createProject } = (await getRuntimeFixture()).runtime.repository
     const project = await createProject()
     createdProjectIds.push(project.id)
     const request = fakeRequest()
@@ -2201,8 +2710,8 @@ describe('streamLandingAgent stream errors + cleanup', () => {
           }),
       }),
     }))
-    const { createProject, readClientMessages } =
-      await import('./lib/project-store.ts')
+    const { createProject, readClientMessages } = (await getRuntimeFixture())
+      .runtime.repository
     const project = await createProject()
     createdProjectIds.push(project.id)
     const request = fakeRequest()
@@ -2221,7 +2730,9 @@ describe('streamLandingAgent stream errors + cleanup', () => {
     await run
     // The run completed normally (not stopped) — terminal stats are persisted.
     const messages = await readClientMessages(project.id)
-    expect(messages).toContainEqual(expect.objectContaining({ event: 'done' }))
+    expect(messages).toContainEqual(
+      expect.objectContaining({ event: 'run_terminal' }),
+    )
     // Disconnect did NOT produce a 'stopped' finishReason.
     expect(messages).not.toContainEqual(
       expect.objectContaining({
@@ -2252,11 +2763,11 @@ describe('streamLandingAgent stream errors + cleanup', () => {
           }),
       }),
     }))
-    const { createProject, readClientMessages } =
-      await import('./lib/project-store.ts')
+    const { createProject, readClientMessages } = (await getRuntimeFixture())
+      .runtime.repository
     const project = await createProject()
     createdProjectIds.push(project.id)
-    const { stopLandingAgent } = await import('./route.ts')
+    const stopLandingAgent = (await getTestRunner()).stop
     const request = fakeRequest()
     const response = new FakeResponse()
     const run = streamLandingAgent({
@@ -2275,8 +2786,9 @@ describe('streamLandingAgent stream errors + cleanup', () => {
     }
     // Graceful stop: aborts the run's Mastra stream but leaves the SSE response
     // open so terminal cost/stats + done are delivered to the client.
-    expect(stopLandingAgent(project.id)).toBe(true)
+    const stopping = stopLandingAgent(project.id)
     resolveHang() // unblock the stream → it ends cleanly with signal.aborted
+    await expect(stopping).resolves.toMatchObject({ stopped: true })
     await run
     const events = parseSseEvents(response.body)
     // Cost/stats are flushed even though the run was stopped mid-stream, so the
@@ -2334,11 +2846,12 @@ describe('streamLandingAgent stream errors + cleanup', () => {
       createLandingPageAgent,
     }))
 
-    const { createProject, getProject, readClientMessages } =
-      await import('./lib/project-store.ts')
+    const { createProject, getProject, readClientMessages } = (
+      await getRuntimeFixture()
+    ).runtime.repository
     const project = await createProject()
     createdProjectIds.push(project.id)
-    const { stopLandingAgent } = await import('./route.ts')
+    const stopLandingAgent = (await getTestRunner()).stop
     const firstRequest = fakeRequest()
     const firstResponse = new FakeResponse()
     const firstRun = streamLandingAgent({
@@ -2377,10 +2890,13 @@ describe('streamLandingAgent stream errors + cleanup', () => {
       model: 'z-ai/glm-5.2',
     })
 
-    expect(stopLandingAgent(project.id)).toBe(true)
+    const stopping = stopLandingAgent(project.id)
     resolveHang()
+    await expect(stopping).resolves.toMatchObject({ stopped: true })
     await firstRun
-    expect(stopLandingAgent(project.id)).toBe(false)
+    await expect(stopLandingAgent(project.id)).resolves.toMatchObject({
+      stopped: false,
+    })
     expect(firstRequest.listenerCount('close')).toBe(0)
   })
 
@@ -2393,11 +2909,11 @@ describe('streamLandingAgent stream errors + cleanup', () => {
       }),
     }))
 
-    const { createProject, readClientMessages } =
-      await import('./lib/project-store.ts')
+    const { createProject, readClientMessages } = (await getRuntimeFixture())
+      .runtime.repository
     const project = await createProject()
     createdProjectIds.push(project.id)
-    const { stopLandingAgent } = await import('./route.ts')
+    const stopLandingAgent = (await getTestRunner()).stop
     const request = fakeRequest()
     const response = new FakeResponse({ throwOnWrite: true })
 
@@ -2412,9 +2928,11 @@ describe('streamLandingAgent stream errors + cleanup', () => {
     const eventNames = (await readClientMessages(project.id))
       .filter((entry) => entry.dir === 'out')
       .map((entry) => entry.event)
-    expect(eventNames.slice(-3)).toEqual(['stats', 'error', 'done'])
+    expect(eventNames.at(-1)).toBe('run_terminal')
     expect(request.listenerCount('close')).toBe(0)
-    expect(stopLandingAgent(project.id)).toBe(false)
+    await expect(stopLandingAgent(project.id)).resolves.toMatchObject({
+      stopped: false,
+    })
     expect(response.writableEnded).toBe(true)
   })
 
@@ -2432,7 +2950,7 @@ describe('streamLandingAgent stream errors + cleanup', () => {
         stream: async () => fakeAgentStream(textOnlyStream()),
       }),
     }))
-    const { createProject } = await import('./lib/project-store.ts')
+    const { createProject } = (await getRuntimeFixture()).runtime.repository
     const project = await createProject()
     createdProjectIds.push(project.id)
     const response = new FakeResponse()
@@ -2495,6 +3013,16 @@ class FakeResponse {
     this.statusCode = statusCode
     return this
   }
+}
+
+function deferred<T>() {
+  let reject!: (error: unknown) => void
+  let resolve!: (value: PromiseLike<T> | T) => void
+  const promise = new Promise<T>((accept, deny) => {
+    resolve = accept
+    reject = deny
+  })
+  return { promise, reject, resolve }
 }
 
 async function* editToolStream({

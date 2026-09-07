@@ -27,6 +27,230 @@ const prompt = (
 })
 
 describe('replayClientEvents (hydration fold)', () => {
+  it('projects one canonical completed terminal record without legacy done records', () => {
+    const turns = replayClientEvents([
+      prompt('turn-1', {
+        lifecycle: 'run_accepted',
+        requestDigest: 'digest',
+        ts: '2026-08-21T01:00:00.000Z',
+      }),
+      out('text', { delta: 'Ready' }, '2026-08-21T01:00:01.000Z'),
+      {
+        dir: 'out',
+        event: 'run_terminal',
+        payload: {
+          finishedAt: '2026-08-21T01:00:03.000Z',
+          outcome: 'completed',
+          stats: {
+            cost: 0.02,
+            durationMs: 3_000,
+            finishReason: 'stop',
+            model: 'm',
+            usage: { totalTokens: 20 },
+          },
+          turnId: 'turn-1',
+        },
+        ts: '2026-08-21T01:00:03.000Z',
+        turnId: 'turn-1',
+      },
+    ])
+
+    expect(turns[0]).toMatchObject({
+      durationMs: 3_000,
+      isStreaming: false,
+    })
+    expect(turns[0]).not.toHaveProperty('error')
+    expect(turns[0]?.parts).toContainEqual(
+      expect.objectContaining({ cost: 0.02, type: 'stats' }),
+    )
+  })
+
+  it('projects stopped and interrupted canonical terminal outcomes', () => {
+    const stopped = replayClientEvents([
+      prompt('turn-stop'),
+      {
+        dir: 'out',
+        event: 'run_terminal',
+        payload: {
+          finishedAt: '2026-08-21T01:00:03.000Z',
+          outcome: 'stopped',
+          reason: 'stopped',
+          stats: null,
+          turnId: 'turn-stop',
+        },
+        ts: '2026-08-21T01:00:03.000Z',
+        turnId: 'turn-stop',
+      },
+    ])
+    const interrupted = replayClientEvents([
+      prompt('turn-interrupted'),
+      {
+        dir: 'out',
+        event: 'run_terminal',
+        payload: {
+          finishedAt: '2026-08-21T01:00:03.000Z',
+          outcome: 'interrupted',
+          reason: 'Server restarted while run was active.',
+          stats: null,
+          turnId: 'turn-interrupted',
+        },
+        ts: '2026-08-21T01:00:03.000Z',
+        turnId: 'turn-interrupted',
+      },
+    ])
+
+    expect(stopped[0]).toMatchObject({ isStreaming: false, stopped: true })
+    expect(interrupted[0]).toMatchObject({
+      error: 'Server restarted while run was active.',
+      isStreaming: false,
+    })
+  })
+
+  it('hydrates accepted attachment metadata without inline bytes', () => {
+    const turns = replayClientEvents([
+      prompt('turn-accepted-assets', {
+        attachments: [
+          {
+            assetPath: 'attachments/digest.png',
+            byteLength: 12,
+            kind: 'image',
+            mediaType: 'image/png',
+            name: 'reference.png',
+            sha256: 'digest',
+          },
+          { kind: 'element', name: 'Element #hero', selector: '#hero' },
+        ],
+        lifecycle: 'run_accepted',
+        requestDigest: 'request-digest',
+      }),
+    ])
+
+    expect(turns[0]?.attachments).toEqual([
+      {
+        id: 'attachments/digest.png',
+        kind: 'image',
+        mediaType: 'image/png',
+        name: 'reference.png',
+        size: 12,
+      },
+      {
+        id: 'accepted-2',
+        kind: 'element',
+        name: 'Element #hero',
+        selector: '#hero',
+      },
+    ])
+  })
+
+  it('routes an interrupted repair to a legacy prompt sequence', () => {
+    const turns = replayClientEvents([
+      {
+        dir: 'in',
+        model: 'm',
+        prompt: 'legacy prompt',
+        seq: 7,
+        ts: '2026-08-21T01:00:00.000Z',
+        type: 'prompt',
+      },
+      {
+        dir: 'out',
+        event: 'run_terminal',
+        payload: {
+          finishedAt: '2026-08-21T01:00:03.000Z',
+          legacyPromptSeq: 7,
+          outcome: 'interrupted',
+          reason: 'Server restarted while run was active.',
+          stats: null,
+          turnId: 'legacy-stable-id',
+        },
+        seq: 8,
+        ts: '2026-08-21T01:00:03.000Z',
+        turnId: 'legacy-stable-id',
+      },
+    ])
+
+    expect(turns[0]).toMatchObject({
+      error: 'Server restarted while run was active.',
+      id: 'turn-1',
+      isStreaming: false,
+    })
+  })
+
+  it('ignores an explicit unknown turn ID', () => {
+    const turns = replayClientEvents([
+      prompt('turn-current'),
+      {
+        dir: 'out',
+        event: 'text',
+        payload: { delta: 'stale output' },
+        ts: '2026-08-21T01:00:01.000Z',
+        turnId: 'turn-missing',
+      },
+    ])
+
+    expect(turns[0]?.parts).toEqual([])
+  })
+
+  it('lets the canonical terminal replace a provisional error display', () => {
+    const turns = replayClientEvents([
+      prompt('turn-reconciled'),
+      out(
+        'error',
+        { message: 'temporary delivery error' },
+        '2026-08-21T01:00:01.000Z',
+      ),
+      {
+        dir: 'out',
+        event: 'run_terminal',
+        payload: {
+          finishedAt: '2026-08-21T01:00:04.000Z',
+          outcome: 'completed',
+          stats: {
+            cost: 0.03,
+            durationMs: 4_000,
+            finishReason: 'stop',
+            model: 'm',
+            usage: { totalTokens: 30 },
+          },
+          turnId: 'turn-reconciled',
+        },
+        ts: '2026-08-21T01:00:04.000Z',
+        turnId: 'turn-reconciled',
+      },
+    ])
+
+    expect(turns[0]).toMatchObject({ durationMs: 4_000, isStreaming: false })
+    expect(turns[0]).not.toHaveProperty('error')
+    expect(turns[0]).not.toHaveProperty('stopped')
+    expect(turns[0]?.parts).toContainEqual(
+      expect.objectContaining({ cost: 0.03, type: 'stats' }),
+    )
+  })
+
+  it('routes canonical terminal records by turn id in mixed history', () => {
+    const turns = replayClientEventsLive([
+      prompt('turn-1'),
+      out('done'),
+      prompt('turn-2'),
+      {
+        dir: 'out',
+        event: 'run_terminal',
+        payload: {
+          finishedAt: '2026-08-21T01:00:03.000Z',
+          outcome: 'error',
+          reason: 'late projection',
+          stats: null,
+          turnId: 'turn-1',
+        },
+        ts: '2026-08-21T01:00:03.000Z',
+        turnId: 'turn-1',
+      },
+    ])
+
+    expect(turns[0]).toMatchObject({ error: 'late projection' })
+    expect(turns[1]).toMatchObject({ isStreaming: true })
+  })
+
   it('merges consecutive text deltas into one text part', () => {
     const turns = replayClientEvents([
       prompt('turn-1'),
@@ -35,7 +259,13 @@ describe('replayClientEvents (hydration fold)', () => {
     ])
     expect(turns).toHaveLength(1)
     expect(turns[0]?.parts).toEqual([
-      { id: 'turn-1-text', text: 'Hi', type: 'text' },
+      {
+        durationMs: expect.any(Number),
+        id: 'turn-1-text',
+        startedAt: expect.any(Number),
+        text: 'Hi',
+        type: 'text',
+      },
     ])
   })
 
@@ -47,9 +277,70 @@ describe('replayClientEvents (hydration fold)', () => {
       out('text', { delta: 'ok' }),
     ])
     expect(turns[0]?.parts).toEqual([
-      { id: 'turn-1-think', text: 'hm?', type: 'thinking' },
-      { id: 'turn-1-text', text: 'ok', type: 'text' },
+      {
+        durationMs: expect.any(Number),
+        id: 'turn-1-think',
+        startedAt: expect.any(Number),
+        text: 'hm?',
+        type: 'thinking',
+      },
+      {
+        durationMs: expect.any(Number),
+        id: 'turn-1-text',
+        startedAt: expect.any(Number),
+        text: 'ok',
+        type: 'text',
+      },
     ])
+  })
+
+  it('stamps text/thinking durations from logged event timestamps', () => {
+    const turns = replayClientEvents([
+      prompt('turn-1'),
+      out('thinking', { delta: 'h' }, '2026-08-21T01:00:00.000Z'),
+      out('text', { delta: 'a' }, '2026-08-21T01:00:02.500Z'),
+      out('done', {}, '2026-08-21T01:00:05.000Z'),
+    ])
+    expect(turns[0]?.parts).toEqual([
+      {
+        durationMs: 2_500,
+        id: 'turn-1-think',
+        startedAt: Date.parse('2026-08-21T01:00:00.000Z'),
+        text: 'h',
+        type: 'thinking',
+      },
+      {
+        durationMs: 2_500,
+        id: 'turn-1-text',
+        startedAt: Date.parse('2026-08-21T01:00:02.500Z'),
+        text: 'a',
+        type: 'text',
+      },
+    ])
+  })
+
+  it('keeps server-reported startedAt/durationMs on tool_call parts', () => {
+    const turns = replayClientEvents([
+      prompt('turn-1'),
+      out('tool_call', {
+        id: 'call-9',
+        startedAt: 1_000,
+        state: 'running',
+        tool: 'scrape',
+      }),
+      out('tool_call', {
+        durationMs: 4_200,
+        id: 'call-9',
+        result: 'ok',
+        state: 'done',
+      }),
+    ])
+    const part = turns[0]?.parts[0]
+    expect(part).toMatchObject({
+      durationMs: 4_200,
+      startedAt: 1_000,
+      state: 'done',
+    })
   })
 
   it('upserts a tool_call by id, preserving prior optional fields', () => {
@@ -67,9 +358,11 @@ describe('replayClientEvents (hydration fold)', () => {
     expect(turns[0]?.parts).toEqual([
       {
         action: 'Review hero',
+        durationMs: expect.any(Number),
         id: 'call-1',
         images: [{ alt: 'Hero screenshot', url: '/screenshots/hero.png' }],
         result: 'ok',
+        startedAt: expect.any(Number),
         state: 'done',
         tool: 'screenshot',
         type: 'tool_call',
@@ -93,6 +386,36 @@ describe('replayClientEvents (hydration fold)', () => {
       out('tool_call', { id: 'call-2', state: 'done', tool: 'read' }),
     ])
     expect(turns[0]?.htmlSwaps).toBe(1)
+  })
+
+  it('upserts a memory compaction marker by cycle id', () => {
+    const turns = replayClientEvents([
+      prompt('turn-1'),
+      out('memory', {
+        id: 'cycle-1',
+        operation: 'observation',
+        state: 'running',
+      }),
+      out('memory', {
+        id: 'cycle-1',
+        observationTokens: 4100,
+        operation: 'observation',
+        state: 'done',
+        tokensObserved: 32400,
+      }),
+    ])
+    expect(turns[0]?.parts).toEqual([
+      {
+        durationMs: expect.any(Number),
+        id: 'cycle-1',
+        observationTokens: 4100,
+        operation: 'observation',
+        startedAt: expect.any(Number),
+        state: 'done',
+        tokensObserved: 32400,
+        type: 'memory',
+      },
+    ])
   })
 
   it('upserts rolling stats so a turn keeps only its latest snapshot', () => {
@@ -123,7 +446,13 @@ describe('replayClientEvents (hydration fold)', () => {
         type: 'stats',
         usage: { totalTokens: 30 },
       },
-      { id: 'turn-1-text', text: 'Working', type: 'text' },
+      {
+        durationMs: expect.any(Number),
+        id: 'turn-1-text',
+        startedAt: expect.any(Number),
+        text: 'Working',
+        type: 'text',
+      },
     ])
   })
 
@@ -245,7 +574,13 @@ describe('replayClientEvents (hydration fold)', () => {
       out('text', { delta: 'x' }),
     ])
     expect(turns[0]?.parts).toEqual([
-      { id: 'turn-1-text', text: 'x', type: 'text' },
+      {
+        durationMs: expect.any(Number),
+        id: 'turn-1-text',
+        startedAt: expect.any(Number),
+        text: 'x',
+        type: 'text',
+      },
     ])
   })
 })

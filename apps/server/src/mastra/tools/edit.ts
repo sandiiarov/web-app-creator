@@ -1,6 +1,10 @@
 import { createTool } from '@mastra/core/tools'
 import { z } from 'zod'
 
+import {
+  type OperationScope,
+  runProviderOperation,
+} from '../../providers/operation-scope.ts'
 import { ANCHOR_EDIT_GUIDANCE } from '../lib/anchor-edit/edit-prompt.ts'
 import { HtmlStoreFilesystem } from '../lib/anchor-edit/html-store-filesystem.ts'
 import { runAnchorEdit } from '../lib/anchor-edit/tool.ts'
@@ -14,22 +18,36 @@ import { runAnchorEdit } from '../lib/anchor-edit/tool.ts'
  * Throws on an unknown (stale) anchor, reversed/overlapping spans, or an
  * unbalanced result that isn't a cleanly-truncated tail.
  */
-export function createEditTool(fs: HtmlStoreFilesystem) {
+export function createEditTool(
+  fs: HtmlStoreFilesystem,
+  operations?: OperationScope,
+  signal?: AbortSignal,
+) {
   return createTool({
     description: ANCHOR_EDIT_GUIDANCE,
-    execute: async ({ edits }) => {
-      const out = runAnchorEdit(fs, edits ?? [])
-      return {
-        bytes: out.bytes,
-        delta: out.delta,
-        diffPreview: out.diffPreview,
-        firstChangedLine: 0,
-        header: '',
-        ok: true as const,
-        tag: out.tag,
-        warnings: [...out.warnings],
-      }
-    },
+    execute: async ({ edits }) =>
+      runProviderOperation(
+        operations,
+        'edit-document',
+        async (operation) => {
+          const lease = operation.createWriteLease()
+          const out = runAnchorEdit(
+            fs.withWriteBoundary(() => lease.assertWriteAllowed()),
+            edits ?? [],
+          )
+          return {
+            bytes: out.bytes,
+            delta: out.delta,
+            diffPreview: out.diffPreview,
+            firstChangedLine: 0,
+            header: '',
+            ok: true as const,
+            tag: out.tag,
+            warnings: [...out.warnings],
+          }
+        },
+        { signal },
+      ),
     id: 'edit',
     inputSchema: z.object({
       action: z

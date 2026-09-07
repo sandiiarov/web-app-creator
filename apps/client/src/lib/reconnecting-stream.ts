@@ -1,66 +1,126 @@
-import { streamSSEGet, type SSEEvent } from './sse-client'
+import { PROTOCOL_IDLE_TIMEOUT_MS } from '@workspace/contracts'
+
+import { SSETransportError, streamSSEGet, type SSEEvent } from './sse-client'
 
 export type ConnectionStatus =
+  | 'connected'
   | 'connecting'
-  | 'live'
-  | 'offline'
   | 'reconnecting'
+  | 'unavailable'
 
-/** Every reconnect rehydrates from the server snapshot; requests are never replayed. */
+export interface ReconnectScheduler {
+  clearTimeout(handle: unknown): void
+  setTimeout(callback: () => void, delayMs: number): unknown
+}
+
+const browserScheduler: ReconnectScheduler = {
+  clearTimeout(handle) {
+    clearTimeout(handle as ReturnType<typeof setTimeout>)
+  },
+  setTimeout(callback, delayMs) {
+    return setTimeout(callback, delayMs)
+  },
+}
+
 export async function subscribeWithRecovery(
   url: string,
   options: {
+    fetch?: typeof globalThis.fetch
+    idleTimeoutMs?: number
     onEvent: (event: SSEEvent) => void
     onMissing: () => void
-    onStatus: (status: ConnectionStatus) => void
+    onStatus: (status: ConnectionStatus, reason?: string) => void
+    random?: () => number
+    scheduler?: ReconnectScheduler
     signal: AbortSignal
   },
 ) {
-  const { onEvent, onMissing, onStatus, signal } = options
-  for (let attempt = 0; !signal.aborted; attempt += 1) {
+  const {
+    fetch: fetchImpl,
+    idleTimeoutMs = PROTOCOL_IDLE_TIMEOUT_MS,
+    onEvent,
+    onMissing,
+    onStatus,
+    random = Math.random,
+    scheduler = browserScheduler,
+    signal,
+  } = options
+  let attempt = 0
+  while (!signal.aborted) {
     onStatus(attempt === 0 ? 'connecting' : 'reconnecting')
-    const started = Date.now()
     const attemptController = new AbortController()
-    const abortAttempt = () => attemptController.abort()
+    const abortAttempt = () => attemptController.abort(signal.reason)
     signal.addEventListener('abort', abortAttempt, { once: true })
-    const connectTimer = setTimeout(abortAttempt, 15_000)
+    let hydrated = false
+    let failureReason: string | undefined
+    let idleTimer: unknown
+    const resetIdle = () => {
+      if (idleTimer !== undefined) scheduler.clearTimeout(idleTimer)
+      idleTimer = scheduler.setTimeout(
+        () => attemptController.abort(new Error('SSE connection was idle.')),
+        idleTimeoutMs,
+      )
+    }
+    resetIdle()
+    let fatal = false
     try {
       await streamSSEGet(url, {
+        fetch: fetchImpl,
+        onBytes: resetIdle,
         onEvent(event) {
           if (signal.aborted) return
-          if (event.event === 'state') {
-            clearTimeout(connectTimer)
-            onStatus('live')
-          }
           onEvent(event)
+          if (event.event === 'state' || event.event === 'list_state') {
+            hydrated = true
+            attempt = 0
+            onStatus('connected')
+          }
+          if (event.event === 'protocol_error') {
+            fatal = true
+            attemptController.abort(new Error('Fatal protocol error.'))
+          }
         },
         signal: attemptController.signal,
       })
     } catch (error) {
       if (signal.aborted) return
-      if (error instanceof Error && /\(404\)/.test(error.message)) {
+      if (error instanceof SSETransportError && error.options.status === 404) {
         onMissing()
+        onStatus('unavailable', error.message)
         return
       }
+      fatal ||= error instanceof SSETransportError && error.options.fatal
+      failureReason = error instanceof Error ? error.message : String(error)
     } finally {
-      clearTimeout(connectTimer)
+      if (idleTimer !== undefined) scheduler.clearTimeout(idleTimer)
       signal.removeEventListener('abort', abortAttempt)
     }
     if (signal.aborted) return
-    if (Date.now() - started > 30_000) attempt = 0
-    if (attempt >= 4) {
-      onStatus('offline')
+    if (fatal) {
+      onStatus('unavailable', failureReason)
       return
     }
+    if (hydrated) attempt = 0
     onStatus('reconnecting')
-    await new Promise<void>((resolve) => {
-      const finish = () => {
-        clearTimeout(timer)
-        signal.removeEventListener('abort', finish)
-        resolve()
-      }
-      const timer = setTimeout(finish, Math.min(1000 * 2 ** attempt, 8000))
-      signal.addEventListener('abort', finish, { once: true })
-    })
+    const baseDelay = Math.min(500 * 2 ** attempt, 10_000)
+    attempt += 1
+    const jitteredDelay = Math.round(baseDelay * (0.8 + random() * 0.4))
+    await waitForRetry(Math.min(10_000, jitteredDelay), signal, scheduler)
   }
+}
+
+function waitForRetry(
+  delayMs: number,
+  signal: AbortSignal,
+  scheduler: ReconnectScheduler,
+) {
+  return new Promise<void>((resolve) => {
+    const finish = () => {
+      scheduler.clearTimeout(timer)
+      signal.removeEventListener('abort', finish)
+      resolve()
+    }
+    const timer = scheduler.setTimeout(finish, delayMs)
+    signal.addEventListener('abort', finish, { once: true })
+  })
 }

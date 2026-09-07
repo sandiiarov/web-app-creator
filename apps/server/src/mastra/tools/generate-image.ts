@@ -2,9 +2,17 @@ import { createTool } from '@mastra/core/tools'
 import { z } from 'zod'
 
 import { config } from '../../config.ts'
-import { boundedFetch } from '../lib/bounded-fetch.ts'
+import {
+  type OperationScope,
+  runProviderOperation,
+} from '../../providers/operation-scope.ts'
+import {
+  createProviderTransport,
+  IMAGE_GENERATION_JSON_MAX_BYTES,
+  type ProviderTransport,
+} from '../../providers/transport.ts'
 import { providerReportedCost } from '../lib/cost.ts'
-import { getImage, saveImage } from '../lib/image-store.ts'
+import type { ImageStore } from '../lib/image-store.ts'
 
 interface OpenRouterImageResponse {
   created?: number
@@ -23,10 +31,17 @@ interface OpenRouterImageResponse {
  */
 export function createGenerateImageTool(
   baseUrl: string,
+  imageStore: ImageStore,
   model: string = config.openrouter.defaultImageModel,
+  persistImage?: (imageId: string, extension: string) => null | string,
+  execution: {
+    operations?: OperationScope
+    signal?: AbortSignal
+    transport?: ProviderTransport
+  } = {},
 ) {
   return createTool({
-    description: `Generate an image from a text prompt using the ${model} image model. Returns a hosted URL (e.g. http://localhost:3001/images/img-1.jpg) — embed it directly as \`<img src="<url>" alt="...">\`. Use for hero/product imagery, brand visuals, or any raster graphic the landing page needs — do NOT use for icons or decoration. Always pass an action: one short imperative line on what you are generating (shown to the user as the label for this step). Be specific and art-directed in the prompt (subject, lighting, composition, style).`,
+    description: `Generate an image from a text prompt using the ${model} image model. Returns a hosted image URL — embed it directly as \`<img src="<url>" alt="...">\`. Use for hero/product imagery, brand visuals, or any raster graphic the landing page needs — do NOT use for icons or decoration. Always pass an action: one short imperative line on what you are generating (shown to the user as the label for this step). Be specific and art-directed in the prompt (subject, lighting, composition, style).`,
     execute: async ({ action: _intent, aspectRatio, prompt }) => {
       if (!config.openrouter.apiKey) {
         return {
@@ -39,77 +54,106 @@ export function createGenerateImageTool(
           url: null,
         }
       }
+      return runProviderOperation(
+        execution.operations,
+        'generate-image',
+        async (operation) => {
+          const transport = execution.transport ?? createProviderTransport()
+          const fetched = await transport.json<OpenRouterImageResponse>({
+            init: {
+              body: JSON.stringify({
+                aspect_ratio: aspectRatio ?? '16:9',
+                model,
+                prompt,
+              }),
+              headers: {
+                Authorization: `Bearer ${config.openrouter.apiKey}`,
+                'Content-Type': 'application/json',
+                'X-OpenRouter-Metadata': 'enabled',
+              },
+              method: 'POST',
+            },
+            label: 'OpenRouter image generation',
+            maxBytes: IMAGE_GENERATION_JSON_MAX_BYTES,
+            operation,
+            retry: 'paid',
+            url: config.openrouter.imageApiUrl,
+          })
 
-      const fetched = await boundedFetch(
-        config.openrouter.imageApiUrl,
-        {
-          body: JSON.stringify({
-            aspect_ratio: aspectRatio ?? '16:9',
-            model,
+          if (!fetched.ok) {
+            return {
+              cost: 0,
+              imagesGenerated: 0,
+              ok: false,
+              prompt,
+              reason: fetched.error.message,
+              url: null,
+            }
+          }
+
+          const json = fetched.value
+          const providerCost = providerReportedCost(json)
+          operation.reportUsage({
+            amount: providerCost,
+            category: 'image',
+            count: json.data?.[0]?.b64_json ? 1 : 0,
+            reportId: 'openrouter-response',
+            source: 'generation',
+            unit: 'usd',
+            usage: json.usage,
+          })
+          const image = json.data?.[0]
+          if (!image?.b64_json) {
+            return {
+              cost: providerCost || undefined,
+              imagesGenerated: 0,
+              ok: false,
+              prompt,
+              reason: 'OpenRouter returned no image data.',
+              url: null,
+            }
+          }
+
+          const mediaType = image.media_type ?? 'image/png'
+          const dataUrl = `data:${mediaType};base64,${image.b64_json}`
+          const { buffer, mediaType: resolvedMediaType } =
+            decodeDataUrl(dataUrl)
+          const lease = operation.createWriteLease()
+          lease.assertWriteAllowed()
+          const id = imageStore.saveImage(buffer, resolvedMediaType)
+          const extension = imageStore.getImage(id)?.extension ?? 'png'
+          let url = `${baseUrl}/images/${id}.${extension}`
+          if (persistImage) {
+            try {
+              lease.assertWriteAllowed()
+              const persisted = persistImage(id, `.${extension}`)
+              if (!persisted)
+                throw new Error('Generated image bytes were unavailable.')
+              url = persisted
+            } catch (error) {
+              return {
+                cost: providerCost || undefined,
+                imagesGenerated: 0,
+                ok: false,
+                prompt,
+                reason:
+                  error instanceof Error
+                    ? `Generated image could not be persisted: ${error.message}`
+                    : 'Generated image could not be persisted.',
+                url: null,
+              }
+            }
+          }
+          return {
+            cost: providerCost > 0 ? providerCost : undefined,
+            imagesGenerated: 1,
+            ok: true,
             prompt,
-          }),
-          headers: {
-            Authorization: `Bearer ${config.openrouter.apiKey}`,
-            'Content-Type': 'application/json',
-            'X-OpenRouter-Metadata': 'enabled',
-          },
-          method: 'POST',
+            url,
+          }
         },
-        { label: 'OpenRouter image generation' },
+        { signal: execution.signal },
       )
-
-      if (!fetched.ok) {
-        return {
-          cost: 0,
-          imagesGenerated: 0,
-          ok: false,
-          prompt,
-          reason: fetched.reason,
-          url: null,
-        }
-      }
-
-      const response = fetched.response
-      if (!response.ok) {
-        const text = await response.text().catch(() => '')
-        return {
-          cost: 0,
-          imagesGenerated: 0,
-          ok: false,
-          prompt,
-          reason: `OpenRouter image API error (${response.status}): ${text.slice(0, 200)}`,
-          url: null,
-        }
-      }
-
-      const json = (await response.json()) as OpenRouterImageResponse
-      const image = json.data?.[0]
-      if (!image?.b64_json) {
-        return {
-          cost: 0,
-          imagesGenerated: 0,
-          ok: false,
-          prompt,
-          reason: 'OpenRouter returned no image data.',
-          url: null,
-        }
-      }
-
-      const mediaType = image.media_type ?? 'image/png'
-      const dataUrl = `data:${mediaType};base64,${image.b64_json}`
-      const { buffer, mediaType: resolvedMediaType } = decodeDataUrl(dataUrl)
-      const id = saveImage(buffer, resolvedMediaType)
-      const extension = getImage(id)?.extension ?? 'png'
-      const url = `${baseUrl}/images/${id}.${extension}`
-
-      const providerCost = providerReportedCost(json)
-      return {
-        cost: providerCost > 0 ? providerCost : undefined,
-        imagesGenerated: 1,
-        ok: true,
-        prompt,
-        url,
-      }
     },
     id: 'generate_image',
     inputSchema: z.object({

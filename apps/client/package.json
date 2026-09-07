@@ -21,6 +21,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
+    "@workspace/contracts": "workspace:*",
     "@workspace/conversation": "workspace:*",
     "@workspace/landing-preview": "workspace:*",
     "@workspace/prompt-panel": "workspace:*",

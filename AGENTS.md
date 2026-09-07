@@ -84,7 +84,7 @@ Default section order:
 - TypeScript 7 (native Go compiler, `tsc`) strict ESM via shared config pkgs; format/lint = Oxfmt/Oxlint. Catalog pins `typescript`; `@typescript/native-preview`/`tsgo` retired once TS 7 shipped stable as `typescript`.
 - Keep generated/ignored outputs out of source edits: `node_modules`, `dist`, `coverage`, `.turbo`, `.fallow`, Mastra DB files, `apps/server/.mastra/{.build,output}`.
 - Env files stay package-local; no root `.env`.
-- `pnpm patch` applied to `@mastra/core` (`patches/@mastra__core@1.47.0.patch`, in `pnpm-workspace.yaml` `patchedDependencies`): OpenRouter ESM/CommonJS adapters buffer streamed tool args through end-of-stream, replace GLM-5.2 initial `{}` placeholder when real cumulative JSON follows, reject incomplete final JSON instead of coercing to `{}`, and serialize multimodal tool-result `content` outputs (text + media) as chat-completions `text`/`image_url` parts instead of JSON-stringifying them (direct-mode screenshots reach vision-capable chat models); older generic OpenAI-compatible safeguard remains. `apps/server/src/mastra/lib/openrouter-tool-stream.test.ts` runs both patched adapters w/ fragmented streams; `openrouter-tool-result-image.test.ts` asserts multimodal + plain tool-result wire serialization on both. Re-verify patch + upstream behavior on every `@mastra/core` upgrade; re-create via `pnpm patch @mastra/core@<new>` if still needed.
+- `pnpm patch` applied to `@mastra/core` (`patches/@mastra__core@1.47.0.patch`, in `pnpm-workspace.yaml` `patchedDependencies`): OpenRouter ESM/CommonJS adapters buffer streamed tool args through end-of-stream, replace GLM-5.2 initial `{}` placeholder when real cumulative JSON follows, reject incomplete final JSON instead of coercing to `{}`, and serialize multimodal tool-result `content` outputs (text + media) as chat-completions `text`/`image_url` parts instead of JSON-stringifying them (direct-mode screenshots reach vision-capable chat models); older generic OpenAI-compatible safeguard remains. `apps/server/src/mastra/lib/openrouter-tool-stream.test.ts` runs both patched adapters w/ fragmented streams; `openrouter-tool-result-image.test.ts` asserts multimodal + plain tool-result wire serialization on both. Re-verify patch + upstream behavior on every `@mastra/core` upgrade; re-create via `pnpm patch @mastra/core@<new>` if still needed. `@mastra/memory` is pinned exactly `1.25.0` (catalog comment): 1.26.x calls `storage.patchThread`, which core 1.47 + libsql 1.14 lack — OM crashes at runtime. Unpin only together with an @mastra/core + libsql bump.
 
 ## Verification
 
@@ -107,19 +107,20 @@ Default section order:
 
 ## Child DOX Index
 
+- `plans/AGENTS.md` — architecture implementation plans, dependency order, review evidence, and execution status; proposed behavior stays here until implemented.
 - `apps/AGENTS.md` — runnable app workspaces.
   - `apps/client/AGENTS.md` — Vite/React browser UI, custom SSE client, direct iframe preview.
   - `apps/server/AGENTS.md` — Node API, env contract, generated Mastra output boundary.
     - `apps/server/src/mastra/AGENTS.md` — Mastra landing-page agent, tools, model/cost/SSE logic.
 - `packages/AGENTS.md` — shared internal workspace + config packages.
+  - `packages/contracts/AGENTS.md` — shared validated HTTP/SSE schemas and protocol byte limits.
   - `packages/ui/AGENTS.md` — shadcn/Tailwind shared UI component system + globals.
   - `packages/prompt-panel/AGENTS.md` — prompt panel UI + landing conversation domain model.
   - `packages/landing-preview/AGENTS.md` — landing-page preview iframe runtime + screenshot capture.
-  - `packages/agent-skills/AGENTS.md` — Mastra skills pkg (dormant: `design` skill retained, not imported).
 
 Root-owned paths, no child DOX:
 
 - Workspace orchestration/config: `package.json`, `pnpm-workspace.yaml`, `pnpm-lock.yaml`, `turbo.json`, `.gitignore`, `.fallowrc.jsonc`, `skills-lock.json`, `patches/`.
-- Root docs/assets: `README.md`; `.commandcode/design/` contains paired design review reports and the approved isolated interactive reference.
+- Root docs/assets: `README.md`; `.commandcode/design/review-report.md` + `review-report.html` are paired design reviews, with findings kept separate from implemented behavior. `.commandcode/design/reconsidered-preview.html` is the approved isolated interactive design reference, with local simulated interactions and embedded project backdrops.
 - `.commandcode/design/interface-review.md` — panel and project-library interface findings, implemented refinements, verification coverage, and limits.
 - `.pi/skills/*` symlinks managed by `.agents/` + root lockfile; edit `.agents/skills/*` sources.

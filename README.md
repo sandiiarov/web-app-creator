@@ -30,21 +30,25 @@ Root files are workspace/orchestration only. TS, Vite, Oxlint, and Oxfmt config 
 
 **Server** (`apps/server`) is a plain `node:http` server that owns projects on disk and streams the agent:
 
-- `POST /agent` — SSE stream. Body `{ prompt: string, projectId: string, turnId?: string, textModel?: string, imageModel?: string, visionModel?: string, attachments?: attachment[] }`. The first-party client supplies `turnId` so local state, append-only logs, hydration, and transport-loss reconciliation address the same turn. Emits `text`, `thinking`, `tool_call`, `tool_call_drop`, `html_update`, `stats`, `screenshot_request`, `retry`, `error`, and `done` events.
+- `POST /agent` — accept a run. Body `{ prompt: string, projectId: string, turnId?: string, textModel?: string, imageModel?: string, visionModel?: string, attachments?: attachment[] }`. The first-party client supplies an idempotent `turnId`; the server durably commits the sanitized request and attachment references before acknowledging or starting provider work. Identical retries reuse the accepted run, while changed content under the same ID conflicts. Live subscribers receive `text`, `thinking`, `tool_call`, `tool_call_drop`, `html_update`, `stats`, `screenshot_request`, `retry`, `error`, and `done` events.
 - `POST /api/screenshot-responses/:requestId` — browser POST-back that resolves a pending `screenshot_request` (bytes persisted once to disk; only metadata is logged).
 - `GET /api/models` — slim per-1M-token pricing map (`{ ok, models: Record<id, { input, output, cacheRead?, image?, imageOutput?, inputModalities? }> }`) for the model picker; server-proxied OpenRouter `/models` catalog w/ in-process TTL cache (5 min, matches upstream), stale-on-error, `502` when no snapshot so the client falls back to bundled static pricing. `?ids=a/b,c/d` scopes the response to the app's supported models (client sends its picker option ids; capped at 64 ids, `400` beyond). Chat-model pricing comes from the catalog; image-only models (absent there) get per-image / per-image-token pricing enriched from OpenRouter's images-model endpoints, cached per id. `inputModalities` mirrors the upstream `architecture.input_modalities` (lowercased) so the picker can sync vision choices to live model capabilities.
 - `GET /api/projects` — list projects with generated HTML.
 - `POST /api/projects` — create a project. Body `{ textModel?: string, title?: string }`.
 - `GET /api/projects/:id` — get a project (HTML + hydrated message turns).
-- `POST /api/projects/:id/stop` — gracefully abort the active run while its SSE response remains open for terminal `stats`, stopped state, and `done`.
+- `GET /api/projects/:id/events?v=2` — validated SSE: a coherent full state snapshot followed by committed sequenced project events. Reconnects always begin with a fresh snapshot; the unversioned endpoint remains available for legacy clients.
+- `GET /api/projects/events?v=2` — authoritative full project-list snapshots, including the empty list; the unversioned endpoint retains legacy status events.
+- `POST /api/projects/:id/stop` — abort the active run. Once provider work drains, its SSE response receives terminal `stats`, stopped state, and `done`; unresolved local work leaves the project fenced and reports incomplete accounting.
 - `PATCH /api/projects/:id` — update project models. Body `{ textModel: string, imageModel?: string, visionModel?: string }`.
-- `DELETE /api/projects/:id` — delete a project.
+- `DELETE /api/projects/:id` — durably tombstone a project, stop and drain its run, verify memory cleanup, then remove files; interrupted deletion is retryable and completed deletion is idempotent.
 - `GET /api/projects/:id/images/:file` — serve a persisted project image.
-- `GET /images/:id` — serve a generated image (`http://<host>/images/img-1.jpg`).
+- `GET /images/:id` — serve a live generated image by UUID identity; legacy numeric ids remain readable.
 
 **The agent** is a Mastra agent backed by OpenRouter. It builds the page with these tools: `scrape` (Firecrawl a reference URL + OCR its images), `read`/`find` (inspect the current HTML as line-numbered, snapshot-tagged views), `edit` (apply a snapshot-verified line diff; stale tags and unbalanced HTML are rejected), `screenshot` (ask the browser to render the page, annotate interactive elements with numbered badges, and return visual-QA notes plus a Set-of-Marks element map), and `generate_image` (OpenRouter image model). A `design` skill is injected as system-prompt guidance. When the selected text model accepts image input, screenshot captures and prompt attachments are delivered to it directly as image parts (better output, no separate vision call); otherwise a vision model OCRs them into text transcripts. Image bytes are never written to JSON logs — only metadata is.
 
-**Per-project data** lives under `.data/projects/<id>/`: `project.json` (metadata), `html.json` (current document), `client-messages.jsonl` (append-only client wire — one line per SSE event out + inbound request; terminal events are queued before best-effort socket delivery), `agent-messages.jsonl` (per-step Mastra message snapshots), `vision-messages.json` (OCR calls), `screenshots/` (captured bytes), and `images/` (generated images). Legacy `messages.json` / `raw-messages.json` are read-only fallbacks for older projects.
+Non-streaming OpenRouter, Firecrawl, image-download, and screenshot-publish work is owned by the run that started it. The operation timeout covers response bodies and retry backoff; Stop propagates through these stages, and project writes check a run-owned lease immediately before mutation. Known provider-reported charges are retained even when later parsing, downloading, or persistence fails. If local work ignores cancellation past the drain grace period, the project remains unavailable to replacement runs and deletion rather than being reported complete.
+
+**Per-project data** lives under `.data/projects/<id>/`: atomically replaced `project.json`, `html.json`, and rebuildable `run-state.json`; `client-messages.jsonl` with monotonic sequence numbers and flush-before-broadcast commits; immutable accepted uploads under `attachments/<sha256>.<ext>`; inspection-only agent/vision logs; screenshots; and immutable UUID-named generated images. The journal is run-lifecycle authority: one accepted request precedes provider work, one terminal record owns the outcome and final stats, and restart recovery interrupts accepted unfinished work without replaying paid generation. Minimal deletion markers live under `.data/project-tombstones/`, outside removed project directories. A partial trailing client-journal record is reported without mutation and requires explicit quarantine recovery before new appends. Invalid interior records surface corruption. Legacy unsequenced records, numeric image names, `index.html`, `messages.json`, and `raw-messages.json` remain readable.
 
 ## Commands
 
@@ -80,9 +84,12 @@ The server reads `apps/server/.env` (package-local; do not create a root `.env`)
 
 | Var | Default | Purpose |
 |-----|---------|---------|
-| `FIRECRAWL_API_KEY` | — | enables the `scrape` tool's keyed Firecrawl tier (free tier otherwise) |
+| `FIRECRAWL_API_KEY` | — | required for the `scrape` and screenshot-capture tools |
+| `FIRECRAWL_API_URL` | `https://api.firecrawl.dev` | Firecrawl API base URL |
 | `FIRECRAWL_CREDIT_USD` | `0.002` | per-scrape cost for stats |
-| `CLOUDFLARE_ACCOUNT_ID` / `CLOUDFLARE_API_TOKEN` | — | required for server-side screenshot capture (absent → config error when invoked) |
+| `PROVIDER_OPERATION_TIMEOUT_MS` | `120000` | total deadline for each non-streaming provider operation |
+| `PROVIDER_DRAIN_GRACE_MS` | `5000` | wait before unresolved local provider work fences a project |
+| `PROVIDER_METADATA_TIMEOUT_MS` | `10000` | final Mastra usage/finish-reason deadline |
 | `MASTRA_PROJECT_ID` / `MASTRA_PLATFORM_ACCESS_TOKEN` | — | optional Mastra platform telemetry |
 | `CLIENT_ORIGIN` | `http://localhost:5173` | exact allowed browser origin; other `Origin` values receive `403` |
 | `HOST` / `PORT` | `127.0.0.1` / `3001` | bind address |

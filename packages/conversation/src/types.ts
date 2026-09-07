@@ -27,7 +27,25 @@ export interface ConversationAttachment {
   size?: number
 }
 
+/** Observational Memory cycle marker (context autocompaction). Emitted live
+ *  by the server when the Observer/Reflector compresses history, persisted to
+ *  the client log, and re-rendered on reload like any other turn part. */
+export interface ConversationMemoryPart {
+  /** Terminal duration in ms (derived from startedAt at done/error). */
+  durationMs?: number
+  error?: string
+  id: string
+  observationTokens?: number
+  operation: 'observation' | 'reflection'
+  /** Epoch ms when the cycle started running. */
+  startedAt?: number
+  state: 'done' | 'error' | 'running'
+  tokensObserved?: number
+  type: 'memory'
+}
+
 export type ConversationPart =
+  | ConversationMemoryPart
   | ConversationRetryPart
   | ConversationStatsPart
   | ConversationTextPart
@@ -59,13 +77,21 @@ export interface ConversationStatsPart {
 }
 
 export interface ConversationTextPart {
+  /** Set when the part stops being the streaming tail (next part or done). */
+  durationMs?: number
   id: string
+  /** Epoch ms of the first delta. */
+  startedAt?: number
   text: string
   type: 'text'
 }
 
 export interface ConversationThinkingPart {
+  /** Set when the part stops being the streaming tail (next part or done). */
+  durationMs?: number
   id: string
+  /** Epoch ms of the first delta. */
+  startedAt?: number
   text: string
   type: 'thinking'
 }
@@ -78,10 +104,14 @@ export interface ConversationToolCallImage {
 export interface ConversationToolCallPart {
   action: null | string
   detail?: null | string
+  /** Terminal duration in ms (server-reported, or derived from startedAt). */
+  durationMs?: number
   id: string
   images?: ConversationToolCallImage[]
   providerId?: string
   result?: null | string
+  /** Epoch ms when the tool started running. */
+  startedAt?: number
   state: ToolCallState
   tool: string
   type: 'tool_call'
@@ -89,6 +119,8 @@ export interface ConversationToolCallPart {
 
 export interface ConversationTurn {
   attachments?: ConversationAttachment[]
+  /** Terminal turn duration in ms (done/error time − startedAt). */
+  durationMs?: number
   error?: string
   htmlSwaps: number
   id: string
@@ -96,7 +128,54 @@ export interface ConversationTurn {
   model: string
   parts: ConversationPart[]
   prompt: string
+  /** Epoch ms when the prompt was sent (logged event ts). */
+  startedAt?: number
   stopped?: boolean
+}
+
+export interface RunAcceptedAttachment {
+  assetPath?: string
+  byteLength?: number
+  kind: 'element' | 'image'
+  mediaType?: string
+  name: string
+  selector?: string
+  sha256?: string
+}
+
+export interface RunAcceptedClientEvent extends ClientEvent {
+  attachments: RunAcceptedAttachment[]
+  compactionPercent: null | number
+  dir: 'in'
+  imageModel: string
+  lifecycle: 'run_accepted'
+  model: string
+  prompt: string
+  requestDigest: string
+  requestVersion: 1
+  turnId: string
+  type: 'prompt'
+  visionModel: string
+}
+
+export interface RunBlockedPayload {
+  knownUsage: null | Record<string, unknown>
+  reason: string
+  turnId: string
+}
+
+export type RunTerminalOutcome =
+  | 'completed'
+  | 'error'
+  | 'interrupted'
+  | 'stopped'
+
+export interface RunTerminalPayload {
+  finishedAt: string
+  outcome: RunTerminalOutcome
+  reason?: string
+  stats: null | Record<string, unknown>
+  turnId: string
 }
 
 export type ToolCallState = 'done' | 'error' | 'running' | 'start'

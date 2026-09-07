@@ -25,6 +25,7 @@ import {
 import { type ReactNode, useState } from 'react'
 
 import type { ToolCallImage, ToolCallPart, ToolCallState } from './domain'
+import { StepElapsed } from './step-elapsed'
 
 const TOOL_ICONS: Record<string, LucideIcon> = {
   analyze_image: Image,
@@ -116,6 +117,16 @@ export function TurnToolBlock({ step }: { step: ToolCallPart }) {
             </span>
             <span className="sr-only">{stateLabel(step.state)}</span>
           </span>
+          <StepElapsed
+            active={isActive}
+            className={cn(
+              'mt-0.5',
+              isActive && 'text-sky-700 dark:text-sky-300',
+              isError && 'text-destructive-foreground',
+            )}
+            durationMs={step.durationMs}
+            startedAt={step.startedAt}
+          />
           <DisclosureIcon open={open} state={step.state} />
         </button>
       </CollapsibleTrigger>

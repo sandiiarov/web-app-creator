@@ -227,6 +227,7 @@ const summarizeResultForTool: Record<
     ])
   },
   grep: summarizeFindOrGrepResult,
+  plan: (data) => stringValue(data.summary) ?? null,
   read: (data) => {
     const totalLines = numberValue(data.totalLines)
     const explicitLines = numberValue(data.lines)
@@ -256,7 +257,9 @@ const summarizeResultForTool: Record<
       numberValue(data.imageCount) !== undefined
         ? `${numberValue(data.imageCount)} images`
         : null,
-      ocrImages && ocrImages > 0 ? `OCR ${ocrImages} images` : null,
+      ocrImages && ocrImages > 0
+        ? `OCR ${ocrImages} image${ocrImages === 1 ? '' : 's'}`
+        : null,
     ]
       .filter((part): part is string => !!part)
       .join(' · ')

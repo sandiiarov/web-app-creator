@@ -1,13 +1,15 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import {
+import { createModelCatalog } from './model-catalog.ts'
+
+const {
   filterModelPricing,
   getImageModelPricing,
   getModelPricing,
   parseImageEndpointsPricing,
   parseModelPricing,
   resetModelPricingCache,
-} from './model-catalog.ts'
+} = createModelCatalog()
 
 function catalogResponse(models: unknown[]) {
   return new Response(JSON.stringify({ data: models }), {
@@ -67,6 +69,28 @@ describe('parseModelPricing', () => {
         input: 0.5,
         output: 3,
       },
+    })
+  })
+
+  it('parses context_length only when positive and finite', () => {
+    expect(
+      parseModelPricing({
+        data: [
+          {
+            context_length: 202_752,
+            id: 'z-ai/glm-5.2',
+            pricing: { completion: '0.00000132', prompt: '0.00000042' },
+          },
+          {
+            context_length: 0,
+            id: 'acme/zero',
+            pricing: { completion: '0.000001', prompt: '0.000001' },
+          },
+        ],
+      }),
+    ).toEqual({
+      'acme/zero': { input: 1, output: 1 },
+      'z-ai/glm-5.2': { contextLength: 202_752, input: 0.42, output: 1.32 },
     })
   })
 
@@ -300,7 +324,7 @@ describe('getModelPricing', () => {
     const first = await getModelPricing()
     vi.advanceTimersByTime(5 * 60 * 1000 + 1)
     const pending = getModelPricing()
-    // boundedFetch retries the 500 with backoff; flush the retry timers.
+    // The safe-read transport retries the 500 with backoff; flush its timers.
     await vi.advanceTimersByTimeAsync(2_000)
     const second = await pending
 

@@ -1,16 +1,32 @@
+import {
+  ProjectListSnapshotSchema,
+  ProjectMetaSchema,
+  ProjectSnapshotSchema,
+  StartRunResultSchema,
+  type ProjectMeta as ContractProjectMeta,
+  type ProjectSnapshot,
+  type StartRunCommand,
+} from '@workspace/contracts'
 import type { LandingTurn } from '@workspace/prompt-panel'
 
 import { SERVER_URL } from './landing-agent'
 
+/** @deprecated Test/legacy snapshot shape. Production v2 is validated with parseProjectSnapshot. */
 export interface AgentEventSubscription {
   brief?: string
+  cursor?: number
+  documentHash?: string
   html: string
-  models: { image: string; text: string; vision: string }
-  runStartedAt: null | string
-  runTurnId: null | string
-  status: RunStatus
+  models: ProjectSnapshot['models']
+  projectId?: string
+  run?: ProjectSnapshot['run']
+  runStartedAt?: null | string
+  runTurnId?: null | string
+  status?: RunStatus
   title?: string
+  titleSource?: ProjectSnapshot['titleSource']
   turns: LandingTurn[]
+  version?: 2
 }
 
 export interface Project extends ProjectMeta {
@@ -24,7 +40,7 @@ export interface ProjectInput {
   title?: string
 }
 
-export interface ProjectMeta {
+export interface ProjectMeta extends ContractProjectMeta {
   brief?: string
   createdAt: string
   hasHtml: boolean
@@ -41,27 +57,12 @@ export interface ProjectMeta {
 
 export type RunStatus = 'error' | 'idle' | 'interrupted' | 'running' | 'stopped'
 
-export interface SendPromptInput {
-  attachments?: Array<
-    | {
-        dataUrl: string
-        id: string
-        mediaType: string
-        name: string
-        size: number
-      }
-    | { kind: 'element'; selector: string }
-  >
-  imageModel?: string
-  projectId: string
-  prompt: string
-  textModel: string
-  turnId: string
-  visionModel?: string
-}
+export type SendPromptInput = StartRunCommand
 
 export interface SendPromptResult {
-  status: string
+  outcome: 'accepted' | 'rejected' | 'unknown'
+  reason?: string
+  status?: string
   turnId: string
 }
 
@@ -143,17 +144,28 @@ export async function listProjects(): Promise<ProjectMeta[]> {
     projects: ProjectMeta[]
   }
   if (!json.ok) throw new Error('Failed to list projects')
-  return json.projects
+  return ProjectListSnapshotSchema.parse({
+    projects: json.projects,
+    version: 2,
+  }).projects as ProjectMeta[]
+}
+
+export function parseProjectMeta(value: unknown) {
+  return ProjectMetaSchema.parse(value)
+}
+
+export function parseProjectSnapshot(value: unknown) {
+  return ProjectSnapshotSchema.parse(value)
 }
 
 /** SSE URL for the per-project live event stream (state snapshot + run tail). */
 export function projectEventsUrl(projectId: string): string {
-  return `${SERVER_URL}/api/projects/${projectId}/events`
+  return `${SERVER_URL}/api/projects/${projectId}/events?v=2`
 }
 
 /** SSE URL for the project-list live status stream. */
 export function projectListEventsUrl(): string {
-  return `${SERVER_URL}/api/projects/events`
+  return `${SERVER_URL}/api/projects/events?v=2`
 }
 
 export async function renameProject(
@@ -184,22 +196,61 @@ export async function renameProject(
 export async function sendPrompt(
   input: SendPromptInput,
 ): Promise<SendPromptResult> {
-  const response = await fetch(`${SERVER_URL}/agent`, {
-    body: JSON.stringify(input),
-    headers: { 'content-type': 'application/json' },
-    method: 'POST',
-  })
-  if (response.status === 404) throw new ProjectNotFoundError(input.projectId)
-  const json = (await response.json()) as {
-    error?: string
-    ok: boolean
-    status?: string
-    turnId?: string
+  let response: Response
+  try {
+    response = await fetch(`${SERVER_URL}/agent`, {
+      body: JSON.stringify(input),
+      headers: { 'content-type': 'application/json' },
+      method: 'POST',
+    })
+  } catch {
+    return {
+      outcome: 'unknown',
+      reason: 'Connection lost before acceptance was confirmed.',
+      turnId: input.turnId ?? '',
+    }
   }
-  if (!json.ok || !json.turnId || !json.status) {
-    throw new Error(json.error ?? 'Failed to start agent run')
+  let value: unknown
+  try {
+    value = await response.json()
+  } catch {
+    return {
+      outcome: 'unknown',
+      reason: 'The server response could not confirm acceptance.',
+      turnId: input.turnId ?? '',
+    }
   }
-  return { status: json.status, turnId: json.turnId }
+  const parsed = StartRunResultSchema.safeParse(value)
+  if (!parsed.success) {
+    if ([400, 403, 404, 413].includes(response.status)) {
+      return {
+        outcome: 'rejected',
+        reason:
+          value && typeof value === 'object' && 'error' in value
+            ? String(value.error)
+            : 'The command was rejected.',
+        turnId: input.turnId ?? '',
+      }
+    }
+    return {
+      outcome: 'unknown',
+      reason: 'The server response could not confirm acceptance.',
+      turnId: input.turnId ?? '',
+    }
+  }
+  if (parsed.data.ok) return { outcome: 'accepted', turnId: parsed.data.turnId }
+  if (parsed.data.reason === 'storage' || response.status >= 500) {
+    return {
+      outcome: 'unknown',
+      reason: parsed.data.error,
+      turnId: input.turnId ?? '',
+    }
+  }
+  return {
+    outcome: 'rejected',
+    reason: parsed.data.error ?? parsed.data.reason,
+    turnId: input.turnId ?? '',
+  }
 }
 
 /**

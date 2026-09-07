@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { boundedFetch } from './bounded-fetch.ts'
+import { createOperationScope } from '../../providers/operation-scope.ts'
+import { createProviderTransport } from '../../providers/transport.ts'
 
 const PNG_DATA_URL = 'data:image/png;base64,iVBORw0KGgo='
 const WEBP_DATA_URL = 'data:image/webp;base64,UklGRg=='
@@ -170,7 +171,7 @@ describe('ocrImageInputs', () => {
     ).resolves.toMatchObject({
       imagesAnalyzed: 1,
       ok: false,
-      reason: 'OpenRouter vision error (503): upstream down',
+      reason: expect.stringContaining('HTTP 503'),
     })
 
     vi.stubGlobal(
@@ -216,6 +217,46 @@ describe('ocrImageInputs', () => {
       ok: true,
       text: 'Image 1\nCTA visible',
     })
+  })
+
+  it('retains separate charges for two OCR calls in one run scope', async () => {
+    const { ocrImageInputs } = await loadImageOcr()
+    const fetch = vi.fn<FetchMock>(async () =>
+      jsonResponse({
+        choices: [{ message: { content: 'Image 1\nVisible copy' } }],
+        usage: { cost: 0.003 },
+      }),
+    )
+    const operations = createOperationScope()
+    const options = {
+      operations,
+      transport: createProviderTransport({ fetch }),
+    }
+
+    await ocrImageInputs(
+      [{ dataUrl: PNG_DATA_URL, sourceLabel: 'first.png' }],
+      undefined,
+      undefined,
+      undefined,
+      options,
+    )
+    await ocrImageInputs(
+      [{ dataUrl: PNG_DATA_URL, sourceLabel: 'second.png' }],
+      undefined,
+      undefined,
+      undefined,
+      options,
+    )
+    await expect(operations.drain()).resolves.toEqual({ ok: true })
+
+    expect(operations.getUsageReports()).toEqual([
+      expect.objectContaining({ amount: 0.003, category: 'vision' }),
+      expect.objectContaining({ amount: 0.003, category: 'vision' }),
+    ])
+    expect(
+      new Set(operations.getUsageReports().map((report) => report.operationId))
+        .size,
+    ).toBe(2)
   })
 
   it('propagates an external abort instead of converting it to an OCR failure', async () => {
@@ -295,7 +336,7 @@ describe('ocrImages', () => {
 
     expect(result).toMatchObject({ imagesAnalyzed: 0, ok: false, usage: null })
     expect(result.reason).toContain('https://example.test/missing.png')
-    expect(result.reason).toContain('Failed to fetch image (404)')
+    expect(result.reason).toContain('HTTP 404')
   })
 
   it('rejects fetched URLs without supported image media types', async () => {
@@ -318,173 +359,6 @@ describe('ocrImages', () => {
       ok: false,
       reason: expect.stringContaining('URL is not a supported image'),
     })
-  })
-
-  it('fails fast when a scraped image URL hangs', async () => {
-    const { ocrImages } = await loadImageOcr()
-    const fetch = vi.fn<FetchMock>(
-      (_url, init) =>
-        new Promise<Response>((_resolve, reject) => {
-          init?.signal?.addEventListener(
-            'abort',
-            () => {
-              const err = new Error('The operation was aborted')
-              err.name = 'AbortError'
-              reject(err)
-            },
-            { once: true },
-          )
-        }),
-    )
-    vi.stubGlobal('fetch', fetch)
-
-    // fetchAsDataUrl uses a 15s timeout x 2 attempts; fast-forward fake timers
-    // so the abort/retry chain resolves deterministically.
-    vi.useFakeTimers()
-    const pending = ocrImages(['https://example.test/slow.png'])
-    await vi.advanceTimersByTimeAsync(40_000)
-    vi.useRealTimers()
-    const result = await pending
-
-    expect(result).toMatchObject({ ok: false })
-    expect(result.reason).toContain('https://example.test/slow.png')
-  })
-})
-
-describe('boundedFetch', () => {
-  it('retries on 5xx and returns the success response once it recovers', async () => {
-    const fetch = vi.fn<FetchMock>(async () => jsonResponse({ ok: true }))
-    fetch
-      .mockReturnValueOnce(
-        Promise.resolve(new Response('down', { status: 503 })),
-      )
-      .mockReturnValueOnce(
-        Promise.resolve(new Response('down', { status: 503 })),
-      )
-      .mockReturnValueOnce(Promise.resolve(jsonResponse({ ok: true })))
-    vi.stubGlobal('fetch', fetch)
-
-    const result = await boundedFetch(
-      'https://x.test',
-      { method: 'POST' },
-      { baseDelayMs: 0, timeoutMs: 1000 },
-    )
-
-    expect(result.ok).toBe(true)
-    expect(fetch).toHaveBeenCalledTimes(3)
-  })
-
-  it('returns the last 5xx response after exhausting retries', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn<FetchMock>(async () => new Response('down', { status: 503 })),
-    )
-
-    const result = await boundedFetch(
-      'https://x.test',
-      { method: 'POST' },
-      { baseDelayMs: 0, maxAttempts: 3, timeoutMs: 1000 },
-    )
-
-    expect(result.ok).toBe(true)
-    if (!result.ok) throw new Error('expected ok')
-    expect(result.response.status).toBe(503)
-    expect(fetch).toHaveBeenCalledTimes(3)
-  })
-
-  it('does not retry 4xx responses', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn<FetchMock>(async () => new Response('bad', { status: 400 })),
-    )
-
-    const result = await boundedFetch(
-      'https://x.test',
-      { method: 'POST' },
-      { baseDelayMs: 0, timeoutMs: 1000 },
-    )
-
-    expect(result.ok).toBe(true)
-    if (!result.ok) throw new Error('expected ok')
-    expect(result.response.status).toBe(400)
-    expect(fetch).toHaveBeenCalledTimes(1)
-  })
-
-  it('times out, retries, and surfaces a timeout reason when fetch hangs', async () => {
-    // Mock fetch that honors the abort signal (rejects with AbortError on abort).
-    vi.stubGlobal(
-      'fetch',
-      vi.fn<FetchMock>(
-        (_url, init) =>
-          new Promise<Response>((_resolve, reject) => {
-            init?.signal?.addEventListener(
-              'abort',
-              () => {
-                const err = new Error('The operation was aborted')
-                err.name = 'AbortError'
-                reject(err)
-              },
-              { once: true },
-            )
-          }),
-      ),
-    )
-
-    const result = await boundedFetch(
-      'https://x.test',
-      { method: 'POST' },
-      { baseDelayMs: 0, maxAttempts: 3, timeoutMs: 5 },
-    )
-
-    expect(result.ok).toBe(false)
-    if (result.ok) throw new Error('expected not ok')
-    expect(result.reason).toMatch(/timed out/i)
-    expect(fetch).toHaveBeenCalledTimes(3)
-  })
-
-  it('propagates an external abort without retrying a hanging fetch', async () => {
-    const fetch = vi.fn<FetchMock>(
-      (_url, init) =>
-        new Promise<Response>((_resolve, reject) => {
-          init?.signal?.addEventListener(
-            'abort',
-            () => reject(init.signal?.reason),
-            { once: true },
-          )
-        }),
-    )
-    vi.stubGlobal('fetch', fetch)
-    const controller = new AbortController()
-
-    const pending = boundedFetch(
-      'https://x.test',
-      { method: 'POST' },
-      { baseDelayMs: 0, signal: controller.signal, timeoutMs: 1000 },
-    )
-    await vi.waitFor(() => expect(fetch).toHaveBeenCalledOnce())
-    queueMicrotask(() => controller.abort())
-
-    await expect(pending).rejects.toMatchObject({ name: 'AbortError' })
-    expect(fetch).toHaveBeenCalledOnce()
-  })
-
-  it('cancels retry backoff after a transient response', async () => {
-    const fetch = vi.fn<FetchMock>(async () =>
-      Promise.resolve(new Response('down', { status: 503 })),
-    )
-    vi.stubGlobal('fetch', fetch)
-    const controller = new AbortController()
-
-    const pending = boundedFetch(
-      'https://x.test',
-      { method: 'POST' },
-      { baseDelayMs: 10_000, signal: controller.signal, timeoutMs: 1000 },
-    )
-    await vi.waitFor(() => expect(fetch).toHaveBeenCalledOnce())
-    queueMicrotask(() => controller.abort())
-
-    await expect(pending).rejects.toMatchObject({ name: 'AbortError' })
-    expect(fetch).toHaveBeenCalledOnce()
   })
 })
 

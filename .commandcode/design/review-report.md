@@ -8,7 +8,7 @@ The page-first composition is worth keeping. The app now looks like a website wi
 
 ## Implementation follow-up · 2026-09-06
 
-The approved design is implemented: a 352 × 360 glass widget with square corners, plain conversation text, an in-panel project switcher, and a draggable compact state that keeps the composer ready. Left/right docks fill the viewport. The required fixes protect Send with attachments, preserve drafts/retry references, recover stream connections, deduplicate creation, support project naming and brief search, improve keyboard controls, and expose stopping/retry feedback. [The approved interactive reference](reconsidered-preview.html) retains local simulated interactions. The findings and scores below remain the original review baseline. R12’s memory-specific settings refinement remains with the separate unmerged memory/backend work; this release exposes only settings supported by main.
+The approved design is implemented: a 352 × 360 glass widget with square corners, plain conversation text, an in-panel project switcher, and a draggable compact state that keeps the composer ready. Left/right docks fill the viewport. The required fixes protect Send with attachments, preserve drafts/retry references, recover stream connections, deduplicate creation, support project naming and brief search, improve keyboard controls, and expose stopping/retry feedback. [The approved interactive reference](reconsidered-preview.html) retains local simulated interactions. The findings and scores below remain the original review baseline.
 
 ## Evidence and limits
 

@@ -7,6 +7,7 @@ export {
 export type {
   ClientEvent,
   ConversationAttachment,
+  ConversationMemoryPart,
   ConversationPart,
   ConversationRetryPart,
   ConversationStatsPart,
@@ -15,5 +16,10 @@ export type {
   ConversationToolCallImage,
   ConversationToolCallPart,
   ConversationTurn,
+  RunAcceptedAttachment,
+  RunAcceptedClientEvent,
+  RunBlockedPayload,
+  RunTerminalOutcome,
+  RunTerminalPayload,
   ToolCallState,
 } from './types.ts'

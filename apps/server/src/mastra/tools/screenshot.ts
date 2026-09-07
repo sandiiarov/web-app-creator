@@ -2,6 +2,11 @@ import { createTool } from '@mastra/core/tools'
 import { z } from 'zod'
 
 import { config } from '../../config.ts'
+import {
+  type OperationScope,
+  runProviderOperation,
+} from '../../providers/operation-scope.ts'
+import type { ProviderTransport } from '../../providers/transport.ts'
 import { ocrImageInputs } from '../lib/image-ocr.ts'
 import type {
   CapturedProjectScreenshot,
@@ -21,10 +26,10 @@ export type RequestProjectScreenshot = (
  * instead of a validation error plus retry.
  */
 const DIRECT_DESCRIPTION =
-  'Final verification/QA step: call it once the page (or the requested change) is complete — like running tests or a linter — not after every edit. Request a browser-rendered screenshot of one element in the current project HTML document; the images are returned to you directly for visual inspection (no separate OCR step). Accepts two arguments: a CSS element selector and an action describing what to inspect. The tool automatically captures the element at three viewport sizes (mobile 390×844, tablet 768×1024, and desktop 1440×900) in a single isolated browser session, so you get responsive feedback in one call. Use the action to state precisely what feedback you need (e.g. "check hero spacing and CTA contrast", "verify mobile nav wraps without clipping"), then look at the returned images and judge them yourself. Each capture is annotated with numbered red badges on interactive elements, and the result includes per-viewport elementMaps listing every badge (index → role / accessible name / bounding box / state), so reference elements by index (e.g. "the CTA at badge 0"). Returns per-viewport padded screenshots plus elementMaps; it does not create files.'
+  'Final verification/QA step: call it once the page (or the requested change) is complete — like running tests or a linter — not after every edit. Request a browser-rendered full-page screenshot of the current project HTML document; the images are returned to you directly for visual inspection (no separate OCR step). Accepts two arguments: a CSS selector naming the element or section to focus the inspection on, and an action describing what to check. The tool automatically captures the full page at three viewport widths (mobile 390, tablet 768, and desktop 1440) in parallel, so you get responsive feedback in one call. Use the action to state precisely what feedback you need (e.g. "check hero spacing and CTA contrast", "verify mobile nav wraps without clipping"), then look at the returned images and judge them yourself. Each capture is annotated with numbered red badges on interactive elements, and the result includes an elementMap listing every badge (index → role / accessible name / state), so reference elements by index (e.g. "the CTA at badge 0"). Returns per-viewport full-page screenshots plus the elementMap; it does not create files.'
 
 const OCR_DESCRIPTION =
-  'Final verification/QA step: call it once the page (or the requested change) is complete — like running tests or a linter — not after every edit. Request a browser-rendered screenshot of one element in the current project HTML document, then OCR/analyze it with vision. Accepts two arguments: a CSS element selector and an action describing what to inspect. The tool automatically captures the element at three viewport sizes (mobile 390×844, tablet 768×1024, and desktop 1440×900) in a single isolated browser session, so you get responsive feedback in one call. The action becomes the vision prompt alongside the Z.AI ui_to_artifact system prompt, so state precisely what feedback you need (e.g. "check hero spacing and CTA contrast", "verify mobile nav wraps without clipping"). Each capture is annotated with numbered red badges on interactive elements, and the result includes per-viewport elementMaps listing every badge (index → role / accessible name / bounding box / state), so reference elements by index (e.g. "the CTA at badge 0"). Returns per-viewport padded screenshots plus OCR/visual transcripts and elementMaps; it does not create files.'
+  'Final verification/QA step: call it once the page (or the requested change) is complete — like running tests or a linter — not after every edit. Request a browser-rendered full-page screenshot of the current project HTML document, then OCR/analyze it with vision. Accepts two arguments: a CSS selector naming the element or section to focus the inspection on, and an action describing what to check. The tool automatically captures the full page at three viewport widths (mobile 390, tablet 768, and desktop 1440) in parallel, so you get responsive feedback in one call. The action becomes the vision prompt alongside the Z.AI ui_to_artifact system prompt, so state precisely what feedback you need (e.g. "check hero spacing and CTA contrast", "verify mobile nav wraps without clipping"). Each capture is annotated with numbered red badges on interactive elements, and the result includes an elementMap listing every badge (index → role / accessible name / state), so reference elements by index (e.g. "the CTA at badge 0"). Returns per-viewport full-page screenshots plus OCR/visual transcripts and the elementMap; it does not create files.'
 
 export function recoverScreenshotArgs(value: unknown): unknown {
   if (typeof value === 'string') {
@@ -82,6 +87,10 @@ export function createScreenshotTool(
   visionModel: string = config.openrouter.defaultVisionModel,
   signal?: AbortSignal,
   directImages = false,
+  execution: {
+    operations?: OperationScope
+    transport?: ProviderTransport
+  } = {},
 ) {
   return createTool({
     description: directImages ? DIRECT_DESCRIPTION : OCR_DESCRIPTION,
@@ -123,67 +132,82 @@ export function createScreenshotTool(
         }
       }
 
-      let captured: CapturedProjectSelector
-      try {
-        captured = await captureProjectSelector(selector, signal)
-      } catch (error) {
-        const reason =
-          error instanceof Error ? error.message : 'Screenshot capture failed.'
-        return {
-          captures: [],
-          imageOcr: {
-            imagesAnalyzed: 0,
-            ok: false,
-            reason,
-            text: '',
-            usage: null,
-          },
-          ok: false,
-          reason,
-          selector,
-          text: '',
-        }
-      }
+      return runProviderOperation(
+        execution.operations,
+        'screenshot-tool',
+        async (operation) => {
+          let captured: CapturedProjectSelector
+          try {
+            captured = await captureProjectSelector(selector, signal)
+          } catch (error) {
+            operation.assertActive()
+            const reason =
+              error instanceof Error
+                ? error.message
+                : 'Screenshot capture failed.'
+            return {
+              captures: [],
+              imageOcr: {
+                imagesAnalyzed: 0,
+                ok: false,
+                reason,
+                text: '',
+                usage: null,
+              },
+              ok: false,
+              reason,
+              selector,
+              text: '',
+            }
+          }
 
-      // Direct mode: the chat model accepts image inputs, so the screenshots
-      // ride back inside the tool result (see `toModelOutput` below) and the
-      // model inspects them itself — no separate vision-model OCR call.
-      if (directImages) {
-        return {
-          captures: captured.captures,
-          imageOcr: {
-            imagesAnalyzed: 0,
-            ok: true,
-            text: '',
-            usage: null,
-          },
-          ok: true,
-          selector,
-          text: '',
-        }
-      }
+          // Direct mode: the chat model accepts image inputs, so the screenshots
+          // ride back inside the tool result (see `toModelOutput` below) and the
+          // model inspects them itself — no separate vision-model OCR call.
+          if (directImages) {
+            return {
+              captures: captured.captures,
+              imageOcr: {
+                imagesAnalyzed: 0,
+                ok: true,
+                text: '',
+                usage: null,
+              },
+              ok: true,
+              selector,
+              text: '',
+            }
+          }
 
-      const imageOcr = await ocrImageInputs(
-        captured.captures.map((capture) => ({
-          dataUrl: capture.dataUrl,
-          sourceLabel: `browser screenshot ${capture.width}×${capture.height} of ${selector} at ${capture.viewport} viewport`,
-        })),
-        `${action ?? 'Inspect this element for layout, spacing, contrast, and responsive issues across all three viewports.'}\nTarget selector: ${selector}\nViewports: mobile, tablet, desktop`,
-        visionModel,
-        undefined,
-        // Thread the run's abort signal so a user `stop` during the (slow)
-        // vision OCR aborts it promptly instead of blocking until completion.
+          const imageOcr = await ocrImageInputs(
+            captured.captures.map((capture) => ({
+              dataUrl: capture.dataUrl,
+              sourceLabel: `full-page browser screenshot ${capture.width}×${capture.height} at ${capture.viewport} viewport (focus: ${selector})`,
+            })),
+            `${action ?? 'Inspect this element for layout, spacing, contrast, and responsive issues across all three viewports.'}\nTarget selector: ${selector}\nViewports: mobile, tablet, desktop`,
+            visionModel,
+            undefined,
+            // Thread the run's abort signal so a user `stop` during the (slow)
+            // vision OCR aborts it promptly instead of blocking until completion.
+            {
+              operation,
+              signal,
+              source: 'screenshot',
+              transport: execution.transport,
+            },
+          )
+
+          return {
+            captures: captured.captures.map(stripCaptureDataUrl),
+            imageOcr,
+            ok: imageOcr.ok,
+            reason: imageOcr.reason,
+            selector,
+            text: imageOcr.text,
+          }
+        },
         { signal },
       )
-
-      return {
-        captures: captured.captures.map(stripCaptureDataUrl),
-        imageOcr,
-        ok: imageOcr.ok,
-        reason: imageOcr.reason,
-        selector,
-        text: imageOcr.text,
-      }
     },
     id: 'screenshot',
     inputSchema: z
@@ -200,7 +224,7 @@ export function createScreenshotTool(
           .max(300)
           .optional()
           .describe(
-            'CSS selector for the element to capture, e.g. "body", "main", "#hero", ".pricing-card", or "button[type=submit]". The element is captured at mobile, tablet, and desktop viewports in one call.',
+            'CSS selector naming the element or section to focus the inspection on, e.g. "body", "main", "#hero", ".pricing-card", or "button[type=submit]". The full page is captured at mobile, tablet, and desktop viewport widths in one call.',
           ),
       })
       .passthrough(),

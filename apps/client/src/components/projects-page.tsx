@@ -1,3 +1,7 @@
+import {
+  ProjectListSnapshotSchema,
+  ProtocolErrorSchema,
+} from '@workspace/contracts'
 import { DEFAULT_LANDING_MODELS, StatusPill } from '@workspace/prompt-panel'
 import { Button } from '@workspace/ui/components/button'
 import {
@@ -57,8 +61,8 @@ import {
   listProjects,
   projectListEventsUrl,
 } from '../lib/projects-api'
+import { subscribeWithRecovery } from '../lib/reconnecting-stream'
 import { runStatusToPanelStatus } from '../lib/run-status'
-import { streamSSEGet } from '../lib/sse-client'
 import { ProjectPreview } from './project-preview'
 import { RenameProjectDialog } from './rename-project-dialog'
 import { useTheme } from './theme-provider'
@@ -174,12 +178,15 @@ export function ProjectsPage() {
   const [error, setError] = useState<null | string>(null)
   const [loading, setLoading] = useState(true)
   const navigate = useNavigate()
+  const refreshSequence = useRef(0)
 
   const refresh = useCallback(async () => {
+    const sequence = ++refreshSequence.current
     setLoading(true)
     setError(null)
     try {
       const list = await listProjects()
+      if (sequence !== refreshSequence.current) return
       setProjects(list)
       setStatusById((prev) => {
         const next = { ...prev }
@@ -189,9 +196,10 @@ export function ProjectsPage() {
         return next
       })
     } catch (err) {
+      if (sequence !== refreshSequence.current) return
       setError(err instanceof Error ? err.message : 'Failed to load projects')
     } finally {
-      setLoading(false)
+      if (sequence === refreshSequence.current) setLoading(false)
     }
   }, [])
 
@@ -199,28 +207,38 @@ export function ProjectsPage() {
     void refresh()
   }, [refresh])
 
-  // Live status updates: the list SSE fans out `project_status` events whenever
-  // a run starts/terminates (driven by `setRunStatusSync` → `broadcastStatus`).
+  // The v2 list stream sends a complete authoritative snapshot on every
+  // hydration and committed invalidation, including the empty list.
   useEffect(() => {
     const controller = new AbortController()
-    void streamSSEGet(projectListEventsUrl(), {
+    void subscribeWithRecovery(projectListEventsUrl(), {
       onEvent: ({ data, event }) => {
-        if (event !== 'project_status') return
-        const payload = data as {
-          projectId?: string
-          status?: RunStatus
+        if (event === 'protocol_error') {
+          setError(ProtocolErrorSchema.parse(data).message)
+          setLoading(false)
+          return
         }
-        const projectId = payload.projectId
-        const status = payload.status
-        if (!projectId || !status) return
-        setStatusById((prev) =>
-          prev[projectId] === status ? prev : { ...prev, [projectId]: status },
+        if (event !== 'list_state') return
+        const snapshot = ProjectListSnapshotSchema.parse(data)
+        refreshSequence.current += 1
+        setProjects(snapshot.projects as ProjectMeta[])
+        setStatusById(
+          Object.fromEntries(
+            snapshot.projects.map((project) => [
+              project.id,
+              project.status ?? 'idle',
+            ]),
+          ),
         )
+        setError(null)
+        setLoading(false)
+      },
+      onMissing: () => setError('Projects are unavailable.'),
+      onStatus: (status, reason) => {
+        if (status === 'unavailable')
+          setError(reason ?? 'Projects are unavailable.')
       },
       signal: controller.signal,
-    }).catch(() => {
-      // Server unreachable / stream ended — best-effort; statuses still seed
-      // from the initial listProjects() fetch above.
     })
     return () => controller.abort()
   }, [])

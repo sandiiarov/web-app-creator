@@ -46,7 +46,6 @@ export function createStreamChunkHandler({
   nextToolSeq,
   onEditSuccess,
   onFatal,
-  persistImage,
   stats,
 }: {
   baseUrl: string
@@ -59,14 +58,26 @@ export function createStreamChunkHandler({
   onEditSuccess: () => void
   /** Fatal run error — emitted once, aborts the run. */
   onFatal: (message: string) => void
-  persistImage: (imageId: string, ext: string) => void
   stats: RunStatsTracker
 }): (chunk: StreamChunk) => 'break' | undefined {
   // Stop repeated blind edit attempts after MAX_EDIT_FAILURES consecutive failures.
   let editFailures = 0
+  // Per provider toolCallId start time (epoch ms) → startedAt on running
+  // payloads, durationMs on terminal ones; the client renders the timer.
+  const callStartedAt = new Map<string, number>()
 
   return (chunk) => {
     switch (chunk.type) {
+      case 'data-om-observation-end':
+      case 'data-om-observation-failed':
+      case 'data-om-observation-start': {
+        // Observational Memory cycle events (context autocompaction) —
+        // surfaced as a `memory` SSE event so the client can render a
+        // compaction marker in the conversation.
+        const payload = omCyclePayload(chunk)
+        if (payload) emit('memory', payload)
+        break
+      }
       case 'error': {
         const message =
           chunk.payload.error instanceof Error
@@ -103,12 +114,15 @@ export function createStreamChunkHandler({
           args,
         )
         callAction.set(chunk.payload.toolCallId, display.action)
+        if (!callStartedAt.has(chunk.payload.toolCallId))
+          callStartedAt.set(chunk.payload.toolCallId, Date.now())
 
         const toolPayload: RecordedToolPayload = {
           action: display.action,
           detail: display.detail,
           id: display.id,
           providerId: chunk.payload.toolCallId,
+          startedAt: callStartedAt.get(chunk.payload.toolCallId),
           state: 'running',
           tool: chunk.payload.toolName,
         }
@@ -124,11 +138,15 @@ export function createStreamChunkHandler({
           chunk.payload.toolName,
         )
 
+        if (!callStartedAt.has(chunk.payload.toolCallId))
+          callStartedAt.set(chunk.payload.toolCallId, Date.now())
+
         const toolPayload: RecordedToolPayload = {
           action: display.action,
           detail: display.detail,
           id: display.id,
           providerId: chunk.payload.toolCallId,
+          startedAt: callStartedAt.get(chunk.payload.toolCallId),
           state: 'start',
           tool: chunk.payload.toolName,
         }
@@ -146,17 +164,24 @@ export function createStreamChunkHandler({
         )
         const action =
           callAction.get(chunk.payload.toolCallId) ?? display.action
+        const errorStartedAt = callStartedAt.get(chunk.payload.toolCallId)
         const toolPayload: RecordedToolPayload = {
           action,
           detail: display.detail,
+          durationMs:
+            errorStartedAt !== undefined
+              ? Math.max(0, Date.now() - errorStartedAt)
+              : undefined,
           id: display.id,
           providerId: chunk.payload.toolCallId,
           result: summarizeToolError(chunk.payload.error),
+          startedAt: errorStartedAt,
           state: 'error',
           tool: chunk.payload.toolName,
         }
         emit('tool_call', toolPayload)
         completedCallIds.add(chunk.payload.toolCallId)
+        callStartedAt.delete(chunk.payload.toolCallId)
         stats.emitStats()
         if (chunk.payload.toolName === 'edit') {
           editFailures += 1
@@ -194,18 +219,25 @@ export function createStreamChunkHandler({
           chunk.payload.result,
           baseUrl,
         )
+        const resultStartedAt = callStartedAt.get(chunk.payload.toolCallId)
         const toolPayload: RecordedToolPayload = {
           action,
           detail: display.detail,
+          durationMs:
+            resultStartedAt !== undefined
+              ? Math.max(0, Date.now() - resultStartedAt)
+              : undefined,
           id: display.id,
           ...(images.length > 0 ? { images } : {}),
           providerId: chunk.payload.toolCallId,
           result,
+          startedAt: resultStartedAt,
           state: isError ? 'error' : 'done',
           tool: chunk.payload.toolName,
         }
         emit('tool_call', toolPayload)
         completedCallIds.add(chunk.payload.toolCallId)
+        callStartedAt.delete(chunk.payload.toolCallId)
         if (chunk.payload.toolName === 'edit') {
           if (isError) {
             editFailures += 1
@@ -221,64 +253,8 @@ export function createStreamChunkHandler({
             onEditSuccess()
           }
         }
-        // Track Firecrawl usage and bundled OpenRouter OCR metadata from successful scrape calls.
-        if (chunk.payload.toolName === 'scrape' && !isError) {
-          stats.recordScrapeResult(
-            chunk.payload.result as {
-              creditsUsed?: number
-              imageOcr?: {
-                cost?: number
-                imagesAnalyzed?: number
-                ok?: boolean
-                usage?: null | {
-                  cachedTokens?: number
-                  completionTokens?: number
-                  promptTokens?: number
-                }
-              }
-            },
-          )
-        }
-        let checkToolCostCap = false
-        // Accumulate image-generation cost from successful generate_image calls.
-        if (chunk.payload.toolName === 'generate_image' && !isError) {
-          const result = chunk.payload.result as {
-            cost?: number
-            imagesGenerated?: number
-            url?: null | string
-          }
-          if (stats.recordGenerateImage(result)) {
-            checkToolCostCap = true
-          }
-          // Persist generated image bytes to the project folder at
-          // generation time so they are durable even if a later edit fails
-          // (the edit path otherwise never runs persistProjectImagesSync).
-          const imgUrl = typeof result.url === 'string' ? result.url : null
-          const match = imgUrl?.match(/\/images\/(img-\d+)(\.[a-z0-9]+)?$/i)
-          if (match) {
-            persistImage(match[1]!, match[2] ?? '')
-          }
-        }
-        // Accumulate screenshot OCR usage from successful screenshot calls.
-        if (chunk.payload.toolName === 'screenshot' && !isError) {
-          const result = chunk.payload.result as {
-            imageOcr?: {
-              cost?: number
-              imagesAnalyzed?: number
-              ok?: boolean
-              usage?: null | {
-                cachedTokens?: number
-                completionTokens?: number
-                promptTokens?: number
-              }
-            }
-          }
-          if (stats.recordScreenshotOcr(result)) {
-            checkToolCostCap = true
-          }
-        }
         stats.emitStats()
-        if (checkToolCostCap && stats.checkCostCap()) return 'break'
+        if (stats.checkCostCap()) return 'break'
         break
       }
       default:
@@ -309,6 +285,54 @@ function getToolCallDisplay(
       args,
     )
   )
+}
+
+/**
+ * Map an OM observation cycle chunk (`data-om-observation-start/end/failed`)
+ * to the custom `memory` SSE payload. `chunk.data` is untyped on data chunks,
+ * so every field is read defensively.
+ */
+function omCyclePayload(chunk: StreamChunk): null | Record<string, unknown> {
+  const data = (chunk as { data?: Record<string, unknown> }).data
+  if (!data || typeof data !== 'object') return null
+  const id = typeof data.cycleId === 'string' ? data.cycleId : ''
+  const operation =
+    data.operationType === 'reflection' ? 'reflection' : 'observation'
+  if (!id) return null
+  if (chunk.type === 'data-om-observation-start') {
+    return {
+      id,
+      operation,
+      state: 'running',
+      tokensObserved:
+        typeof data.tokensToObserve === 'number'
+          ? data.tokensToObserve
+          : undefined,
+    }
+  }
+  if (chunk.type === 'data-om-observation-end') {
+    return {
+      durationMs:
+        typeof data.durationMs === 'number' ? data.durationMs : undefined,
+      id,
+      observationTokens:
+        typeof data.observationTokens === 'number'
+          ? data.observationTokens
+          : undefined,
+      operation,
+      state: 'done',
+      tokensObserved:
+        typeof data.tokensObserved === 'number'
+          ? data.tokensObserved
+          : undefined,
+    }
+  }
+  return {
+    error: typeof data.error === 'string' ? data.error : 'Observation failed.',
+    id,
+    operation,
+    state: 'error',
+  }
 }
 
 function startToolCallDisplay(

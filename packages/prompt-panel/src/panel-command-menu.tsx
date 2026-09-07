@@ -144,10 +144,14 @@ export function PanelLayoutMenu({
 }
 
 export function PanelSettingsMenu({
+  compactionPercent,
+  onCompactionPercentChange,
   onToggleTheme,
   pageActions,
   theme,
 }: {
+  compactionPercent: number
+  onCompactionPercentChange: (percent: number) => void
   onToggleTheme: () => void
   pageActions: ReactNode
   theme: PanelTheme
@@ -211,6 +215,28 @@ export function PanelSettingsMenu({
           </p>
         </div>
         <DropdownMenuSeparator />
+        <details className="p-2" onKeyDown={(event) => event.stopPropagation()}>
+          <summary className="cursor-pointer text-xs font-medium">
+            Advanced
+          </summary>
+          <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
+            Summarize older conversation when context fills up. Key decisions
+            stay available to the assistant; your chat history stays visible.
+          </p>
+          <div className="mt-3">
+            <RangeSlider
+              label="Context used"
+              max={100}
+              min={1}
+              onValueChange={onCompactionPercentChange}
+              suffix="%"
+              value={compactionPercent}
+            />
+          </div>
+          <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
+            Lower values summarize sooner. Default: 80%.
+          </p>
+        </details>
       </DropdownMenuContent>
     </DropdownMenu>
   )

@@ -1,6 +1,9 @@
 // @vitest-environment happy-dom
 
-import type { LandingTurn } from '@workspace/prompt-panel'
+import type {
+  LandingAgentSendResult,
+  LandingTurn,
+} from '@workspace/prompt-panel'
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -10,14 +13,18 @@ import type {
   ProjectMeta,
   SendPromptResult,
 } from '../lib/projects-api'
-import type { SSEEvent, StreamSSEOptions } from '../lib/sse-client'
+import {
+  SSETransportError,
+  type SSEEvent,
+  type StreamSSEOptions,
+} from '../lib/sse-client'
 import { useLandingPage, type UseLandingPage } from './use-landing-page'
 
 const mocks = vi.hoisted(() => ({
   sendPrompt: vi
     .fn<(input: unknown) => Promise<SendPromptResult>>()
     .mockResolvedValue({
-      status: 'running',
+      outcome: 'accepted',
       turnId: 'replaced-in-tests',
     }),
   stopProjectAgent: vi.fn<(id: string) => Promise<boolean>>(),
@@ -33,7 +40,10 @@ vi.mock('../lib/projects-api', async (importOriginal) => ({
   updateProjectModels: mocks.updateProjectModels,
 }))
 
-vi.mock('../lib/sse-client', () => ({ streamSSEGet: mocks.streamSSEGet }))
+vi.mock('../lib/sse-client', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../lib/sse-client')>()),
+  streamSSEGet: mocks.streamSSEGet,
+}))
 
 const priorTurn = turn({ id: 'turn-prior', prompt: 'Earlier' })
 
@@ -41,19 +51,26 @@ let container: HTMLDivElement
 let current: UseLandingPage
 let root: Root
 let subscribeOnEvent: (event: SSEEvent) => void
+let eventSeq = 0
+let pendingTerminalReason: string | undefined
 
 beforeEach(() => {
   ;(
     globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }
   ).IS_REACT_ACT_ENVIRONMENT = true
   vi.resetAllMocks()
-  mocks.sendPrompt.mockResolvedValue({ status: 'running', turnId: 'replaced' })
+  eventSeq = 0
+  pendingTerminalReason = undefined
+  mocks.sendPrompt.mockResolvedValue({
+    outcome: 'accepted',
+    turnId: 'replaced',
+  })
   container = document.createElement('div')
   document.body.append(container)
   root = createRoot(container)
   mocks.streamSSEGet.mockImplementation(async (_url, options) => {
     // Subscribe stream stays open for the test; events arrive via `onEvent`.
-    subscribeOnEvent = options.onEvent
+    subscribeOnEvent = (event) => options.onEvent(toV2Event(event))
     return new Promise<void>(() => {})
   })
 })
@@ -90,7 +107,10 @@ describe('useLandingPage subscribe mount', () => {
   it('marks a project missing when the subscribe stream 404s', async () => {
     mocks.streamSSEGet.mockReset()
     mocks.streamSSEGet.mockRejectedValue(
-      new Error('Request failed (404): Project not found'),
+      new SSETransportError('HTTP', 'Project not found', {
+        fatal: true,
+        status: 404,
+      }),
     )
     await mount()
 
@@ -115,7 +135,10 @@ describe('useLandingPage subscribe mount', () => {
 
 describe('useLandingPage run lifecycle', () => {
   it('POSTs sendPrompt, appends an optimistic turn, and applies live events from the subscribe stream', async () => {
-    mocks.sendPrompt.mockResolvedValue({ status: 'running', turnId: 'turn-1' })
+    mocks.sendPrompt.mockResolvedValue({
+      outcome: 'accepted',
+      turnId: 'turn-1',
+    })
     await mount(state())
 
     await act(async () => {
@@ -150,26 +173,60 @@ describe('useLandingPage run lifecycle', () => {
     ])
   })
 
-  it('rolls back the optimistic turn to an error when sendPrompt rejects', async () => {
+  it('retains an uncertain optimistic turn when the acknowledgment is lost', async () => {
     mocks.sendPrompt.mockRejectedValue(new Error('A run is already active.'))
     await mount(state())
 
     await act(async () => {
-      expect(await current.send({ prompt: 'Build it' })).toBe(false)
+      expect(await current.send({ prompt: 'Build it' })).toMatchObject({
+        outcome: 'unknown',
+      })
       await flushAsyncWork()
     })
 
-    expect(current.isStreaming).toBe(false)
-    expect(current.turns[0]).toMatchObject({
-      error: 'A run is already active.',
-      isStreaming: false,
+    expect(current.isStreaming).toBe(true)
+    expect(current.turns[0]).toMatchObject({ isStreaming: true })
+  })
+
+  it('retries an uncertain immutable command with the same turn and effective inputs', async () => {
+    mocks.sendPrompt
+      .mockRejectedValueOnce(new Error('lost acknowledgment'))
+      .mockResolvedValueOnce({ outcome: 'accepted', turnId: 'same' })
+    await mount(state())
+    const input = {
+      attachments: [
+        {
+          id: 'hero-element',
+          kind: 'element' as const,
+          name: 'Hero',
+          selector: '#hero',
+        },
+      ],
+      prompt: 'Build it',
+    }
+    let first!: LandingAgentSendResult
+    await act(async () => {
+      first = await current.send(input)
+      await flushAsyncWork()
     })
+    await act(async () => {
+      subscribeOnEvent({ data: state(), event: 'state' })
+      await flushAsyncWork()
+    })
+    expect(first.outcome).toBe('unknown')
+    expect(mocks.sendPrompt).toHaveBeenCalledTimes(2)
+    expect(mocks.sendPrompt.mock.calls[1]?.[0]).toEqual(
+      mocks.sendPrompt.mock.calls[0]?.[0],
+    )
+    expect(current.turns).toHaveLength(1)
   })
 
   it('blocks sends until a connection snapshot arrives', async () => {
     await mount()
     await act(async () => {
-      expect(await current.send({ prompt: 'Too early' })).toBe(false)
+      expect(await current.send({ prompt: 'Too early' })).toMatchObject({
+        outcome: 'rejected',
+      })
     })
     expect(mocks.sendPrompt).not.toHaveBeenCalled()
   })
@@ -183,7 +240,7 @@ describe('useLandingPage run lifecycle', () => {
         }),
     )
     await mount(state())
-    let pending!: Promise<boolean>
+    let pending!: ReturnType<UseLandingPage['send']>
     act(() => {
       pending = current.send({ prompt: 'Pending request' })
     })
@@ -193,11 +250,13 @@ describe('useLandingPage run lifecycle', () => {
     expect(current.isStreaming).toBe(true)
     expect(current.turns[0]?.prompt).toBe('Pending request')
     await act(async () => {
-      expect(await current.send({ prompt: 'Duplicate' })).toBe(false)
+      expect(await current.send({ prompt: 'Duplicate' })).toMatchObject({
+        outcome: 'rejected',
+      })
     })
     await act(async () => {
-      accept({ status: 'running', turnId: 'accepted' })
-      expect(await pending).toBe(true)
+      accept({ outcome: 'accepted', turnId: 'accepted' })
+      expect(await pending).toMatchObject({ outcome: 'accepted' })
     })
     expect(mocks.sendPrompt).toHaveBeenCalledOnce()
   })
@@ -213,6 +272,42 @@ describe('useLandingPage run lifecycle', () => {
 
     expect(mocks.sendPrompt).toHaveBeenCalledOnce()
     expect(current.turns).toHaveLength(1)
+  })
+
+  it('does not let a rejected local acknowledgment unlock a newer remote run', async () => {
+    let resolvePost!: (value: SendPromptResult) => void
+    mocks.sendPrompt.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolvePost = resolve
+        }),
+    )
+    await mount(state())
+    act(() => {
+      void current.send({ prompt: 'Local request' })
+    })
+    act(() => {
+      subscribeOnEvent({
+        data: state({
+          run: {
+            blocked: false,
+            startedAt: '2026-09-06T00:00:01.000Z',
+            status: 'running',
+            turnId: 'remote-turn',
+          },
+          turns: [turn({ id: 'remote-turn', isStreaming: true })],
+        }),
+        event: 'state',
+      })
+    })
+    await act(async () => {
+      resolvePost({ outcome: 'rejected', reason: 'overlap', turnId: 'local' })
+      await flushAsyncWork()
+    })
+    expect(current.isStreaming).toBe(true)
+    expect(
+      current.turns.find((item) => item.id === 'remote-turn'),
+    ).toMatchObject({ isStreaming: true })
   })
 
   it('gracefully stops: terminalizes active tools, POSTs /stop, drains terminal events from subscribe', async () => {
@@ -329,6 +424,68 @@ describe('useLandingPage run lifecycle', () => {
       type: 'tool_call',
     })
   })
+
+  it('does not let duplicate events for an old turn unlock a newer active run', async () => {
+    await mount(
+      state({
+        cursor: 1,
+        run: {
+          blocked: false,
+          startedAt: '2026-09-06T00:00:00.000Z',
+          status: 'running',
+          turnId: 'turn-new',
+        },
+        turns: [
+          turn({ id: 'turn-old' }),
+          turn({ id: 'turn-new', isStreaming: true }),
+        ],
+      }),
+    )
+    act(() => {
+      subscribeOnEvent({
+        data: {
+          payload: {
+            attachments: [],
+            compactionPercent: null,
+            imageModel: 'image',
+            model: 'text',
+            prompt: 'Old',
+            requestDigest: 'digest',
+            requestVersion: 1,
+            visionModel: 'vision',
+          },
+          projectId: 'p1',
+          seq: 2,
+          ts: '2026-09-06T00:00:01.000Z',
+          turnId: 'turn-old',
+          type: 'run_accepted',
+          version: 2,
+        },
+        event: 'project_event',
+      })
+      subscribeOnEvent({
+        data: {
+          payload: {
+            finishedAt: '2026-09-06T00:00:02.000Z',
+            outcome: 'completed',
+            stats: null,
+            turnId: 'turn-old',
+          },
+          projectId: 'p1',
+          seq: 3,
+          ts: '2026-09-06T00:00:02.000Z',
+          turnId: 'turn-old',
+          type: 'run_terminal',
+          version: 2,
+        },
+        event: 'project_event',
+      })
+    })
+    expect(current.isStreaming).toBe(true)
+    expect(current.turns.find((item) => item.id === 'turn-new')).toMatchObject({
+      isStreaming: true,
+    })
+  })
 })
 
 async function flushAsyncWork(): Promise<void> {
@@ -363,14 +520,107 @@ async function mount(initialState?: AgentEventSubscription): Promise<void> {
 function state(
   overrides: Partial<AgentEventSubscription> = {},
 ): AgentEventSubscription {
+  const status = overrides.status ?? overrides.run?.status ?? 'idle'
   return {
-    html: '<main>Initial</main>',
-    models: { image: '', text: 'z-ai/glm-5.2', vision: '' },
-    runStartedAt: null,
-    runTurnId: null,
-    status: 'idle',
-    turns: [],
-    ...overrides,
+    cursor: overrides.cursor ?? 0,
+    documentHash: overrides.documentHash ?? 'initial-hash',
+    html: overrides.html ?? '<main>Initial</main>',
+    models: overrides.models ?? { image: '', text: 'z-ai/glm-5.2', vision: '' },
+    projectId: 'p1',
+    run: overrides.run ?? {
+      blocked: false,
+      startedAt: overrides.runStartedAt ?? null,
+      status,
+      turnId: overrides.runTurnId ?? null,
+    },
+    title: overrides.title ?? 'Untitled',
+    turns: overrides.turns ?? [],
+    version: 2,
+  }
+}
+
+function toV2Event(input: SSEEvent): SSEEvent {
+  if (
+    input.event === 'state' ||
+    input.event === 'protocol_error' ||
+    input.event === 'project_event'
+  )
+    return input
+  const turnId = current?.turns.at(-1)?.id ?? 'turn-1'
+  eventSeq += 1
+  if (input.event === 'html_update') {
+    const html = (input.data as { html: string }).html
+    return {
+      data: {
+        payload: {
+          bytes: new TextEncoder().encode(html).byteLength,
+          hash: `hash-${eventSeq}`,
+          html,
+        },
+        projectId: 'p1',
+        seq: eventSeq,
+        ts: new Date().toISOString(),
+        turnId,
+        type: 'document_changed',
+        version: 2,
+      },
+      event: 'project_event',
+    }
+  }
+  if (input.event === 'error') {
+    pendingTerminalReason = String(
+      (input.data as { message?: string }).message ?? 'error',
+    )
+    return {
+      data: {
+        payload: {},
+        projectId: 'p1',
+        seq: eventSeq,
+        ts: new Date().toISOString(),
+        turnId,
+        type: 'checkpoint',
+        version: 2,
+      },
+      event: 'project_event',
+    }
+  }
+  if (input.event === 'done') {
+    const reason = pendingTerminalReason
+    pendingTerminalReason = undefined
+    return {
+      data: {
+        payload: {
+          finishedAt: new Date().toISOString(),
+          outcome: reason
+            ? reason === 'stopped'
+              ? 'stopped'
+              : 'error'
+            : 'completed',
+          ...(reason ? { reason } : {}),
+          stats: null,
+          turnId,
+        },
+        projectId: 'p1',
+        seq: eventSeq,
+        ts: new Date().toISOString(),
+        turnId,
+        type: 'run_terminal',
+        version: 2,
+      },
+      event: 'project_event',
+    }
+  }
+  return {
+    data: {
+      payload: input.data,
+      projectId: 'p1',
+      seq: eventSeq,
+      ts: new Date().toISOString(),
+      turnId: input.event === 'project_meta' ? null : turnId,
+      type: input.event,
+      version: 2,
+    },
+    event: 'project_event',
   }
 }
 

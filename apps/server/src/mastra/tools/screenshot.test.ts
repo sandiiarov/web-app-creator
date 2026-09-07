@@ -28,29 +28,29 @@ function makeCapturedSelector(selector: string): CapturedProjectSelector {
   return {
     captures: [
       {
-        dataUrl: 'data:image/jpeg;base64,/9j/4AAQ',
-        elementMap: '0 link "Start" @10,20 100×40',
+        dataUrl: 'data:image/png;base64,iVBORw0KGgo=',
+        elementMap: '0 link "Start" state=enabled',
         height: 422,
-        imageUrl: `/api/projects/project-1/screenshots/001-${selector}-mobile.jpg`,
-        mediaType: 'image/jpeg',
+        imageUrl: `/api/projects/project-1/screenshots/001-${selector}-mobile.png`,
+        mediaType: 'image/png',
         viewport: 'mobile',
         width: 195,
       },
       {
-        dataUrl: 'data:image/jpeg;base64,/9j/4AAQ',
-        elementMap: '0 link "Start" @10,20 100×40',
+        dataUrl: 'data:image/png;base64,iVBORw0KGgo=',
+        elementMap: '0 link "Start" state=enabled',
         height: 512,
-        imageUrl: `/api/projects/project-1/screenshots/002-${selector}-tablet.jpg`,
-        mediaType: 'image/jpeg',
+        imageUrl: `/api/projects/project-1/screenshots/002-${selector}-tablet.png`,
+        mediaType: 'image/png',
         viewport: 'tablet',
         width: 384,
       },
       {
-        dataUrl: 'data:image/jpeg;base64,/9j/4AAQ',
-        elementMap: '0 link "Start" @10,20 100×40',
+        dataUrl: 'data:image/png;base64,iVBORw0KGgo=',
+        elementMap: '0 link "Start" state=enabled',
         height: 450,
-        imageUrl: `/api/projects/project-1/screenshots/003-${selector}-desktop.jpg`,
-        mediaType: 'image/jpeg',
+        imageUrl: `/api/projects/project-1/screenshots/003-${selector}-desktop.png`,
+        mediaType: 'image/png',
         viewport: 'desktop',
         width: 720,
       },
@@ -196,7 +196,7 @@ describe('createScreenshotTool direct mode', () => {
     // No vision-model OCR call in direct mode.
     expect(ocrImageInputs).not.toHaveBeenCalled()
     // Captures retain inline images for toModelOutput.
-    expect(JSON.stringify(res)).toContain('data:image/jpeg')
+    expect(JSON.stringify(res)).toContain('data:image/png')
 
     const modelOutput = tool.toModelOutput?.(res as never) as {
       type: string
@@ -212,8 +212,8 @@ describe('createScreenshotTool direct mode', () => {
     const mediaParts = modelOutput.value.filter((part) => part.type === 'media')
     expect(mediaParts).toHaveLength(3)
     expect(mediaParts[0]).toEqual({
-      data: '/9j/4AAQ',
-      mediaType: 'image/jpeg',
+      data: 'iVBORw0KGgo=',
+      mediaType: 'image/png',
       type: 'media',
     })
     // The text summary carries capture metadata but no inline image bytes.

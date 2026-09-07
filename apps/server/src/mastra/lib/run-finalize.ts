@@ -1,57 +1,75 @@
 import type { Agent } from '@mastra/core/agent'
 import type { MastraDBMessage } from '@mastra/core/agent/message-list'
 
-import {
-  appendAgentMessages,
-  setRunStatusSync,
-  type AgentMessageEntry,
-  type Project,
-  type ProjectMessageTurn,
-  type ProjectRawMessage,
-  type RunStatus,
+import type {
+  AgentMessageEntry,
+  Project,
+  ProjectMessageTurn,
+  ProjectRawMessage,
+  ProjectRepository,
 } from './project-store.ts'
-import type { RunStatsTracker, UsageSnapshot } from './run-stats.ts'
+import type {
+  RecordedStatsPayload,
+  RunStatsTracker,
+  UsageSnapshot,
+} from './run-stats.ts'
 
 /**
- * Terminal run finalization + agent-message log sanitizers, extracted from
- * `route.ts`'s `runAgentStream`. Finalization runs for EVERY outcome
- * (success, stream throw, abort, fatal): it resolves the terminal
- * usage/finishReason with fallbacks, emits the final stats snapshot, writes
- * the run-end agent-message snapshot, emits the terminal error (or the
- * empty-draft error), and persists the terminal run-lifecycle status.
- * `flushProjectLogs` + `releaseRun` intentionally stay in `route.ts` —
- * flush-before-release ordering is the run registry's completion signal.
+ * Execution finalization + agent-message log sanitizers, extracted from
+ * `route.ts`'s run body. It resolves provider usage/finishReason, snapshots
+ * known cost, and writes the run-end inspection record. The application run
+ * coordinator owns the canonical terminal record, status projection, legacy
+ * terminal delivery, and run-slot release after this result settles.
  */
 
 const NO_GENERATED_HTML_MESSAGE =
   'Agent finished without generating project HTML. The draft still has no content because no successful edit changed the page.'
 const OMITTED_INLINE_IMAGE = '[omitted inline image bytes]'
 
+export interface RunFinalizationResult {
+  agentStep: number
+  outcome: 'completed' | 'error' | 'stopped'
+  reason?: string
+  stats: RecordedStatsPayload
+}
+
+export class RunMetadataTimeoutError extends Error {
+  readonly settlement: Promise<RecordedStatsPayload>
+
+  constructor(settlement: Promise<RecordedStatsPayload>) {
+    super('Final provider usage metadata did not settle before its deadline.')
+    this.name = 'RunMetadataTimeoutError'
+    this.settlement = settlement
+  }
+}
+
 export async function finalizeRun({
   agentStep,
   controller,
-  emit,
   fatalRunError,
   htmlUpdateSequence,
+  metadataTimeoutMs,
   project,
   projectId,
   recordedTurn,
+  repository,
   stats,
   stream,
   streamError,
 }: {
   agentStep: number
   controller: AbortController
-  emit: (event: string, payload: unknown) => void
   fatalRunError: null | string
   htmlUpdateSequence: number
+  metadataTimeoutMs: number
   project: Project
   projectId: string
   recordedTurn: ProjectMessageTurn
+  repository: ProjectRepository
   stats: RunStatsTracker
   stream: Awaited<ReturnType<Agent['stream']>> | undefined
   streamError: string | undefined
-}): Promise<number> {
+}): Promise<RunFinalizationResult> {
   // Cost/stats accounting runs here (not in the try body) so it executes
   // even when the stream loop THREW (graceful stop / mid-stream error), not
   // only on the clean/break path. `stream.usage`/`finishReason` may reject
@@ -63,20 +81,32 @@ export async function finalizeRun({
   const wasStopped = controller.signal.aborted && !fatalRunError
   let finishReason = wasStopped ? 'stopped' : 'stop'
   if (streamError && !controller.signal.aborted) finishReason = 'error'
+  let metadataTimeout: RunMetadataTimeoutError | undefined
   if (stream) {
-    try {
-      usage = await stream.usage
-      const resolvedFinishReason = await stream.finishReason
-      if (!wasStopped && resolvedFinishReason) {
-        finishReason = resolvedFinishReason
-      }
-    } catch {
-      // Retain the stop/error fallback while preserving costs accumulated by
-      // image, scrape, vision, or raw provider chunks before termination.
+    const metadata = await settleStreamMetadata(stream, metadataTimeoutMs)
+    if (metadata.usage?.status === 'fulfilled') {
+      usage = metadata.usage.value
+    }
+    if (
+      !wasStopped &&
+      metadata.finishReason?.status === 'fulfilled' &&
+      metadata.finishReason.value
+    ) {
+      finishReason = metadata.finishReason.value
+    }
+    if (metadata.timedOut) {
+      finishReason = 'error'
+      metadataTimeout = new RunMetadataTimeoutError(
+        metadata.settlement.then((settled) => {
+          if (settled.usage?.status === 'fulfilled') {
+            stats.usage = settled.usage.value
+          }
+          return stats.snapshot('error')
+        }),
+      )
     }
   }
   stats.usage = usage
-  stats.emitStats(finishReason)
 
   // Final agent-message snapshot at run end (the last per-step snapshot via
   // onStepFinish may not fire for every stream shape, so this guarantees the
@@ -86,7 +116,7 @@ export async function finalizeRun({
   let nextAgentStep = agentStep
   if (finalAgentMessages && finalAgentMessages.length > 0) {
     nextAgentStep += 1
-    void appendAgentMessages(projectId, {
+    void repository.appendAgentMessages(projectId, {
       dir: 'step',
       messages: sanitizeAgentMessages(
         finalAgentMessages,
@@ -101,33 +131,27 @@ export async function finalizeRun({
   // when Mastra ends its iterator cleanly instead of throwing. This keeps a
   // user stop from falling through to the unrelated empty-draft error. A
   // fatal run error was already emitted during the loop.
-  if (!fatalRunError) {
-    const terminalError = controller.signal.aborted ? 'stopped' : streamError
-    if (terminalError) {
-      emit('error', { message: terminalError })
-    } else if (!project.hasHtml && htmlUpdateSequence === 0) {
-      emit('error', { message: NO_GENERATED_HTML_MESSAGE })
-    }
-  }
-  // Persist terminal run-lifecycle status so the project list + editor
-  // views reflect completion/stop/error (drives the list SSE badge + the
-  // editor subscribe `state` snapshot). `idle` = cleanly finished, ready
-  // for the next run.
-  const terminalStatus: RunStatus = fatalRunError
-    ? 'error'
+  if (metadataTimeout) throw metadataTimeout
+  const reason = fatalRunError
+    ? fatalRunError
     : controller.signal.aborted
       ? 'stopped'
-      : streamError
+      : (streamError ??
+        (!project.hasHtml && htmlUpdateSequence === 0
+          ? NO_GENERATED_HTML_MESSAGE
+          : undefined))
+  const outcome =
+    controller.signal.aborted && !fatalRunError
+      ? 'stopped'
+      : reason
         ? 'error'
-        : 'idle'
-  setRunStatusSync(projectId, {
-    error:
-      fatalRunError ??
-      (controller.signal.aborted ? null : (streamError ?? null)),
-    finishedAt: new Date().toISOString(),
-    status: terminalStatus,
-  })
-  return nextAgentStep
+        : 'completed'
+  return {
+    agentStep: nextAgentStep,
+    outcome,
+    ...(reason ? { reason } : {}),
+    stats: stats.snapshot(finishReason),
+  }
 }
 
 /** Sanitize Mastra messages before persisting to agent-messages.jsonl:
@@ -138,6 +162,50 @@ export function sanitizeAgentMessages(
   return stripReasoning(messages).map(
     (message) => stripInlineImageData(message) as MastraDBMessage,
   )
+}
+
+async function settleStreamMetadata(
+  stream: Awaited<ReturnType<Agent['stream']>>,
+  timeoutMs: number,
+) {
+  let usage: PromiseSettledResult<UsageSnapshot> | undefined
+  let finishReason: PromiseSettledResult<string | undefined> | undefined
+  const usageSettlement = Promise.resolve(stream.usage).then(
+    (value) => {
+      usage = { status: 'fulfilled', value }
+    },
+    (reason: unknown) => {
+      usage = { reason, status: 'rejected' }
+    },
+  )
+  const finishSettlement = Promise.resolve(stream.finishReason).then(
+    (value) => {
+      finishReason = { status: 'fulfilled', value }
+    },
+    (reason: unknown) => {
+      finishReason = { reason, status: 'rejected' }
+    },
+  )
+  const bothSettled = Promise.all([usageSettlement, finishSettlement]).then(
+    () => 'settled' as const,
+  )
+  let timer: ReturnType<typeof setTimeout> | undefined
+  try {
+    const outcome = await Promise.race([
+      bothSettled,
+      new Promise<'timed-out'>((resolve) => {
+        timer = setTimeout(() => resolve('timed-out'), timeoutMs)
+      }),
+    ])
+    return {
+      finishReason,
+      settlement: bothSettled.then(() => ({ finishReason, usage })),
+      timedOut: outcome === 'timed-out',
+      usage,
+    }
+  } finally {
+    if (timer) clearTimeout(timer)
+  }
 }
 
 /** Replace inline base64 image payloads (`data:image/...` strings, media

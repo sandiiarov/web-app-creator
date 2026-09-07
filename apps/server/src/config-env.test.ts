@@ -33,6 +33,23 @@ describe('createConfigFromEnv', () => {
     }
   })
 
+  it('defaults the agent context token limit and honors overrides', () => {
+    expect(createConfigFromEnv(createEnv()).agentContextTokenLimit).toBe(
+      180_000,
+    )
+    expect(
+      createConfigFromEnv(createEnv({ AGENT_CONTEXT_TOKEN_LIMIT: '240000' }))
+        .agentContextTokenLimit,
+    ).toBe(240_000)
+    expect(
+      createConfigFromEnv(createEnv({ AGENT_CONTEXT_TOKEN_LIMIT: '0' }))
+        .agentContextTokenLimit,
+    ).toBe(0)
+    expect(() =>
+      createConfigFromEnv(createEnv({ AGENT_CONTEXT_TOKEN_LIMIT: '-1' })),
+    ).toThrow('Invalid AGENT_CONTEXT_TOKEN_LIMIT value')
+  })
+
   it('parses openrouter config with defaults', () => {
     const config = createConfigFromEnv(createEnv())
 
@@ -46,39 +63,23 @@ describe('createConfigFromEnv', () => {
     })
   })
 
-  it('leaves Cloudflare capture credentials unset when env is absent', () => {
-    expect(createConfigFromEnv(createEnv()).cloudflare).toEqual({
-      accountId: undefined,
-      apiToken: undefined,
+  it('leaves the Firecrawl key unset when env is absent', () => {
+    expect(createConfigFromEnv(createEnv()).firecrawl).toEqual({
+      apiKey: undefined,
+      apiUrl: undefined,
+      creditUsd: 0.002,
     })
   })
 
-  it('parses non-empty Cloudflare Browser Run credentials', () => {
+  it('parses a non-empty Firecrawl API key and trims whitespace-only values', () => {
     expect(
-      createConfigFromEnv(
-        createEnv({
-          CLOUDFLARE_ACCOUNT_ID: 'account-id',
-          CLOUDFLARE_API_TOKEN: 'browser-rendering-token',
-        }),
-      ).cloudflare,
-    ).toEqual({
-      accountId: 'account-id',
-      apiToken: 'browser-rendering-token',
-    })
-  })
-
-  it('treats whitespace-only Cloudflare credentials as absent', () => {
+      createConfigFromEnv(createEnv({ FIRECRAWL_API_KEY: 'fc-test' })).firecrawl
+        .apiKey,
+    ).toBe('fc-test')
     expect(
-      createConfigFromEnv(
-        createEnv({
-          CLOUDFLARE_ACCOUNT_ID: '  ',
-          CLOUDFLARE_API_TOKEN: '\t',
-        }),
-      ).cloudflare,
-    ).toEqual({
-      accountId: undefined,
-      apiToken: undefined,
-    })
+      createConfigFromEnv(createEnv({ FIRECRAWL_API_KEY: '  ' })).firecrawl
+        .apiKey,
+    ).toBeUndefined()
   })
 
   it('applies server binding and Firecrawl cost defaults', () => {
@@ -126,6 +127,33 @@ describe('createConfigFromEnv', () => {
       retryMaxDelayMs: 10000,
       streamErrorMaxRetries: 10,
     })
+  })
+
+  it('parses provider execution limits', () => {
+    expect(createConfigFromEnv(createEnv()).providerExecution).toEqual({
+      drainGraceMs: 5_000,
+      metadataTimeoutMs: 10_000,
+      operationTimeoutMs: 120_000,
+    })
+    expect(
+      createConfigFromEnv(
+        createEnv({
+          PROVIDER_DRAIN_GRACE_MS: '50',
+          PROVIDER_METADATA_TIMEOUT_MS: '75',
+          PROVIDER_OPERATION_TIMEOUT_MS: '100',
+        }),
+      ).providerExecution,
+    ).toEqual({
+      drainGraceMs: 50,
+      metadataTimeoutMs: 75,
+      operationTimeoutMs: 100,
+    })
+    expect(() =>
+      createConfigFromEnv(createEnv({ PROVIDER_OPERATION_TIMEOUT_MS: '0' })),
+    ).toThrow('Invalid PROVIDER_OPERATION_TIMEOUT_MS value: 0')
+    expect(() =>
+      createConfigFromEnv(createEnv({ PROVIDER_METADATA_TIMEOUT_MS: '0' })),
+    ).toThrow('Invalid PROVIDER_METADATA_TIMEOUT_MS value: 0')
   })
 
   it('defaults the per-run cost cap to $5 and allows override/disable', () => {

@@ -2,8 +2,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import {
   baseModelId,
+  createModelCapabilities,
   parseModelCatalog,
-  supportsImageInput,
 } from './model-capabilities.ts'
 
 afterEach(() => {
@@ -36,10 +36,52 @@ describe('parseModelCatalog', () => {
         { architecture: { input_modalities: ['IMAGE'] }, id: 'acme/upper' },
       ],
     })
-    expect(catalog.get('acme/vision-1')?.has('image')).toBe(true)
-    expect(catalog.get('acme/text-1')?.has('image')).toBe(false)
-    expect(catalog.get('acme/no-modalities')?.size).toBe(0)
-    expect(catalog.get('acme/upper')?.has('image')).toBe(true)
+    expect(catalog.get('acme/vision-1')?.modalities.has('image')).toBe(true)
+    expect(catalog.get('acme/text-1')?.modalities.has('image')).toBe(false)
+    expect(catalog.get('acme/no-modalities')?.modalities.size).toBe(0)
+    expect(catalog.get('acme/upper')?.modalities.has('image')).toBe(true)
+  })
+
+  it('captures context_length when positive and finite', () => {
+    const catalog = parseModelCatalog({
+      data: [
+        { context_length: 202_752, id: 'acme/big' },
+        { context_length: 0, id: 'acme/zero' },
+        { context_length: Number.NaN, id: 'acme/nan' },
+        { id: 'acme/absent' },
+      ],
+    })
+    expect(catalog.get('acme/big')?.contextLength).toBe(202_752)
+    expect(catalog.get('acme/zero')?.contextLength).toBeUndefined()
+    expect(catalog.get('acme/nan')?.contextLength).toBeUndefined()
+    expect(catalog.get('acme/absent')?.contextLength).toBeUndefined()
+  })
+})
+
+describe('contextWindowTokens', () => {
+  it('resolves from the catalog, stripping variant suffixes', async () => {
+    vi.stubEnv('OPENROUTER_API_KEY', 'test-key')
+    const fetch = vi.fn<typeof globalThis.fetch>(async () => {
+      return new Response(
+        JSON.stringify({
+          data: [
+            { context_length: 202_752, id: 'acme/big' },
+            { id: 'acme/no-length' },
+          ],
+        }),
+        { status: 200 },
+      )
+    })
+    vi.stubGlobal('fetch', fetch)
+
+    const { contextWindowTokens: contextWindow } = createModelCapabilities({
+      apiKey: 'test-key',
+      chatApiUrl: 'https://openrouter.test/api/v1',
+    })
+    await expect(contextWindow('acme/big:nitro')).resolves.toBe(202_752)
+    await expect(contextWindow('acme/no-length')).resolves.toBeUndefined()
+    await expect(contextWindow('acme/unknown')).resolves.toBeUndefined()
+    expect(fetch).toHaveBeenCalledTimes(1)
   })
 })
 
@@ -62,8 +104,10 @@ describe('supportsImageInput', () => {
     })
     vi.stubGlobal('fetch', fetch)
 
-    const { supportsImageInput: supports } =
-      await import('./model-capabilities.ts')
+    const { supportsImageInput: supports } = createModelCapabilities({
+      apiKey: 'test-key',
+      chatApiUrl: 'https://openrouter.test/api/v1',
+    })
     await expect(supports('acme/vision-1:nitro')).resolves.toBe(true)
     await expect(supports('acme/text-1')).resolves.toBe(false)
     await expect(supports('acme/unknown')).resolves.toBe(false)
@@ -93,14 +137,20 @@ describe('supportsImageInput', () => {
       )
     vi.stubGlobal('fetch', fetch)
 
-    const { supportsImageInput: supports } =
-      await import('./model-capabilities.ts')
+    const { supportsImageInput: supports } = createModelCapabilities({
+      apiKey: 'test-key',
+      chatApiUrl: 'https://openrouter.test/api/v1',
+    })
     await expect(supports('acme/vision-1')).resolves.toBe(false)
     // Failure was not cached: a later call refetches successfully.
     await expect(supports('acme/vision-1')).resolves.toBe(true)
   })
 
-  it('re-export stays consistent with the module-level helper', () => {
-    expect(typeof supportsImageInput).toBe('function')
+  it('creates an instance-owned helper', () => {
+    const capabilities = createModelCapabilities({
+      apiKey: 'test-key',
+      chatApiUrl: 'https://openrouter.test/api/v1',
+    })
+    expect(typeof capabilities.supportsImageInput).toBe('function')
   })
 })

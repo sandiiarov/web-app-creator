@@ -239,6 +239,7 @@ function useEditorPageRender({ projectId }: EditorPageProps) {
       ) : null}
       <PromptPanel
         canSelectElement={!!previewHtml}
+        compactionPercent={landing.compactionPercent}
         connection={landing.connection}
         draft={draft.draft}
         draftError={draft.error}
@@ -249,6 +250,7 @@ function useEditorPageRender({ projectId }: EditorPageProps) {
         modelPricing={modelPricing}
         models={landing.models}
         onAllProjects={() => navigate('/')}
+        onCompactionPercentChange={landing.setCompactionPercent}
         onDraftChange={draft.update}
         onElementSelectionToggle={handleElementSelectionToggle}
         onLayoutChange={handlePanelLayoutChange}

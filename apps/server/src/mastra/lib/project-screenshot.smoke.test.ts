@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url'
 
 import { describe, expect, it } from 'vitest'
 
+import { allowFirecrawlSmokeNetwork } from '../../testing/deny-network.ts'
 import { captureProjectSelectors } from './project-screenshot.ts'
 
 const MODULE_DIR = dirname(fileURLToPath(import.meta.url))
@@ -23,53 +24,64 @@ async function loadEnv() {
   }
 }
 
-const shouldRun = process.env.RUN_CLOUDFLARE_SMOKE === '1'
+const shouldRun = process.env.RUN_FIRECRAWL_SMOKE === '1'
 
-describe.skipIf(!shouldRun)('Cloudflare Browser Run live smoke', () => {
-  it('captures three viewports for two selectors and closes the browser', async () => {
-    await loadEnv()
+describe.skipIf(!shouldRun)('Firecrawl scrape-screenshot live smoke', () => {
+  it(
+    'publishes once and captures three full-page viewports per selector',
+    { timeout: 90_000 },
+    async () => {
+      await loadEnv()
+      const disallow = allowFirecrawlSmokeNetwork()
 
-    const html = `<!doctype html><html><head><style>
+      try {
+        const html = `<!doctype html><html><head><style>
 body { margin:0; font-family:Arial,sans-serif; }
 .hero { padding:40px; background:#0ea5e9; color:#fff; }
 .hero h1 { font-size:32px; }
 .cta { display:inline-block; margin-top:16px; padding:12px 24px; background:#fff; color:#0ea5e9; border-radius:8px; text-decoration:none; }
-</style></head><body><div class="hero"><h1>Cloudflare Capture Smoke</h1><a class="cta" href="#">Get Started</a></div></body></html>`
+</style></head><body><div class="hero"><h1>Firecrawl Capture Smoke</h1><a class="cta" href="#">Get Started</a></div></body></html>`
 
-    const result = await captureProjectSelectors(
-      {
-        html,
-        projectId: 'smoke-test',
-        selectors: ['.hero', 'body'],
-        timeoutMs: 30_000,
-      },
-      {
-        cloudflare: {
-          accountId: process.env.CLOUDFLARE_ACCOUNT_ID,
-          apiToken: process.env.CLOUDFLARE_API_TOKEN,
-        },
-      },
-    )
+        const result = await captureProjectSelectors(
+          {
+            html,
+            projectId: 'smoke-test',
+            selectors: ['.hero', 'body'],
+            timeoutMs: 60_000,
+          },
+          {
+            firecrawl: { apiKey: process.env.FIRECRAWL_API_KEY },
+            inlineProjectImages: async (_projectId, currentHtml) => currentHtml,
+            persistScreenshot: (_projectId, requestId) => ({
+              ext: '.png',
+              path: `/api/projects/smoke-test/screenshots/${requestId}.png`,
+            }),
+          },
+        )
 
-    expect(result).toHaveLength(2)
-    for (const selector of result) {
-      expect(selector.captures).toHaveLength(3)
-      expect(selector.captures.map((c) => c.viewport)).toEqual([
-        'mobile',
-        'tablet',
-        'desktop',
-      ])
-      for (const capture of selector.captures) {
-        expect(capture.dataUrl).toMatch(/^data:image\/jpeg;base64,/)
-        expect(capture.width).toBeGreaterThan(0)
-        expect(capture.height).toBeGreaterThan(0)
-        expect(capture.mediaType).toBe('image/jpeg')
+        expect(result).toHaveLength(2)
+        for (const selector of result) {
+          expect(selector.captures).toHaveLength(3)
+          expect(selector.captures.map((c) => c.viewport)).toEqual([
+            'mobile',
+            'tablet',
+            'desktop',
+          ])
+          for (const capture of selector.captures) {
+            expect(capture.dataUrl).toMatch(/^data:image\/png;base64,/)
+            expect(capture.width).toBeGreaterThan(0)
+            expect(capture.height).toBeGreaterThan(0)
+            expect(capture.mediaType).toBe('image/png')
+          }
+        }
+
+        // The CTA link should appear in the static element map.
+        const heroMap = result[0]!.captures[0]!.elementMap
+        expect(heroMap).toContain('link')
+        expect(heroMap).toContain('Get Started')
+      } finally {
+        disallow()
       }
-    }
-
-    // The CTA link should appear in the hero's element map.
-    const heroMap = result[0]!.captures[0]!.elementMap
-    expect(heroMap).toContain('link')
-    expect(heroMap).toContain('Get Started')
-  })
+    },
+  )
 })
