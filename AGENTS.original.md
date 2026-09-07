@@ -94,7 +94,7 @@ Default section order:
 
 ## User Preferences
 
-- Generated-app direction, research only: Vite + React, not Next.js; AlmostNode browser dev; HMR replaces document morphing/morphdom. S3 static production, no Node server; pre-rendered HTML requirement unresolved. Preserve existing Vite builder shell.
+- Architecture direction for generated applications: use Vite + React with AlmostNode browser development, not Next.js. Replace generated-document morphing and morphdom with HMR. Keep S3-compatible static production hosting without a production Node server. Whether pre-rendered HTML is still required remains undecided. The builder shell already uses Vite; this direction is research, not implemented behavior.
 
 - App design direction: the generated website is the workspace, with a compact floating chat widget that helps build it in place. Use liquid glass, restrained amber actions, smooth purposeful motion, readable light/dark surfaces, and a mobile overlay that preserves the page underneath. All rectangular app surfaces and controls have square corners (0px), including floating/docked/collapsed panels, menus, cards, and the visual proposal; avoid rounded cards and pill-shaped rectangular controls.
 
@@ -122,7 +122,7 @@ Default section order:
 
 Root-owned paths, no child DOX:
 
-- `.phases/` — ignored stage-gated research/plan/implementation/verification + evidence. Active AlmostNode/Vite research: `.phases/phase-almostnode-react-architecture/research.md`; implementation unapproved.
+- `.phases/` contains ignored research, planning, implementation, verification, and evidence files with explicit stage gates. `.phases/phase-almostnode-react-architecture/research.md` owns the ongoing AlmostNode/Vite migration research; no migration implementation is approved.
 
 - Workspace orchestration/config: `package.json`, `pnpm-workspace.yaml`, `pnpm-lock.yaml`, `turbo.json`, `.gitignore`, `.fallowrc.jsonc`, `skills-lock.json`, `patches/`.
 - Root docs/assets: `README.md`; `.commandcode/design/review-report.md` + `review-report.html` are paired design reviews, with findings kept separate from implemented behavior. `.commandcode/design/reconsidered-preview.html` is the approved isolated interactive design reference, with local simulated interactions and embedded project backdrops.
